@@ -11,7 +11,7 @@ mod answers;
 mod questions;
 mod screen_state;
 
-pub(super) use answers::{calibrated, chosen, combined, level, probability, top_level};
+pub(super) use answers::{calibrated, chosen, combined, deferred, level, probability, top_level};
 pub(super) use questions::{
     asks_for, completion, condition, corroborate, coverage, elements, field_error, helped,
     intended, negated, obstacle, only_near, options, page_kind, progress, reflects, strays,

@@ -35,6 +35,9 @@
     return computed.display !== 'none' && computed.visibility !== 'hidden' && computed.opacity !== '0';
   };
   const TEXT_TYPES = ['text', 'search', 'email', 'tel', 'url', 'number', 'password'];
+  // The most choices of one native dropdown offered as options: enough for a
+  // title, a city or a month list, short of a country list's whole length.
+  const OPTIONS_PER_DROPDOWN = 60;
   const TEXT_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton'];
   const ROLES = [
     'button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox',
@@ -87,6 +90,60 @@
 
   const pointer = (element) => style(element).cursor === 'pointer';
 
+  // A date picker's calendar: a table of day numbers under its month and
+  // year. Many pickers draw a day as a plain cell that shows a pointer only
+  // under the mouse, so nothing else marks it as pressable, yet a person
+  // sees a day to pick. Each day cell maps to the date it stands for, and
+  // each calendar's container is kept to read its paging arrows by.
+  const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+    'september', 'october', 'november', 'december'];
+  const MONTH_AND_YEAR = new RegExp(`\\b(${MONTHS.join('|')})\\s+(\\d{4})\\b`, 'i');
+  const calendarDays = new Map();
+  const calendars = [];
+  const findCalendars = () => {
+    for (const table of base.querySelectorAll('table')) {
+      // A week-number column is numbers too, but no day.
+      const cells = [...table.querySelectorAll('td')].filter((cell) => /^\d{1,2}$/.test(squash(cell.textContent))
+        && !/(^|\s)(cw|week)/i.test(cell.className));
+      if (cells.length < 28 || !shown(table)) continue;
+      // The month is named in the table's own heading, or in a short header
+      // drawn just before it; never by words elsewhere on the page, nor by a
+      // calendar that happens to come before it.
+      const before = table.previousElementSibling;
+      const header = before && !before.querySelector('table') && squash(before.innerText).length <= 80
+        ? before : null;
+      const titled = MONTH_AND_YEAR.exec(squash([table.caption, table.tHead, header]
+        .filter(Boolean).map((part) => part.innerText).join(' ')));
+      if (!titled) continue;
+      const holder = table.parentElement;
+      calendars.push(holder && holder !== document.body && holder !== document.documentElement ? holder : table);
+      const month = MONTHS.indexOf(titled[1].toLowerCase());
+      const year = Number(titled[2]);
+      // Days before the month's first belong to the month before, and days
+      // after its last to the month after: the numbers start again.
+      let offset = Number(squash(cells[0].textContent)) === 1 ? 0 : -1;
+      let last = 0;
+      for (const cell of cells) {
+        const day = Number(squash(cell.textContent));
+        if (day < last) offset += 1;
+        last = day;
+        const date = new Date(Date.UTC(year, month + offset, day));
+        const spelled = MONTHS[date.getUTCMonth()];
+        calendarDays.set(cell, `${day} ${spelled[0].toUpperCase()}${spelled.slice(1)} ${date.getUTCFullYear()}`);
+      }
+    }
+  };
+  // A calendar's paging arrow, read as what it does: an arrow glyph, or a
+  // bare "Next", inside a calendar turns its month.
+  const NEXT_GLYPHS = /^(?:next|[›»>→⟩▶❯])$/i;
+  const PREVIOUS_GLYPHS = /^(?:prev|previous|[‹«<←⟨◀❮])$/i;
+  const monthTurn = (element, name) => {
+    if (!calendars.some((calendar) => calendar.contains(element))) return name;
+    if (NEXT_GLYPHS.test(name)) return 'next month';
+    if (PREVIOUS_GLYPHS.test(name)) return 'previous month';
+    return name;
+  };
+
   // What a person would take the element for, or null when it is not
   // something they would act on by itself.
   const kind = (element, insideControl) => {
@@ -116,6 +173,7 @@
     if (ROLES.includes(claimed)) return claimed;
     if (name === 'a' && element.hasAttribute('href')) return 'link';
     if (name === 'button' || name === 'summary') return 'button';
+    if (calendarDays.has(element)) return 'gridcell';
     if (insideControl) return null;
     const tabindex = element.getAttribute('tabindex');
     const clickable = element.hasAttribute('onclick')
@@ -159,6 +217,22 @@
     return [...words].slice(0, 3).join(' ');
   };
 
+  // The words `element` shows, without those of the dropdown it wraps (or
+  // of `field`, the control a label names): a closed dropdown shows one
+  // choice, but its text holds them all, so a label wrapping one would read
+  // out every choice in it.
+  const shownWords = (element, field) => {
+    const left = field ? [field] : [...element.querySelectorAll('select')];
+    if (!left.some((inner) => inner.firstChild && element.contains(inner))) return squash(element.innerText);
+    const parts = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (left.some((inner) => inner.contains(node)) || !node.parentElement.getClientRects().length) continue;
+      parts.push(node.data);
+    }
+    return squash(parts.join(' '));
+  };
+
   // Visible words that are not controls: each a candidate label for a
   // field beside or above it.
   const words = [];
@@ -173,7 +247,7 @@
       if (parent.closest(NESTED)) continue;
       const dropped = noiseRoot(parent);
       if (dropped && noiseKinds.get(dropped) === 'ads') continue;
-      const text = clip(parent.innerText || node.data, 80);
+      const text = clip(shownWords(parent) || node.data, 80);
       if (text) words.push({ element: parent, text, rect: box(parent) });
     }
   };
@@ -249,7 +323,7 @@
     const title = squash(element.getAttribute('title'));
     const input = standIn(element);
     if (['textbox', 'searchbox', 'combobox', 'slider'].includes(what) || (tag(element) === 'input' && !input)) {
-      const labels = element.labels ? [...element.labels].map((label) => squash(label.innerText)).join(' ') : '';
+      const labels = element.labels ? [...element.labels].map((label) => shownWords(label, element)).join(' ') : '';
       const checkable = ['checkbox', 'radio', 'switch'].includes(what);
       // A label the page ties to the field comes first; then the words a
       // person reads beside it, and last what the empty box shows.
@@ -260,7 +334,7 @@
     }
     const text = ownText(element);
     if (text) {
-      const said = aria || innerLabel(element, text);
+      const said = aria || innerLabel(element, text) || calendarDays.get(element);
       const description = said && said !== text && !text.includes(said) ? clip(said, limits.name) : '';
       return { name: clip(text, limits.name), description };
     }
@@ -590,6 +664,7 @@
 
   findLabelledAds();
   collectWords();
+  findCalendars();
   const nodes = [];
   const controls = new Set();
   const seen = [];
@@ -627,6 +702,52 @@
     && !ROLES.includes(role(element)) && !TEXT_ROLES.includes(role(element))
     && !element.querySelector(`${NESTED}, img, svg, picture, canvas, video`);
 
+  // A native dropdown, and a text box's list of suggestions (`<datalist>`),
+  // show their choices in a menu the browser draws outside the page, where
+  // nothing reads or presses them. Each choice is offered as an option
+  // inside its control, drawn in the control's box, and pressing one sets
+  // the control's value (`native_select.rs`).
+  const choicesOf = (element) => {
+    if (tag(element) === 'select') return element.multiple ? [] : [...element.options];
+    const list = tag(element) === 'input' ? element.list : null;
+    if (!list || element.readOnly) return [];
+    // Suggestions two boxes share are offered under the one being typed
+    // in, so that pressing one names a single box to fill.
+    const users = [...document.querySelectorAll('input[list]')].filter((other) => other.list === list);
+    if (users.length > 1 && document.activeElement !== element) return [];
+    return [...list.querySelectorAll('option')];
+  };
+  const offerChoices = (element, record) => {
+    const suggested = tag(element) !== 'select';
+    const inside = [
+      ...record.path,
+      `listbox ${JSON.stringify(record.name || (suggested ? 'suggestions' : 'dropdown'))}`,
+    ];
+    let listed = 0;
+    for (const option of choicesOf(element)) {
+      if (listed >= OPTIONS_PER_DROPDOWN) break;
+      const group = option.parentElement;
+      if (option.disabled || (group && tag(group) === 'optgroup' && group.disabled)) continue;
+      // A suggestion is named by what it fills in, a dropdown's choice by
+      // what it shows.
+      const said = squash(option.label);
+      const label = suggested ? squash(option.value) || said : said || squash(option.textContent);
+      if (!label) continue;
+      listed += 1;
+      if (suggested) option.setAttribute('data-tc-for', record.id);
+      nodes.push({
+        id: mark(option),
+        role: 'option',
+        name: clip(label, limits.name),
+        description: suggested && said && said !== label ? clip(said, limits.name) : '',
+        value: '',
+        states: (suggested ? element.value === option.value : option.selected) ? ['selected'] : [],
+        box: record.box,
+        path: inside,
+      });
+    }
+  };
+
   const walker = document.createTreeWalker(base, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
       if (node.nodeType === Node.ELEMENT_NODE
@@ -652,7 +773,7 @@
       }
       lastText = parent;
       texts += 1;
-      nodes.push({ text: clip(parent.innerText || node.data, limits.text), path: pathOf(parent) });
+      nodes.push({ text: clip(shownWords(parent) || node.data, limits.text), path: pathOf(parent) });
       continue;
     }
     const element = node;
@@ -685,7 +806,9 @@
       tally(dropped);
       continue;
     }
-    const { name, description } = naming(element, what);
+    const named = naming(element, what);
+    const name = monthTurn(element, named.name);
+    const { description } = named;
     // A blank box that is clickable only by its cursor, tab stop, or click
     // handler: no words, no name, no picture, nothing inside to act on.
     if (!name && !description && blank(element)) {
@@ -723,6 +846,7 @@
     };
     nodes.push(record);
     seen.push({ element, record });
+    offerChoices(element, record);
   }
   window.__tinycomputerSeen = next;
 

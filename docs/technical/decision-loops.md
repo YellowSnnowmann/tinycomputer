@@ -279,11 +279,18 @@ step, when:
 - the label contains a hard-to-undo word (delete, remove, send, purchase, buy,
   pay, submit, confirm, overwrite, sign out, and a few more);
 - the flow's own `stop_before` phrases name the control ("sending the email"
-  covers a button called "Send");
+  covers a button called "Send"), starting a word of the phrase ("Rent" is not
+  named by "the current bill");
 - the element is an unnamed control inside a sheet, which is what the default
   button of a "Delete?" dialog looks like on some platforms;
 - or the screen shows payment evidence (a card number, CVV, or expiry field),
   so a button that only says "Continue" on a card form is caught too.
+
+A tab is navigation: a `stop_before` phrase never names it, and on a payment
+page it is part of filling the form, like a saved-card radio (IndiGo's flight
+search sits behind a tab labelled "Book", which "paying for the booking" used
+to name). Its own label still counts against the denylist, since the role is
+only the page's claim ("Pay ₹7,346" stays gated).
 
 When a click is refused because it is covered, two things happen. On the
 browser, a result card often lays a click layer — or its own text — over its
@@ -412,9 +419,11 @@ not.
 asks three questions in one request: the condition as a Noul, its negation as
 a Noul, and a five-level coverage Score ("none of the condition holds" to "all
 of the condition holds"). The calibrated yes/no and the top coverage level are
-averaged. The coverage Score is there because a condition that lists several
-things ("the draft shows the recipient, the subject, and the body") gets a
-hedged yes/no but a crisp coverage answer.
+averaged, but a hedged yes/no (within `HEDGED` of even) defers to a crisp
+coverage (`CRISP_TOP`), as in the screen-only view (`ask::deferred`). The
+coverage Score is there because a condition that lists several things ("the
+draft shows the recipient, the subject, and the body") gets a hedged yes/no
+but a crisp coverage answer, which a plain average keeps under the 0.75 bar.
 
 ### Result cards, `pick`, and `extract`
 

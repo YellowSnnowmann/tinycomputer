@@ -67,6 +67,10 @@ pub(super) struct Belief<'a> {
     pub(super) top: Option<&'a str>,
     /// The threshold the belief is judged against.
     pub(super) threshold: f64,
+    /// Whether a hedged yes/no defers to a crisp top level
+    /// ([`ask::deferred`]): a condition's coverage does, a step's progress
+    /// does not.
+    pub(super) defers: bool,
 }
 
 impl Belief<'_> {
@@ -74,8 +78,20 @@ impl Belief<'_> {
     pub(super) fn read(&self, answers: &BTreeMap<String, Answer>) -> Option<f64> {
         let calibrated = ask::calibrated(answers, self.yes, self.no);
         match self.top {
+            Some(top) if self.defers => ask::deferred(calibrated, ask::top_level(answers, top)),
             Some(top) => ask::combined(calibrated, ask::top_level(answers, top)),
             None => calibrated,
+        }
+    }
+
+    /// The belief a view's `answers` hold: read as [`Belief::read`] reads
+    /// when the belief defers, so a view that asks the top level too is
+    /// judged the same way, and as its calibrated yes/no otherwise.
+    pub(super) fn read_view(&self, answers: &BTreeMap<String, Answer>) -> Option<f64> {
+        if self.defers {
+            self.read(answers)
+        } else {
+            ask::calibrated(answers, self.yes, self.no)
         }
     }
 }

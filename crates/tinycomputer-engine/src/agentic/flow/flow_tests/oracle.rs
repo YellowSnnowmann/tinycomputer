@@ -56,7 +56,8 @@ impl Evaluator for Oracle {
 
 impl Oracle {
     /// The hooked or default answer; a negated question is answered as the
-    /// inverse of its positive twin, so hooks only ever name the positive one.
+    /// inverse of its positive twin, so hooks only ever name the positive one
+    /// (a condition's coverage may be hooked on its own).
     pub(super) fn answer(
         &self,
         request: &EvaluationRequest,
@@ -67,6 +68,13 @@ impl Oracle {
         let near = id
             .strip_prefix("only_near_")
             .map(|index| format!("is_{index}"));
+        // A coverage a test scripts outright stands; otherwise it follows its
+        // condition's yes/no, as a negation does.
+        if id == "coverage"
+            && let Some(hooked) = (self.hook)(id, question, sim)
+        {
+            return hooked;
+        }
         let twin = match id {
             "not_done" => Some("done"),
             "negated" | "coverage" => Some("holds"),
@@ -117,6 +125,26 @@ pub(super) fn text_of(question: &Question, field: &str) -> String {
 
 pub(super) fn noul(probability: f64) -> Answer {
     Answer::Noul(NoulAnswer { noul: probability })
+}
+
+/// A five-level Score sure to `probability` of its top level, the rest on
+/// the level below.
+pub(super) fn top_at(probability: f64) -> Answer {
+    Answer::Score(ScoreAnswer {
+        score: 0.0,
+        legend: BTreeMap::new(),
+        probabilities: (0..5)
+            .map(|index| {
+                let weight = match index {
+                    4 => probability,
+                    3 => 1.0 - probability,
+                    _ => 0.0,
+                };
+                (index.to_string(), weight)
+            })
+            .collect(),
+        confidence: probability,
+    })
 }
 
 pub(super) fn level(position: usize) -> Answer {

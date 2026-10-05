@@ -27,6 +27,11 @@ An ordinary step refuses to click a control when:
 - the screen shows card fields, so even a plain "Continue" on a card form is
   refused.
 
+A tab is never refused because a `stop_before` phrase names it: pressing one
+only shows another part of the same page, so a "Book" tab that opens a search
+form stays clickable. A tab whose own label reads like paying or sending is
+still refused, since a page can call anything a tab.
+
 Only a `stop_before` step can reach one of these controls. It finds the
 control and stops in front of it. A task then pauses for approval, and only
 your `approve: true` presses it.

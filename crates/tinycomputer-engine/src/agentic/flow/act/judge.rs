@@ -95,6 +95,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             no: "not_done",
             top: Some("progress"),
             threshold: threshold(turn),
+            defers: false,
         };
         let mut answers = judged.answers.clone();
         let settled = self

@@ -60,15 +60,25 @@ actually landed. Covered on its own page:
 
 Grounds the named option among the clickable, non-destructive elements on
 screen (favouring ones inside whatever region the step names, when the page
-carries one) and clicks it. When the option is not there yet, `choose` runs
-a short three-turn `do` loop to reveal it first, opening a dropdown, say.
+carries one) and clicks it. A browser's native dropdown (`<select>`), and a
+text box's list of suggestions (`<datalist>`), offer their choices as
+options inside the control from the start, and pressing one sets the
+control's value without opening its menu, so no reveal is needed. When the
+option is not there yet, `choose` runs a short three-turn `do` loop to
+reveal it first, opening a page's own dropdown, say.
 Once revealed, two further tricks apply, depending on what kind of control
 it is:
 
-- a date picker's calendar is paged forward to the requested day;
+- a date picker's calendar is paged forward to the requested day (in a
+  browser, sight offers a calendar's days with the dates they stand for,
+  and names its arrows "next month" and "previous month", even where the
+  page draws them as plain cells and glyphs);
 - an autocomplete field has the option typed into it (the field that just
   gained focus), and the runtime picks the suggestion that then appears,
-  retrying up to four times.
+  retrying up to four times. A widget that opens without focusing any
+  field refuses that text, so the runtime grounds its search box and types
+  there instead, in the same attempt; a refused type is never recorded as
+  typed.
 
 A private option is one whose value `enter` could not safely type, such as
 a password confirmation choice built from a secret. It is picked the same
@@ -146,7 +156,11 @@ yes/no, and a five-level coverage score from "none of the condition holds"
 to "all of the condition holds." The calibrated yes/no and the top coverage
 level are averaged. The coverage question exists because a condition that
 lists several things at once ("the draft shows the recipient, the subject,
-and the body") tends to get a hedged yes/no but a crisp coverage answer.
+and the body") tends to get a hedged yes/no but a crisp coverage answer: so
+when the yes/no is hedged (within 0.1 of an even chance) and the coverage is
+crisp (at least 0.85 on "all of the condition holds"), the coverage stands
+alone instead of being averaged under the bar. A yes/no that leans either
+way is averaged as before.
 
 - `verify` checks the condition once and fails the step if it is under
   0.75.

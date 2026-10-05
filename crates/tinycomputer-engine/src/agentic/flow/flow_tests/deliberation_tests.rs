@@ -226,6 +226,13 @@ async fn a_condition_split_across_views_does_not_pass() {
             .is_some_and(|question| !text_of(question, "view").is_empty())),
         "the screen-only view was asked"
     );
+    assert!(
+        deep.requests.iter().any(|request| request
+            .questions
+            .get("coverage")
+            .is_some_and(|question| !text_of(question, "view").is_empty())),
+        "the screen-only view asks the coverage too, so it is read the same way"
+    );
     let off = run_with(
         App::default(),
         flow.clone(),
@@ -243,6 +250,37 @@ async fn a_condition_split_across_views_does_not_pass() {
         agreed.result.stop,
         FlowStopReason::Completed,
         "views that agree settle it"
+    );
+}
+
+#[tokio::test]
+async fn a_hedged_yes_no_defers_to_a_crisp_coverage() {
+    // BlazeDemo's filled purchase form: on a condition listing five fields,
+    // Jev hedged the yes/no (0.52) but was sure all of it held (0.88), and
+    // their midpoint (0.70) failed the step.
+    let flow = json!({"app": "Mail", "steps": [
+        {"verify": "the draft shows the recipient, the subject, and the body"}
+    ]});
+    let judged = |holds: f64, coverage: f64| {
+        move |id: &str, _: &Question, _: &Sim| match id {
+            "holds" => Some(noul(holds)),
+            "coverage" => Some(top_at(coverage)),
+            _ => None,
+        }
+    };
+    let crisp = run_with(App::default(), flow.clone(), |_| {}, judged(0.52, 0.88)).await;
+    assert_eq!(crisp.result.stop, FlowStopReason::Completed);
+    let vague = run_with(App::default(), flow.clone(), |_| {}, judged(0.52, 0.6)).await;
+    assert_eq!(
+        vague.result.stop,
+        FlowStopReason::StepFailed,
+        "a vague coverage cannot carry a hedged yes/no"
+    );
+    let contradicted = run_with(App::default(), flow, |_| {}, judged(0.2, 0.95)).await;
+    assert_eq!(
+        contradicted.result.stop,
+        FlowStopReason::StepFailed,
+        "a yes/no that leans no is not overruled by the coverage"
     );
 }
 

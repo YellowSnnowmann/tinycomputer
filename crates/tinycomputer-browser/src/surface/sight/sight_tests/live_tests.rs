@@ -13,6 +13,16 @@ use crate::surface::sight::script;
 /// fixture itself asks for.
 #[cfg(feature = "agent-browser")]
 async fn live_reading(html: &str) -> Option<serde_json::Value> {
+    live_results(html, &[script(None)])
+        .await
+        .map(|mut results| results.remove(0))
+}
+
+/// Writes `html` into a blank tab of a real browser, as [`live_reading`]
+/// does, and runs each of `scripts` on it in turn: their results, or `None`
+/// unless `TINYCOMPUTER_LIVE_BROWSER=1`.
+#[cfg(feature = "agent-browser")]
+async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::Value>> {
     use std::sync::Arc;
 
     use tinycomputer_bus::browser::SessionOptions;
@@ -37,14 +47,21 @@ async fn live_reading(html: &str) -> Option<serde_json::Value> {
         .command(&info.id, json!({"action": "evaluate", "script": write}))
         .await
         .expect("the fixture is written");
-    let reply = browser
-        .command(
-            &info.id,
-            json!({"action": "evaluate", "script": script(None)}),
-        )
-        .await;
+    let mut replies = Vec::new();
+    for script in scripts {
+        replies.push(
+            browser
+                .command(&info.id, json!({"action": "evaluate", "script": script}))
+                .await,
+        );
+    }
     browser.close_session(&info.id).await.unwrap();
-    Some(reply.expect("sight reads the fixture")["result"].clone())
+    Some(
+        replies
+            .into_iter()
+            .map(|reply| reply.expect("the script runs on the fixture")["result"].clone())
+            .collect(),
+    )
 }
 
 /// The names of the controls and the words of the text a reading returned.
@@ -288,4 +305,219 @@ async fn live_hidden_elements_are_dropped() {
         return;
     };
     assert_eq!(shown_names(&stale), ["Book now"]);
+}
+
+/// A page with a native dropdown wrapped in its label, a text box with its
+/// own suggestions, and two boxes sharing one list of suggestions; it
+/// records every `change` in `window.changes`.
+#[cfg(feature = "agent-browser")]
+const CHOICES_PAGE: &str = r#"<main>
+  <label>Dropdown (select)
+    <select id="count"><option>Open this select menu</option><option>One</option>
+      <option value="2">Two</option><option disabled>Three</option></select></label>
+  <label for="city">Dropdown (datalist)</label>
+  <input id="city" list="cities" placeholder="Type to search...">
+  <datalist id="cities"><option value="San Francisco">
+    <option value="Seattle" label="Washington"></datalist>
+  <input id="from" list="airports" aria-label="From">
+  <input id="to" list="airports" aria-label="To">
+  <datalist id="airports"><option value="BOS"><option value="LHR"></datalist>
+</main>
+<script>
+  window.changes = [];
+  document.addEventListener('change', (event) => window.changes.push(event.target.id));
+</script>"#;
+
+/// The options a reading offers, each as "<name> in <container> <states>".
+#[cfg(feature = "agent-browser")]
+fn offered(reading: &serde_json::Value) -> Vec<String> {
+    reading["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|node| node["role"] == "option")
+        .map(|node| {
+            let inside = node["path"].as_array().unwrap().last().unwrap();
+            format!(
+                "{} in {} {}",
+                node["name"].as_str().unwrap(),
+                inside.as_str().unwrap(),
+                node["states"]
+            )
+        })
+        .collect()
+}
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_native_choices_are_offered_as_options_and_chosen_by_value() {
+    use crate::surface::native_select::CHOOSE_JS;
+
+    let choose = |selector: &str| {
+        format!(
+            "{CHOOSE_JS}(document.querySelector({}))",
+            serde_json::Value::String(selector.to_owned())
+        )
+    };
+    let Some(results) = live_results(
+        CHOICES_PAGE,
+        &[
+            script(None),
+            choose("#cities option[value=Seattle]"),
+            choose("#count option[value='2']"),
+            choose("#count option:disabled"),
+            choose("#airports option"),
+            "[document.querySelector('#city').value, document.querySelector('#count').value, \
+             window.changes]"
+                .to_owned(),
+            "document.querySelector('#from').focus()".to_owned(),
+            script(None),
+        ],
+    )
+    .await
+    else {
+        return;
+    };
+    let before = &results[0];
+    assert_eq!(
+        offered(before),
+        [
+            r#"Open this select menu in listbox "Dropdown (select)" ["selected"]"#,
+            r#"One in listbox "Dropdown (select)" []"#,
+            r#"Two in listbox "Dropdown (select)" []"#,
+            r#"San Francisco in listbox "Dropdown (datalist)" []"#,
+            r#"Seattle in listbox "Dropdown (datalist)" []"#,
+        ],
+        "a disabled choice is left out, and suggestions two boxes share wait for one to be typed in"
+    );
+    let names = shown_names(before);
+    assert_eq!(
+        names
+            .iter()
+            .filter(|name| *name == "Dropdown (select)")
+            .count(),
+        2,
+        "the label and the dropdown read without its choices: {names:?}"
+    );
+    let seattle = before["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["name"] == "Seattle")
+        .unwrap();
+    assert_eq!(seattle["description"], "Washington");
+
+    assert_eq!(results[1], json!(true), "the suggestion fills its box");
+    assert_eq!(results[2], json!(true), "the dropdown takes its choice");
+    assert_eq!(results[3], json!(false), "a disabled choice is refused");
+    assert_eq!(
+        results[4],
+        json!(false),
+        "a shared suggestion names no box until one is typed in"
+    );
+    assert_eq!(results[5], json!(["Seattle", "2", ["city", "count"]]));
+    assert_eq!(
+        offered(&results[7]),
+        [
+            r#"Open this select menu in listbox "Dropdown (select)" []"#,
+            r#"One in listbox "Dropdown (select)" []"#,
+            r#"Two in listbox "Dropdown (select)" ["selected"]"#,
+            r#"San Francisco in listbox "Dropdown (datalist)" []"#,
+            r#"Seattle in listbox "Dropdown (datalist)" ["selected"]"#,
+            r#"BOS in listbox "From" []"#,
+            r#"LHR in listbox "From" []"#,
+        ]
+    );
+}
+
+/// A page with two calendars, as date pickers draw them, and a table of
+/// numbers that is no calendar:
+///
+/// - a Bootstrap-style picker whose days are plain cells that show a pointer
+///   only under the mouse, with "«" and "»" arrows, the days around the
+///   month from the months either side, and the 16th disabled;
+/// - a jQuery-UI-style one whose month is named in a header before the
+///   table, paged by a "Next" link;
+/// - a "Season scores" table holding 1 to 28.
+#[cfg(feature = "agent-browser")]
+const CALENDARS_PAGE: &str = r##"<style>
+  .picker th.prev, .picker th.next { cursor: pointer }
+  .picker td.day:hover { cursor: pointer }
+</style>
+<div class="picker" style="position: absolute; top: 10px; left: 10px">
+  <table>
+    <thead>
+      <tr><th class="prev">«</th><th colspan="5">November 2026</th><th class="next">»</th></tr>
+      <tr><th>Su</th><th>Mo</th><th>Tu</th><th>We</th><th>Th</th><th>Fr</th><th>Sa</th></tr>
+    </thead>
+    <tbody id="days"></tbody>
+  </table>
+</div>
+<div class="ui-datepicker" style="position: absolute; top: 260px; left: 10px">
+  <div class="ui-datepicker-header"><a class="ui-datepicker-next" style="cursor: pointer">Next</a>
+    <div class="ui-datepicker-title">December 2026</div></div>
+  <table class="ui-datepicker-calendar"><tbody id="december"></tbody></table>
+</div>
+<table id="scores" style="position: absolute; top: 520px; left: 10px">
+  <caption>Season scores</caption><tbody id="scores-body"></tbody>
+</table>
+<script>
+  const fill = (body, cells, perRow) => {
+    for (let at = 0; at < cells.length; at += perRow) {
+      const row = body.insertRow();
+      for (const html of cells.slice(at, at + perRow)) row.insertCell().outerHTML = html;
+    }
+  };
+  const range = (from, to) => Array.from({ length: to - from + 1 }, (_, index) => from + index);
+  fill(document.getElementById('days'), [
+    ...range(25, 31).map((day) => `<td class="day old">${day}</td>`),
+    ...range(1, 30).map((day) => `<td class="day${day === 16 ? ' disabled' : ''}">${day}</td>`),
+    ...range(1, 5).map((day) => `<td class="day new">${day}</td>`),
+  ], 7);
+  fill(document.getElementById('december'),
+    range(1, 31).map((day) => `<td><a href="#">${day}</a></td>`), 7);
+  fill(document.getElementById('scores-body'), range(1, 28).map((score) => `<td>${score}</td>`), 7);
+</script>"##;
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_a_date_pickers_days_are_offered_with_the_dates_they_stand_for() {
+    let Some(reading) = live_reading(CALENDARS_PAGE).await else {
+        return;
+    };
+    let nodes = reading["nodes"].as_array().unwrap();
+    let days = nodes
+        .iter()
+        .filter(|node| node["role"] == "gridcell")
+        .map(|node| {
+            format!(
+                "{} ({})",
+                node["name"].as_str().unwrap(),
+                node["description"].as_str().unwrap()
+            )
+        })
+        .collect::<Vec<_>>();
+    // 41 November days (the disabled 16th left out) and 31 in December;
+    // none of the scores.
+    assert_eq!(days.len(), 72, "{days:?}");
+    for day in [
+        "25 (25 October 2026)",
+        "1 (1 November 2026)",
+        "15 (15 November 2026)",
+        "30 (30 November 2026)",
+        "5 (5 December 2026)",
+        "15 (15 December 2026)",
+    ] {
+        assert!(days.iter().any(|seen| seen == day), "{day} in {days:?}");
+    }
+    assert!(!days.iter().any(|seen| seen.starts_with("16 (16 November")));
+    let names = shown_names(&reading);
+    assert_eq!(
+        names
+            .iter()
+            .filter(|name| name.ends_with(" month"))
+            .collect::<Vec<_>>(),
+        ["previous month", "next month", "next month"],
+        "arrows and a bare Next inside a calendar page it"
+    );
 }

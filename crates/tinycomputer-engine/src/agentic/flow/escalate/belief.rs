@@ -9,7 +9,7 @@ use tinycomputer_bus::{FlowLoop, JevExchange};
 use tinyinference_decisions::{Answer, EvaluationRequest};
 
 use crate::agentic::flow::{
-    AgentBackend, FlowRun, Halt, StepLog, ask,
+    AgentBackend, FlowRun, Halt, StepLog,
     evidence::{self, Verdict},
     vote,
 };
@@ -142,10 +142,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
         let seen = self.ask_batch(log, views).await?;
         let mut readings = vec![held];
-        readings.extend(
-            seen.iter()
-                .filter_map(|answers| ask::calibrated(answers, belief.yes, belief.no)),
-        );
+        readings.extend(seen.iter().filter_map(|answers| belief.read_view(answers)));
         let settled = evidence::median(&readings);
         self.climbed(
             log,
