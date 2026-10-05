@@ -132,6 +132,20 @@ so only once the choice holds (`native_select.rs`). A click on any other
 BlazeDemo's cities and Selenium's "Dropdown (select)" and "Dropdown
 (datalist)" could not be chosen before this.
 
+A date picker's calendar is a table of day numbers under its month and year,
+and many pickers (Bootstrap's among them) draw each day as a plain cell that
+shows a pointer only under the mouse, so neither a role, a tab stop, nor the
+cursor marks it as pressable. The reading therefore treats a shown table with
+at least 28 day-number cells, whose month and year ("November 2026") its own
+heading or a short header just before it names, as a calendar: each enabled
+day is a `gridcell` named by its number and described by the date it stands
+for ("15 November 2026"), the days before the month's first and after its last
+dated in the months either side, and a week-number column left out. Inside a
+calendar's container an arrow glyph or a bare "Next" reads as "next month"
+(and its opposite as "previous month"), which is how `choose` pages a calendar
+to the requested day. Selenium's date picker could be opened but no day picked
+before this; the flow looped and rescued for minutes.
+
 A label that wraps its field, and any text block holding a dropdown, is read
 without the dropdown's own text: a closed dropdown shows one choice, but its
 text holds them all, so Selenium's dropdown was named "Dropdown (select) Open

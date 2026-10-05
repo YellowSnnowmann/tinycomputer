@@ -69,7 +69,10 @@ reveal it first, opening a page's own dropdown, say.
 Once revealed, two further tricks apply, depending on what kind of control
 it is:
 
-- a date picker's calendar is paged forward to the requested day;
+- a date picker's calendar is paged forward to the requested day (in a
+  browser, sight offers a calendar's days with the dates they stand for,
+  and names its arrows "next month" and "previous month", even where the
+  page draws them as plain cells and glyphs);
 - an autocomplete field has the option typed into it (the field that just
   gained focus), and the runtime picks the suggestion that then appears,
   retrying up to four times. A widget that opens without focusing any

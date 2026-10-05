@@ -90,6 +90,60 @@
 
   const pointer = (element) => style(element).cursor === 'pointer';
 
+  // A date picker's calendar: a table of day numbers under its month and
+  // year. Many pickers draw a day as a plain cell that shows a pointer only
+  // under the mouse, so nothing else marks it as pressable, yet a person
+  // sees a day to pick. Each day cell maps to the date it stands for, and
+  // each calendar's container is kept to read its paging arrows by.
+  const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+    'september', 'october', 'november', 'december'];
+  const MONTH_AND_YEAR = new RegExp(`\\b(${MONTHS.join('|')})\\s+(\\d{4})\\b`, 'i');
+  const calendarDays = new Map();
+  const calendars = [];
+  const findCalendars = () => {
+    for (const table of base.querySelectorAll('table')) {
+      // A week-number column is numbers too, but no day.
+      const cells = [...table.querySelectorAll('td')].filter((cell) => /^\d{1,2}$/.test(squash(cell.textContent))
+        && !/(^|\s)(cw|week)/i.test(cell.className));
+      if (cells.length < 28 || !shown(table)) continue;
+      // The month is named in the table's own heading, or in a short header
+      // drawn just before it; never by words elsewhere on the page, nor by a
+      // calendar that happens to come before it.
+      const before = table.previousElementSibling;
+      const header = before && !before.querySelector('table') && squash(before.innerText).length <= 80
+        ? before : null;
+      const titled = MONTH_AND_YEAR.exec(squash([table.caption, table.tHead, header]
+        .filter(Boolean).map((part) => part.innerText).join(' ')));
+      if (!titled) continue;
+      const holder = table.parentElement;
+      calendars.push(holder && holder !== document.body && holder !== document.documentElement ? holder : table);
+      const month = MONTHS.indexOf(titled[1].toLowerCase());
+      const year = Number(titled[2]);
+      // Days before the month's first belong to the month before, and days
+      // after its last to the month after: the numbers start again.
+      let offset = Number(squash(cells[0].textContent)) === 1 ? 0 : -1;
+      let last = 0;
+      for (const cell of cells) {
+        const day = Number(squash(cell.textContent));
+        if (day < last) offset += 1;
+        last = day;
+        const date = new Date(Date.UTC(year, month + offset, day));
+        const spelled = MONTHS[date.getUTCMonth()];
+        calendarDays.set(cell, `${day} ${spelled[0].toUpperCase()}${spelled.slice(1)} ${date.getUTCFullYear()}`);
+      }
+    }
+  };
+  // A calendar's paging arrow, read as what it does: an arrow glyph, or a
+  // bare "Next", inside a calendar turns its month.
+  const NEXT_GLYPHS = /^(?:next|[›»>→⟩▶❯])$/i;
+  const PREVIOUS_GLYPHS = /^(?:prev|previous|[‹«<←⟨◀❮])$/i;
+  const monthTurn = (element, name) => {
+    if (!calendars.some((calendar) => calendar.contains(element))) return name;
+    if (NEXT_GLYPHS.test(name)) return 'next month';
+    if (PREVIOUS_GLYPHS.test(name)) return 'previous month';
+    return name;
+  };
+
   // What a person would take the element for, or null when it is not
   // something they would act on by itself.
   const kind = (element, insideControl) => {
@@ -119,6 +173,7 @@
     if (ROLES.includes(claimed)) return claimed;
     if (name === 'a' && element.hasAttribute('href')) return 'link';
     if (name === 'button' || name === 'summary') return 'button';
+    if (calendarDays.has(element)) return 'gridcell';
     if (insideControl) return null;
     const tabindex = element.getAttribute('tabindex');
     const clickable = element.hasAttribute('onclick')
@@ -279,7 +334,7 @@
     }
     const text = ownText(element);
     if (text) {
-      const said = aria || innerLabel(element, text);
+      const said = aria || innerLabel(element, text) || calendarDays.get(element);
       const description = said && said !== text && !text.includes(said) ? clip(said, limits.name) : '';
       return { name: clip(text, limits.name), description };
     }
@@ -609,6 +664,7 @@
 
   findLabelledAds();
   collectWords();
+  findCalendars();
   const nodes = [];
   const controls = new Set();
   const seen = [];
@@ -750,7 +806,9 @@
       tally(dropped);
       continue;
     }
-    const { name, description } = naming(element, what);
+    const named = naming(element, what);
+    const name = monthTurn(element, named.name);
+    const { description } = named;
     // A blank box that is clickable only by its cursor, tab stop, or click
     // handler: no words, no name, no picture, nothing inside to act on.
     if (!name && !description && blank(element)) {

@@ -16,7 +16,11 @@
 //! - **What counts as a control** is decided by behaviour: native controls,
 //!   elements that show a pointer cursor or take focus, and ARIA roles — but
 //!   a "text box" that takes no text is a button to press, and one that only
-//!   wraps a real input is read as that input.
+//!   wraps a real input is read as that input. A date picker's calendar (a
+//!   table of day numbers under its month and year) offers each enabled day
+//!   as a `gridcell` described by the date it stands for, though many
+//!   pickers show a pointer on a day only under the mouse, and its arrows
+//!   read as "next month" and "previous month".
 //! - **Only what is drawn** is kept: no zero-size, hidden, or transparent
 //!   elements. An element outside the viewport is `offscreen`; one whose
 //!   middle is under something else is `covered` (not when the cover is the

@@ -429,3 +429,95 @@ async fn live_native_choices_are_offered_as_options_and_chosen_by_value() {
         ]
     );
 }
+
+/// A page with two calendars, as date pickers draw them, and a table of
+/// numbers that is no calendar:
+///
+/// - a Bootstrap-style picker whose days are plain cells that show a pointer
+///   only under the mouse, with "«" and "»" arrows, the days around the
+///   month from the months either side, and the 16th disabled;
+/// - a jQuery-UI-style one whose month is named in a header before the
+///   table, paged by a "Next" link;
+/// - a "Season scores" table holding 1 to 28.
+#[cfg(feature = "agent-browser")]
+const CALENDARS_PAGE: &str = r##"<style>
+  .picker th.prev, .picker th.next { cursor: pointer }
+  .picker td.day:hover { cursor: pointer }
+</style>
+<div class="picker" style="position: absolute; top: 10px; left: 10px">
+  <table>
+    <thead>
+      <tr><th class="prev">«</th><th colspan="5">November 2026</th><th class="next">»</th></tr>
+      <tr><th>Su</th><th>Mo</th><th>Tu</th><th>We</th><th>Th</th><th>Fr</th><th>Sa</th></tr>
+    </thead>
+    <tbody id="days"></tbody>
+  </table>
+</div>
+<div class="ui-datepicker" style="position: absolute; top: 260px; left: 10px">
+  <div class="ui-datepicker-header"><a class="ui-datepicker-next" style="cursor: pointer">Next</a>
+    <div class="ui-datepicker-title">December 2026</div></div>
+  <table class="ui-datepicker-calendar"><tbody id="december"></tbody></table>
+</div>
+<table id="scores" style="position: absolute; top: 520px; left: 10px">
+  <caption>Season scores</caption><tbody id="scores-body"></tbody>
+</table>
+<script>
+  const fill = (body, cells, perRow) => {
+    for (let at = 0; at < cells.length; at += perRow) {
+      const row = body.insertRow();
+      for (const html of cells.slice(at, at + perRow)) row.insertCell().outerHTML = html;
+    }
+  };
+  const range = (from, to) => Array.from({ length: to - from + 1 }, (_, index) => from + index);
+  fill(document.getElementById('days'), [
+    ...range(25, 31).map((day) => `<td class="day old">${day}</td>`),
+    ...range(1, 30).map((day) => `<td class="day${day === 16 ? ' disabled' : ''}">${day}</td>`),
+    ...range(1, 5).map((day) => `<td class="day new">${day}</td>`),
+  ], 7);
+  fill(document.getElementById('december'),
+    range(1, 31).map((day) => `<td><a href="#">${day}</a></td>`), 7);
+  fill(document.getElementById('scores-body'), range(1, 28).map((score) => `<td>${score}</td>`), 7);
+</script>"##;
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_a_date_pickers_days_are_offered_with_the_dates_they_stand_for() {
+    let Some(reading) = live_reading(CALENDARS_PAGE).await else {
+        return;
+    };
+    let nodes = reading["nodes"].as_array().unwrap();
+    let days = nodes
+        .iter()
+        .filter(|node| node["role"] == "gridcell")
+        .map(|node| {
+            format!(
+                "{} ({})",
+                node["name"].as_str().unwrap(),
+                node["description"].as_str().unwrap()
+            )
+        })
+        .collect::<Vec<_>>();
+    // 41 November days (the disabled 16th left out) and 31 in December;
+    // none of the scores.
+    assert_eq!(days.len(), 72, "{days:?}");
+    for day in [
+        "25 (25 October 2026)",
+        "1 (1 November 2026)",
+        "15 (15 November 2026)",
+        "30 (30 November 2026)",
+        "5 (5 December 2026)",
+        "15 (15 December 2026)",
+    ] {
+        assert!(days.iter().any(|seen| seen == day), "{day} in {days:?}");
+    }
+    assert!(!days.iter().any(|seen| seen.starts_with("16 (16 November")));
+    let names = shown_names(&reading);
+    assert_eq!(
+        names
+            .iter()
+            .filter(|name| name.ends_with(" month"))
+            .collect::<Vec<_>>(),
+        ["previous month", "next month", "next month"],
+        "arrows and a bare Next inside a calendar page it"
+    );
+}
