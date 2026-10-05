@@ -419,9 +419,11 @@ not.
 asks three questions in one request: the condition as a Noul, its negation as
 a Noul, and a five-level coverage Score ("none of the condition holds" to "all
 of the condition holds"). The calibrated yes/no and the top coverage level are
-averaged. The coverage Score is there because a condition that lists several
-things ("the draft shows the recipient, the subject, and the body") gets a
-hedged yes/no but a crisp coverage answer.
+averaged, but a hedged yes/no (within `HEDGED` of even) defers to a crisp
+coverage (`CRISP_TOP`), as in the screen-only view (`ask::deferred`). The
+coverage Score is there because a condition that lists several things ("the
+draft shows the recipient, the subject, and the body") gets a hedged yes/no
+but a crisp coverage answer, which a plain average keeps under the 0.75 bar.
 
 ### Result cards, `pick`, and `extract`
 

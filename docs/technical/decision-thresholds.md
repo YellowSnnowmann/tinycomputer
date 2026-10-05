@@ -26,6 +26,8 @@ Change a constant and its row together.
 | `COLLECTED_CHARS` | 120 | `wide/mod.rs` | characters of each saved value `already_collected` recalls |
 | `MIN_FLAT_ITEMS` | 3 | `tinycomputer-core` `surface/groups.rs` | same-role leaf siblings that make a list for `extract` and `pick` on a screen where nothing repeats by ordinal, as on a desktop tree |
 | `CAP` | 20 | `ask/mod.rs` | most options in one Choice |
+| `HEDGED` | 0.10 | `ask/answers.rs` | distance from an even chance within which a condition's calibrated yes/no says nothing either way, and defers to a crisp coverage |
+| `CRISP_TOP` | 0.85 | `ask/answers.rs` | probability on a condition's top coverage level at which it stands alone for a hedged yes/no |
 | `DO_TURNS` | 8 | `steps/mod.rs` | turns a `do` step may spend |
 | `REFLECT_FLOOR` | 0.50 | `reflect.rs` | belief that a pressed `choose` left its choice, below which it is repaired, and failed if the repair does not take |
 | `REPAIR_TURNS` | 4 | `reflect.rs` | turns one reflection repair may spend |

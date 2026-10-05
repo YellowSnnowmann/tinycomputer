@@ -41,6 +41,31 @@ pub(in crate::agentic::flow) fn combined(yes_no: Option<f64>, top: Option<f64>) 
     }
 }
 
+/// How far from an even chance a calibrated yes/no may sit and still say
+/// nothing either way.
+pub(in crate::agentic::flow) const HEDGED: f64 = 0.10;
+
+/// The top-level probability at which a scale's answer stands on its own.
+pub(in crate::agentic::flow) const CRISP_TOP: f64 = 0.85;
+
+/// [`combined`], except that a hedged yes/no (within [`HEDGED`] of an even
+/// chance) defers to a crisp scale (its top level at least [`CRISP_TOP`]).
+///
+/// A condition that lists several things draws a hedged yes/no but a crisp
+/// coverage answer, and their midpoint keeps a condition that holds in full
+/// under a 0.75 bar unless the coverage is certain: `BlazeDemo`'s "the purchase
+/// form shows the passenger name, street address, city, state, and zip code",
+/// every field filled, was judged 0.71 from a yes/no of 0.52 and a coverage of
+/// 0.88. A yes/no that leans either way still counts as before.
+pub(in crate::agentic::flow) fn deferred(yes_no: Option<f64>, top: Option<f64>) -> Option<f64> {
+    match (yes_no, top) {
+        (Some(yes_no), Some(top)) if (yes_no - 0.5).abs() <= HEDGED && top >= CRISP_TOP => {
+            Some(top)
+        }
+        _ => combined(yes_no, top),
+    }
+}
+
 /// The chosen key and its probability, or `None` for `none` or a missing answer.
 pub(in crate::agentic::flow) fn chosen(
     answers: &BTreeMap<String, Answer>,

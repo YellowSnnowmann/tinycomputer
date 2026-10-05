@@ -156,7 +156,11 @@ yes/no, and a five-level coverage score from "none of the condition holds"
 to "all of the condition holds." The calibrated yes/no and the top coverage
 level are averaged. The coverage question exists because a condition that
 lists several things at once ("the draft shows the recipient, the subject,
-and the body") tends to get a hedged yes/no but a crisp coverage answer.
+and the body") tends to get a hedged yes/no but a crisp coverage answer: so
+when the yes/no is hedged (within 0.1 of an even chance) and the coverage is
+crisp (at least 0.85 on "all of the condition holds"), the coverage stands
+alone instead of being averaged under the bar. A yes/no that leans either
+way is averaged as before.
 
 - `verify` checks the condition once and fails the step if it is under
   0.75.

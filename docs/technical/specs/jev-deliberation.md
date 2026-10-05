@@ -138,7 +138,9 @@ step pressing nothing until it stalled, where a press, its effect check, and
 the undo would have recovered.
 4. **Views** (deep only, a judgement that would pass). The yes/no is asked
    again over other renderings: the screen alone, without the history that can lead it, and
-   what changed since the step began. The readings are combined by their
+   what changed since the step began. A condition's view asks its coverage
+   too and is read as the condition itself is, a hedged yes/no deferring to
+   a crisp coverage (`ask::deferred`). The readings are combined by their
    **median**, so one dissenting view neither passes nor vetoes. Live on
    IndiGo, the screen-only view read "choose One Way" at 0.2 after the press,
    because a radio already selected shows no sign of who selected it. Under a
