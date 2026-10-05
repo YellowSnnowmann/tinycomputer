@@ -40,6 +40,9 @@ pub(super) enum Quirk {
     FocusStays,
     /// Something Escape does not close covers the New Message button.
     Covered,
+    /// The opened booking widget leaves the focus outside any text field:
+    /// text with no target is refused, as the browser surface refuses it.
+    NoFocus,
 }
 
 #[derive(Debug, Default)]
@@ -346,6 +349,9 @@ impl AgentBackend for App {
                 }
             }
             JevOperation::TypeText if name == "Mumbai, BOM" => {}
+            JevOperation::TypeText if target.is_none() && sim.has(Quirk::NoFocus) => {
+                return no_focus();
+            }
             JevOperation::TypeText if target.is_none() && sim.has(Quirk::FocusStays) => {
                 if let Some(field) = sim.focused.clone() {
                     sim.fields
@@ -458,5 +464,14 @@ pub(super) fn not_a_text_field() -> DesktopResponse {
     DesktopResponse::err(
         "type-text",
         tinycomputer_bus::DesktopError::new("NOT_A_TEXT_FIELD", "no input takes the text"),
+    )
+}
+
+/// The browser surface's refusal of text with no target when the focus is
+/// in no field that takes text.
+pub(super) fn no_focus() -> DesktopResponse {
+    DesktopResponse::err(
+        "type-text",
+        tinycomputer_bus::DesktopError::new("INVALID_TARGET", "no editable field has focus"),
     )
 }

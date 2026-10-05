@@ -86,6 +86,63 @@ async fn choose_types_into_an_autocomplete_and_picks_the_suggestion() {
     }
 }
 
+#[tokio::test]
+async fn choose_finds_the_search_box_when_the_opened_widget_leaves_no_focus() {
+    // IndiGo's city picker opens without focusing its search input, so text
+    // typed with no target is refused (tinycomputer#62). The step must not
+    // count that as typed, and must go on to the box itself.
+    let run = run_with(
+        App::with(|sim| {
+            sim.booking = Some(Booking::default());
+            sim.quirks.insert(Quirk::NoFocus);
+        }),
+        json!({"app": "Mail", "steps": [
+            {"choose": {"what": "the destination box", "option": "Srinagar"}}
+        ]}),
+        |_| {},
+        |id, question, sim| match id {
+            "move" => Some(pick(question, "activate", 0.9)),
+            "done" => Some(noul(
+                if sim
+                    .booking
+                    .as_ref()
+                    .is_some_and(|booking| booking.searching)
+                {
+                    0.9
+                } else {
+                    0.05
+                },
+            )),
+            _ if !matches!(question, Question::Choice(_)) => None,
+            _ if purpose_of(question).contains("search box") => {
+                Some(pick(question, "Search city", 0.9))
+            }
+            _ if purpose_of(question).contains("open the destination") => {
+                Some(pick(question, "Going to?", 0.9))
+            }
+            _ => Some(pick(question, "Srinagar", 0.9)),
+        },
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    let sim = run.app.sim();
+    assert_eq!(sim.fields["Search city"], "Srinagar");
+    assert_eq!(sim.clicks.last().map(String::as_str), Some("Srinagar, SXR"));
+    // Jev is never told the refused text was typed.
+    for request in &run.requests {
+        let state = request.state.to_string();
+        assert!(
+            !state.contains("typed into the focused field"),
+            "a refused type was reported as typed: {state}"
+        );
+    }
+}
+
 fn purpose_of(question: &Question) -> String {
     text_of(question, "purpose")
 }

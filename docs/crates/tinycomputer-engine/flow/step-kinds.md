@@ -68,7 +68,10 @@ it is:
 - a date picker's calendar is paged forward to the requested day;
 - an autocomplete field has the option typed into it (the field that just
   gained focus), and the runtime picks the suggestion that then appears,
-  retrying up to four times.
+  retrying up to four times. A widget that opens without focusing any
+  field refuses that text, so the runtime grounds its search box and types
+  there instead, in the same attempt; a refused type is never recorded as
+  typed.
 
 A private option is one whose value `enter` could not safely type, such as
 a password confirmation choice built from a secret. It is picked the same

@@ -49,8 +49,16 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             }
             1 if looks_like_date(option) => self.page_to(log, option).await?,
             // An opened autocomplete holds the focus in its search input,
-            // often unnamed; type there before anything moves the focus.
-            1 if into_focus => self.type_into_focus(log, option).await?,
+            // often unnamed; type there before anything moves the focus. A
+            // widget that leaves the focus outside any field refuses the
+            // text (the browser answers `INVALID_TARGET`), so look for its
+            // search box at once rather than spend the attempt (IndiGo's
+            // city pickers, tinycomputer#62).
+            1 if into_focus => {
+                if !self.type_into_focus(log, option).await? {
+                    self.type_to_filter(log, screen, what, option).await?;
+                }
+            }
             2 if !looks_like_date(option) => {
                 self.type_to_filter(log, screen, what, option).await?;
             }
@@ -95,17 +103,24 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         Ok(())
     }
 
-    /// Types `option` wherever the focus is.
-    async fn type_into_focus(&mut self, log: &mut StepLog, option: &str) -> Result<(), Halt> {
+    /// Types `option` wherever the focus is; whether the focus took it. A
+    /// refusal leaves no text anywhere, so nothing is recorded as typed.
+    async fn type_into_focus(&mut self, log: &mut StepLog, option: &str) -> Result<bool, Halt> {
         let text = search_text(option);
-        self.act(log, "type to filter", None, move |backend| {
-            backend.execute(JevOperation::TypeText, None, Some(text))
-        })
-        .await?;
+        let reply = self
+            .act(log, "type to filter", None, move |backend| {
+                backend.execute(JevOperation::TypeText, None, Some(text))
+            })
+            .await?;
+        if !reply.ok {
+            self.history
+                .push("the focus was not in a field that takes text".to_owned());
+            return Ok(false);
+        }
         log.filtered = true;
         self.history
             .push("typed into the focused field to filter it".to_owned());
-        Ok(())
+        Ok(true)
     }
 
     /// Types `option` into the search box of `what`, so an autocomplete
