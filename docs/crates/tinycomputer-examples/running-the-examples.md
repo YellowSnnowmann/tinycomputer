@@ -196,6 +196,7 @@ that matter most for this crate:
 | Variable | Used by | For |
 |---|---|---|
 | `OPENROUTER_API_KEY` | `lab`, `task_live`, `task_fixture`, `live_goal`, `live_spotify` | Jev, and the optional LLM author or planner |
+| `TINYHUMANS_TOKEN` | `task_live` | Jev and the planner through Tiny Humans' routes, in place of `OPENROUTER_API_KEY` |
 | `TINYCOMPUTER_MODULE` | `scripts/lab` | a module to load instead of building one |
 | `TINYCOMPUTER_JEV_JOURNAL` | any of them | turns on the debug journal |
 | `TINYCOMPUTER_FLOW_STRATEGY`, `TINYCOMPUTER_FLOW_DELIBERATION` | `lab`, `task_live`, `task_fixture` | narrow vs. wide asking, and how much a decision deliberates |
