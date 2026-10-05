@@ -112,6 +112,31 @@ on a `seen:` tab, radio, or option that leaves it on screen unselected is presse
 the element's own `click()`: a page can ignore a trusted click it has not yet
 wired up (Emirates' trip tabs, freshly loaded), and selecting is idempotent.
 
+A native dropdown (`<select>`) draws its options in a menu the browser shows
+outside the page, so a click on it changes nothing the reader can see and its
+choices never appear. A text box's list of suggestions (`<input list>` with a
+`<datalist>`) is the same: Chrome draws it outside the page, and only for a
+person typing. The reading therefore lists each enabled choice, up to 60 per
+control, as an `option` inside its control: drawn in the control's box, under
+a `listbox "<control>"` container, and `selected` when chosen. A dropdown's
+choice is named by its label; a suggestion by the value it fills in, with a
+differing label as its description. Suggestions two boxes share are listed
+only under the one that has focus, and the reader marks each suggestion with
+the box it was offered under (`data-tc-for`), so pressing one names a single
+box. A click on such an option chooses it the way a person does, without
+opening the menu: the dropdown's option is selected, or the box's value is
+set through the input's own value setter (so a page that tracks the value
+itself sees it); the control fires `input` and `change`, and the reply says
+so only once the choice holds (`native_select.rs`). A click on any other
+`option`, such as a page's own `role="option"` row, is pressed as before.
+BlazeDemo's cities and Selenium's "Dropdown (select)" and "Dropdown
+(datalist)" could not be chosen before this.
+
+A label that wraps its field, and any text block holding a dropdown, is read
+without the dropdown's own text: a closed dropdown shows one choice, but its
+text holds them all, so Selenium's dropdown was named "Dropdown (select) Open
+this select menu One Two Three" before.
+
 ## Denoising
 
 A person skips ads and never sees what a page hides from them, so sight

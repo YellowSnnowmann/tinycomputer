@@ -73,6 +73,10 @@ impl Surface for BrowserSurface {
         {
             self.show_cursor(reference);
         }
+        // A native option is chosen by value: a click opens an unseen menu.
+        if let Some(reply) = self.choose_if_native(operation, target.as_ref()) {
+            return reply;
+        }
         match operation {
             JevOperation::Click | JevOperation::Expand | JevOperation::Collapse => {
                 let reply = targeted("click", |target, _| Action::Click {

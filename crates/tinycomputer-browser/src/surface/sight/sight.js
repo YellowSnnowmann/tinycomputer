@@ -35,6 +35,9 @@
     return computed.display !== 'none' && computed.visibility !== 'hidden' && computed.opacity !== '0';
   };
   const TEXT_TYPES = ['text', 'search', 'email', 'tel', 'url', 'number', 'password'];
+  // The most choices of one native dropdown offered as options: enough for a
+  // title, a city or a month list, short of a country list's whole length.
+  const OPTIONS_PER_DROPDOWN = 60;
   const TEXT_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton'];
   const ROLES = [
     'button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'menuitemcheckbox',
@@ -159,6 +162,22 @@
     return [...words].slice(0, 3).join(' ');
   };
 
+  // The words `element` shows, without those of the dropdown it wraps (or
+  // of `field`, the control a label names): a closed dropdown shows one
+  // choice, but its text holds them all, so a label wrapping one would read
+  // out every choice in it.
+  const shownWords = (element, field) => {
+    const left = field ? [field] : [...element.querySelectorAll('select')];
+    if (!left.some((inner) => inner.firstChild && element.contains(inner))) return squash(element.innerText);
+    const parts = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (left.some((inner) => inner.contains(node)) || !node.parentElement.getClientRects().length) continue;
+      parts.push(node.data);
+    }
+    return squash(parts.join(' '));
+  };
+
   // Visible words that are not controls: each a candidate label for a
   // field beside or above it.
   const words = [];
@@ -173,7 +192,7 @@
       if (parent.closest(NESTED)) continue;
       const dropped = noiseRoot(parent);
       if (dropped && noiseKinds.get(dropped) === 'ads') continue;
-      const text = clip(parent.innerText || node.data, 80);
+      const text = clip(shownWords(parent) || node.data, 80);
       if (text) words.push({ element: parent, text, rect: box(parent) });
     }
   };
@@ -249,7 +268,7 @@
     const title = squash(element.getAttribute('title'));
     const input = standIn(element);
     if (['textbox', 'searchbox', 'combobox', 'slider'].includes(what) || (tag(element) === 'input' && !input)) {
-      const labels = element.labels ? [...element.labels].map((label) => squash(label.innerText)).join(' ') : '';
+      const labels = element.labels ? [...element.labels].map((label) => shownWords(label, element)).join(' ') : '';
       const checkable = ['checkbox', 'radio', 'switch'].includes(what);
       // A label the page ties to the field comes first; then the words a
       // person reads beside it, and last what the empty box shows.
@@ -627,6 +646,52 @@
     && !ROLES.includes(role(element)) && !TEXT_ROLES.includes(role(element))
     && !element.querySelector(`${NESTED}, img, svg, picture, canvas, video`);
 
+  // A native dropdown, and a text box's list of suggestions (`<datalist>`),
+  // show their choices in a menu the browser draws outside the page, where
+  // nothing reads or presses them. Each choice is offered as an option
+  // inside its control, drawn in the control's box, and pressing one sets
+  // the control's value (`native_select.rs`).
+  const choicesOf = (element) => {
+    if (tag(element) === 'select') return element.multiple ? [] : [...element.options];
+    const list = tag(element) === 'input' ? element.list : null;
+    if (!list || element.readOnly) return [];
+    // Suggestions two boxes share are offered under the one being typed
+    // in, so that pressing one names a single box to fill.
+    const users = [...document.querySelectorAll('input[list]')].filter((other) => other.list === list);
+    if (users.length > 1 && document.activeElement !== element) return [];
+    return [...list.querySelectorAll('option')];
+  };
+  const offerChoices = (element, record) => {
+    const suggested = tag(element) !== 'select';
+    const inside = [
+      ...record.path,
+      `listbox ${JSON.stringify(record.name || (suggested ? 'suggestions' : 'dropdown'))}`,
+    ];
+    let listed = 0;
+    for (const option of choicesOf(element)) {
+      if (listed >= OPTIONS_PER_DROPDOWN) break;
+      const group = option.parentElement;
+      if (option.disabled || (group && tag(group) === 'optgroup' && group.disabled)) continue;
+      // A suggestion is named by what it fills in, a dropdown's choice by
+      // what it shows.
+      const said = squash(option.label);
+      const label = suggested ? squash(option.value) || said : said || squash(option.textContent);
+      if (!label) continue;
+      listed += 1;
+      if (suggested) option.setAttribute('data-tc-for', record.id);
+      nodes.push({
+        id: mark(option),
+        role: 'option',
+        name: clip(label, limits.name),
+        description: suggested && said && said !== label ? clip(said, limits.name) : '',
+        value: '',
+        states: (suggested ? element.value === option.value : option.selected) ? ['selected'] : [],
+        box: record.box,
+        path: inside,
+      });
+    }
+  };
+
   const walker = document.createTreeWalker(base, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
       if (node.nodeType === Node.ELEMENT_NODE
@@ -652,7 +717,7 @@
       }
       lastText = parent;
       texts += 1;
-      nodes.push({ text: clip(parent.innerText || node.data, limits.text), path: pathOf(parent) });
+      nodes.push({ text: clip(shownWords(parent) || node.data, limits.text), path: pathOf(parent) });
       continue;
     }
     const element = node;
@@ -723,6 +788,7 @@
     };
     nodes.push(record);
     seen.push({ element, record });
+    offerChoices(element, record);
   }
   window.__tinycomputerSeen = next;
 

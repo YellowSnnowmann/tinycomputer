@@ -15,6 +15,7 @@ mod card;
 mod cursor;
 mod envelope;
 mod fields;
+mod native_select;
 mod operations;
 mod sight;
 mod tree;
