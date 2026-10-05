@@ -9,7 +9,9 @@
 use std::sync::Arc;
 
 use tinycomputer_bus::agent::LanguageModelProvider;
-use tinyinference_llm::model::{ReasoningConfig, ReasoningEffort, ResponseFormat};
+use tinyinference_llm::model::{
+    ReasoningConfig, ReasoningEffort, ResponseFormat, collect_model_stream,
+};
 use tinyinference_llm::providers::openai::OpenAiModel;
 use tinyinference_llm::{ChatModel, Message, ModelRequest, ProviderKind, ProviderSpec};
 
@@ -135,8 +137,16 @@ impl LanguageModel for Hosted {
             ..ModelRequest::default()
         };
         Box::pin(async move {
-            let response = model
-                .invoke(&(), request)
+            // Streamed, so the reply arrives as it is written: Tiny Humans'
+            // gateway answers HTTP 504 to a request that sends nothing back
+            // for 60 seconds, and a reasoning model's whole reply can take
+            // longer. A route that ignores streaming still answers in one
+            // piece.
+            let stream = model
+                .stream(&(), request)
+                .await
+                .map_err(|error| error.to_string())?;
+            let response = collect_model_stream(stream)
                 .await
                 .map_err(|error| error.to_string())?;
             Ok(Message::Assistant(response.message).text())

@@ -89,8 +89,11 @@ The `planner` Cargo feature adds one concrete `LanguageModel`:
 `tinyinference_llm`'s OpenAI-compatible client pointed at the configured
 route. This is the only file in the crate that links a text-generating model
 at all: the keys it is given in the module's private configuration never
-leave this one adapter. It builds all three of the crate's language-model
-helpers, not just the planner:
+leave this one adapter. Every call is streamed and gathered into one reply:
+Tiny Humans' gateway answers HTTP 504 to a request that sends nothing back
+for 60 seconds, and a reasoning model's whole reply can take longer. It
+builds all three of the crate's language-model helpers, not just
+the planner:
 
 ```rust
 pub fn open_router(config: &PlannerConfig) -> Result<Planner, String>
