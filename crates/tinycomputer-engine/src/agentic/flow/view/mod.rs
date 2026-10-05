@@ -44,13 +44,26 @@ pub(in crate::agentic) fn destructive_label(evidence: &str) -> bool {
 /// even when the generic English denylist above does not happen to cover the
 /// word it uses. A label under three characters is never checked: it is too
 /// short for containment to mean anything ("ok", "go") and would otherwise
-/// match almost any phrase.
+/// match almost any phrase. The label must start a word of the phrase, so an
+/// inflection still counts ("Send" in "sending the email") but a label that
+/// only sits inside another word does not ("Rent" in "the current bill").
 pub(in crate::agentic) fn named_in_stop_before(label: &str, stop_before: &[String]) -> bool {
     let label = label.trim().to_ascii_lowercase();
     label.chars().count() >= 3
         && stop_before
             .iter()
-            .any(|phrase| phrase.to_ascii_lowercase().contains(&label))
+            .any(|phrase| starts_a_word_in(&phrase.to_ascii_lowercase(), &label))
+}
+
+/// Whether `needle` occurs in `haystack` at the start of a word: at the very
+/// start, or right after a character that is neither a letter nor a digit.
+fn starts_a_word_in(haystack: &str, needle: &str) -> bool {
+    haystack.match_indices(needle).any(|(at, _)| {
+        haystack[..at]
+            .chars()
+            .next_back()
+            .is_none_or(|before| !before.is_alphanumeric())
+    })
 }
 
 /// Whether pressing `candidate` on `screen` must be treated as irreversible:
@@ -64,6 +77,15 @@ pub(in crate::agentic) fn named_in_stop_before(label: &str, stop_before: &[Strin
 /// control on that page — a card field, an expiry month, a saved-card radio —
 /// is not: filling a payment form commits to nothing until its button is
 /// pressed, and that button stays gated.
+///
+/// A tab is navigation: pressing it shows another panel of the same page and
+/// commits to nothing. A `stop_before` phrase therefore never names one, and
+/// on a payment page choosing one is filling the form, like a saved-card
+/// radio (`IndiGo` keeps its flight search behind a tab labelled "Book",
+/// which a flow stopping before "paying for the booking" named and refused,
+/// so no step could open the search form; tinycomputer#62). Its own label
+/// still counts: the role is only the page's claim, so a tab labelled like an
+/// irreversible control ("Pay ₹7,346") stays gated.
 pub(in crate::agentic) fn is_destructive(
     candidate: &Candidate,
     screen: &Screen,
@@ -74,10 +96,12 @@ pub(in crate::agentic) fn is_destructive(
         .as_deref()
         .or(candidate.description.as_deref())
         .unwrap_or_default();
+    let navigation = is_navigation(candidate);
     destructive_label(&label(candidate).to_ascii_lowercase())
-        || named_in_stop_before(name, stop_before)
+        || (!navigation && named_in_stop_before(name, stop_before))
         || (screen.surface == "sheet" && candidate.name.is_none())
         || (!is_form_control(candidate)
+            && !navigation
             && tinycomputer_core::screen_payment_evidence(screen).is_some())
 }
 
@@ -210,6 +234,16 @@ const FORM_ROLES: &[&str] = &[
 /// Whether `candidate` holds or chooses a value: a field, a list, an option.
 fn is_form_control(candidate: &Candidate) -> bool {
     FORM_ROLES
+        .iter()
+        .any(|role| candidate.role.eq_ignore_ascii_case(role))
+}
+
+/// Roles that move between panels of the same page rather than act on it.
+const NAVIGATION_ROLES: &[&str] = &["tab"];
+
+/// Whether `candidate` only shows another panel when pressed: a tab.
+fn is_navigation(candidate: &Candidate) -> bool {
+    NAVIGATION_ROLES
         .iter()
         .any(|role| candidate.role.eq_ignore_ascii_case(role))
 }

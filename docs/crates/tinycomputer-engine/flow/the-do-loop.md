@@ -132,11 +132,20 @@ and fails the step when any of these hold:
 - the label contains a hard-to-undo word (delete, remove, send, purchase,
   buy, pay, submit, confirm, overwrite, sign out, and a few more);
 - the flow's own `stop_before` phrases name the control ("sending the
-  email" covers a button called "Send");
+  email" covers a button called "Send"); the label must start a word of the
+  phrase, so "Rent" is not named by "the current bill";
 - the element is an unnamed control inside a sheet, which is what the
   default button of a "Delete?" dialog looks like on some platforms;
 - the screen shows payment evidence (a card number, CVV, or expiry field),
   so a button that only says "Continue" on a card form is caught too.
+
+A tab is navigation: pressing it only shows another panel of the same page,
+so a `stop_before` phrase never names it, and on a payment page choosing a
+tab (say, "UPI") is filling the form, like a saved-card radio. IndiGo keeps
+its flight search behind a tab labelled "Book"; a flow that stopped before
+"paying for the booking" named that tab and refused it, so no step could
+open the search form. A tab's own label still counts, though: the role is
+only what the page claims, so a tab labelled "Pay ₹7,346" stays gated.
 
 When a click is refused because the target is *covered* by something else
 rather than because it is destructive, two things can happen. On the

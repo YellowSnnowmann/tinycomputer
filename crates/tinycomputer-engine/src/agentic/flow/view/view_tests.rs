@@ -46,6 +46,70 @@ fn a_stop_before_phrase_names_a_control_the_denylist_does_not_cover() {
 }
 
 #[test]
+fn a_stop_before_phrase_names_a_control_only_from_the_start_of_a_word() {
+    let phrases = vec![
+        "sending the email".to_owned(),
+        "paying the current bill".to_owned(),
+    ];
+    // A label that starts a word still names it, inflection and all.
+    assert!(named_in_stop_before("Send", &phrases));
+    assert!(named_in_stop_before("Pay", &phrases));
+    assert!(named_in_stop_before("the current", &phrases));
+    // One that only sits inside another word does not.
+    assert!(!named_in_stop_before("Rent", &phrases));
+    assert!(!named_in_stop_before("Ending", &phrases));
+}
+
+fn tab(name: &str) -> Candidate {
+    Candidate {
+        role: "tab".to_owned(),
+        name: Some(name.to_owned()),
+        ..Candidate::default()
+    }
+}
+
+#[test]
+fn a_tab_is_navigation_unless_its_own_label_reads_irreversible() {
+    // IndiGo keeps its flight search behind a tab labelled "Book", and a flow
+    // stopping before "paying for the booking" named it (tinycomputer#62).
+    let stop_before = vec!["paying for the booking".to_owned()];
+    let mut screen = clickable_screen();
+    assert!(!is_destructive(&tab("Book"), &screen, &stop_before));
+    // The role is only the page's claim: a tab labelled like a payment stays
+    // gated, with or without card fields on the screen.
+    assert!(is_destructive(&tab("Pay ₹7,346"), &screen, &[]));
+    // The same words on a button are still gated.
+    let book = Candidate {
+        role: "button".to_owned(),
+        name: Some("Book".to_owned()),
+        ..Candidate::default()
+    };
+    assert!(is_destructive(&book, &screen, &stop_before));
+    // On a payment page, choosing how to pay is filling the form, not paying.
+    screen.candidates.push(Candidate {
+        role: "textbox".to_owned(),
+        name: Some("Card number".to_owned()),
+        available_actions: vec!["SetValue".to_owned()],
+        ..Candidate::default()
+    });
+    assert!(!is_destructive(&tab("UPI"), &screen, &[]));
+    assert!(is_destructive(&tab("Pay now"), &screen, &[]));
+    let pay = Candidate {
+        role: "button".to_owned(),
+        name: Some("Pay ₹7,346".to_owned()),
+        ..Candidate::default()
+    };
+    assert!(is_destructive(&pay, &screen, &[]));
+    // An unnamed tab in a confirmation sheet is still the sheet's default.
+    screen.surface = "sheet".to_owned();
+    let unnamed = Candidate {
+        role: "tab".to_owned(),
+        ..Candidate::default()
+    };
+    assert!(is_destructive(&unnamed, &screen, &[]));
+}
+
+#[test]
 fn is_destructive_covers_the_denylist_stop_before_phrases_and_unnamed_sheet_buttons() {
     let mut screen = clickable_screen();
     let discard = Candidate {

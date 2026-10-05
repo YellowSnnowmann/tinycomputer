@@ -237,7 +237,9 @@ None of them trusts a model's judgement.
 - An ordinary step refuses to click a control whose label reads as
   destructive, that the flow's own `stop_before` names, or that is an unnamed
   button in a confirmation sheet. Only `stop_before` reaches one, and it
-  presses only with `allow_destructive` or an approval.
+  presses only with `allow_destructive` or an approval. A tab only shows
+  another panel of the page, so `stop_before` never names it; its own label
+  still counts against the denylist.
 - A control classified as payment, or any click on a screen that shows card
   fields, stops the run, and the task controller makes that a final
   checkpoint. Card data is always a secret fact, and it is typed only under
