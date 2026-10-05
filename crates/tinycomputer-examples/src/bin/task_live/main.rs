@@ -12,6 +12,11 @@
 //! - `TINYCOMPUTER_MODULE` — the attested module, as `scripts/build-module`
 //!   prints it (default `$CARGO_TARGET_DIR/lab/`, or `target/lab/`).
 //! - `OPENROUTER_API_KEY` — Jev and the planner.
+//! - `TINYHUMANS_TOKEN` — optional, in place of `OPENROUTER_API_KEY`: a Tiny
+//!   Humans bearer (a session token, or an API key with the `inference`
+//!   scope) that sends Jev and the planner through Tiny Humans' routes, with
+//!   the gateway's `agentic-v1` planning, rescuing, and shaping unless the
+//!   model variables below name another.
 //! - `TASK_FILE` — the task in plain language.
 //! - `FACTS_FILE` — a JSON object of facts for the task, by name. A value is
 //!   a string, or `{"value": "...", "secret": true}` to keep it secret; a
@@ -22,8 +27,9 @@
 //! - `OUTPUT_FILE` — optional: a JSON `TaskOutput` (`instructions` and a
 //!   `schema`) asking for the answer in a fixed shape; the result is written
 //!   to `result.json`.
-//! - `TINYCOMPUTER_OUTPUT_MODEL` — optional: the `OpenRouter` model that
-//!   shapes it (`openai/gpt-6-luna` by default).
+//! - `TINYCOMPUTER_OUTPUT_MODEL` — optional: the model that shapes it
+//!   (`openai/gpt-6-luna` by default on `OpenRouter`, `agentic-v1` on Tiny
+//!   Humans).
 //! - `TASK_SURFACE` — optional: `browser` (default) or `desktop`, the
 //!   applications on this Mac through the accessibility tree. A desktop task
 //!   runs on the host, in a shell that has the Accessibility permission.
@@ -33,12 +39,14 @@
 //! - `TASK_MAX_MINUTES` — optional: cancel the task after this long (20).
 //! - `TASK_RESCUES` — optional: how many failed steps the reasoning model
 //!   may rescue (0 to 5, default 5; 0 turns rescues off).
-//! - `TINYCOMPUTER_RESCUE_MODEL` — optional: the `OpenRouter` model that
-//!   rescues them (`openai/gpt-6-luna` by default).
+//! - `TINYCOMPUTER_RESCUE_MODEL` — optional: the model that rescues them
+//!   (`openai/gpt-6-luna` by default on `OpenRouter`, `agentic-v1` on Tiny
+//!   Humans).
 //! - `TINYCOMPUTER_DECISIONS` — optional: `sage` makes Levanto Sage take
 //!   every decision in place of Jev, with `SAGE_API_KEY`, through the
 //!   module's `jev` configuration; `SAGE_FAST=1` scores each choice in one
-//!   pass. The planner and the rescuer still use `OPENROUTER_API_KEY`.
+//!   pass. The planner and the rescuer keep their own route
+//!   (`OPENROUTER_API_KEY`, or `TINYHUMANS_TOKEN`).
 //! - `TINYCOMPUTER_BROWSER_EXECUTABLE`, `TINYCOMPUTER_BROWSER_USER_AGENT`, and
 //!   `TINYCOMPUTER_BROWSER_ARGS` (space-separated) — how the browser
 //!   launches, and `TINYCOMPUTER_BROWSER_PERCEPTION` (`sight` or `tree`) how
@@ -48,13 +56,17 @@
 //!   `tinycomputer-cursor-overlay` helper, which the module finds beside
 //!   itself, over a browser window on this screen — an attached Chrome, or a
 //!   headed one.
+//! - `TASK_HEADED` — optional: `1` shows the browser the task launches
+//!   instead of running it headless. A headed browser needs a display, so
+//!   such a run is on the host.
 //! - `TINYCOMPUTER_BROWSER_ENDPOINT` — attach to a running Chrome instead
 //!   (`http://127.0.0.1:9222`); booking sites turn away a fresh headless
 //!   browser but serve a person's own. Closing the run only disconnects.
 //!
-//! Launching a browser runs in the Docker lab, never on the host:
+//! Launching a headless browser runs in the Docker lab, never on the host:
 //! `scripts/docker-lab -- crates/tinycomputer-examples/tasks/run kashmir`.
-//! Attaching to your own Chrome runs on the host, since that is where it is.
+//! A headed launch (`TASK_HEADED=1`) and attaching to your own Chrome run on
+//! the host, since that is where the display and the browser are.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -65,7 +77,7 @@ use tinycomputer_bus::Flow;
 use tinycomputer_bus::agent::{
     PlanTaskRequest, StartTaskRequest, SurfaceKind, TaskBudget, TaskConstraints, TaskOutput,
 };
-use tinycomputer_examples::host::{Host, LabError, jev_config, module_path, openrouter_key};
+use tinycomputer_examples::host::{Host, LabError, jev_config, module_path};
 use tinycomputer_examples::task::{conclude, follow, passed};
 
 #[tokio::main]
@@ -99,6 +111,7 @@ async fn main() -> Result<(), LabError> {
             constraints: TaskConstraints {
                 surfaces: vec![kind],
                 browser_endpoint: std::env::var("TINYCOMPUTER_BROWSER_ENDPOINT").ok(),
+                headed: std::env::var("TASK_HEADED").is_ok_and(|value| value == "1"),
                 ..TaskConstraints::default()
             },
             budget: TaskBudget {
@@ -139,7 +152,6 @@ async fn main() -> Result<(), LabError> {
 /// The module's private configuration: Jev, the planner (which also brings
 /// the rescuer and the output shaper), the cursor, and how browsers launch.
 fn module_config() -> Result<Value, LabError> {
-    let key = openrouter_key()?;
     let optional = |name: &str| std::env::var(name).ok();
     let mut browser = serde_json::Map::new();
     for (field, variable) in [
@@ -162,30 +174,76 @@ fn module_config() -> Result<Value, LabError> {
             json!(args.split_whitespace().collect::<Vec<_>>()),
         );
     }
+    let (jev, planner) = routes(&|name| std::env::var(name).ok())?;
     Ok(json!({
-        "jev": decisions(&key)?,
-        "planner": {
-            "api_key": key,
-            "model": optional("TINYCOMPUTER_PLANNER_MODEL"),
-            "rescue_model": optional("TINYCOMPUTER_RESCUE_MODEL"),
-            "output_model": optional("TINYCOMPUTER_OUTPUT_MODEL"),
-        },
+        "jev": jev,
+        "planner": planner,
         "cursor": optional("TASK_CURSOR").unwrap_or_else(|| "natural".to_owned()),
         "browser": browser,
     }))
 }
 
+/// The model the Tiny Humans gateway plans, rescues, and shapes with when
+/// none is named: the gateway serves its own model ids, and refuses the
+/// engine's `OpenRouter` vendor ids.
+const TINY_HUMANS_MODEL: &str = "agentic-v1";
+
+/// What this runner calls itself to the Tiny Humans routes.
+const SDK_NAME: &str = "tinycomputer-task-live";
+
+/// The `jev` and `planner` configurations, from the variables `var` reads:
+/// Tiny Humans' routes when `TINYHUMANS_TOKEN` holds a Tiny Humans bearer (a
+/// session token, or an API key with the `inference` scope), else
+/// `OpenRouter` with `OPENROUTER_API_KEY`.
+fn routes(var: &dyn Fn(&str) -> Option<String>) -> Result<(Value, Value), LabError> {
+    let bearer = var("TINYHUMANS_TOKEN")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if let Some(bearer) = bearer {
+        let model = |name: &str| {
+            var(name)
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| TINY_HUMANS_MODEL.to_owned())
+        };
+        let jev = json!({
+            "api_key": bearer,
+            "provider": "tiny_humans_open_router",
+            "sdk_name": SDK_NAME,
+        });
+        let planner = json!({
+            "api_key": bearer,
+            "provider": "tiny_humans",
+            "sdk_name": SDK_NAME,
+            "model": model("TINYCOMPUTER_PLANNER_MODEL"),
+            "rescue_model": model("TINYCOMPUTER_RESCUE_MODEL"),
+            "output_model": model("TINYCOMPUTER_OUTPUT_MODEL"),
+        });
+        return Ok((decisions(var, jev)?, planner));
+    }
+    let key = var("OPENROUTER_API_KEY").ok_or_else(|| {
+        std::io::Error::other("neither OPENROUTER_API_KEY nor TINYHUMANS_TOKEN is exported")
+    })?;
+    let planner = json!({
+        "api_key": key,
+        "model": var("TINYCOMPUTER_PLANNER_MODEL"),
+        "rescue_model": var("TINYCOMPUTER_RESCUE_MODEL"),
+        "output_model": var("TINYCOMPUTER_OUTPUT_MODEL"),
+    });
+    Ok((decisions(var, jev_config(key, None)?)?, planner))
+}
+
 /// Who takes the flow's decisions, as the module's `jev` configuration:
-/// Levanto Sage when `TINYCOMPUTER_DECISIONS` is `sage`, else Jev on
-/// `OpenRouter` with `key`.
-fn decisions(key: &str) -> Result<Value, LabError> {
-    if std::env::var("TINYCOMPUTER_DECISIONS").as_deref() == Ok("sage") {
-        let sage = std::env::var("SAGE_API_KEY")
-            .map_err(|_| std::io::Error::other("TINYCOMPUTER_DECISIONS=sage needs SAGE_API_KEY"))?;
-        let fast = std::env::var("SAGE_FAST").is_ok_and(|value| value == "1");
+/// Levanto Sage when `TINYCOMPUTER_DECISIONS` is `sage`, else `jev`.
+fn decisions(var: &dyn Fn(&str) -> Option<String>, jev: Value) -> Result<Value, LabError> {
+    if var("TINYCOMPUTER_DECISIONS").as_deref() == Some("sage") {
+        let sage = var("SAGE_API_KEY").ok_or_else(|| {
+            std::io::Error::other("TINYCOMPUTER_DECISIONS=sage needs SAGE_API_KEY")
+        })?;
+        let fast = var("SAGE_FAST").is_some_and(|value| value == "1");
         return Ok(json!({"api_key": sage, "provider": "sage", "fast": fast}));
     }
-    jev_config(key.to_owned(), None)
+    Ok(jev)
 }
 
 /// The surface the task runs on, from `TASK_SURFACE`.
@@ -257,3 +315,6 @@ async fn plan(
     std::fs::write(out.join("plan.json"), &text)?;
     Ok(plan.flow)
 }
+
+#[cfg(test)]
+mod main_tests;

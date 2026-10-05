@@ -18,7 +18,12 @@ use std::{
 use base64::Engine as _;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-use tinybus::{Connection, broker::Broker, module::ModuleHost, transport::memory::MemoryBus};
+use tinybus::{
+    Connection,
+    broker::Broker,
+    module::{ModuleHost, ModuleState},
+    transport::memory::MemoryBus,
+};
 use tinycomputer_bus::agent::{
     AgentResponse, AwaitTaskRequest, Capabilities, ContinueTaskRequest, PlanTaskRequest,
     StartTaskRequest, TaskId, TaskPlan, TaskRef, TaskReport, TaskReportRequest, TaskView,
@@ -143,6 +148,7 @@ impl Host {
         }
         let client = Connection::connect(bus.connect().await?).await?;
         wait_for_module(&client).await?;
+        wait_until_ready(&module_host).await?;
         client.reinitialize_module("tinycomputer", config).await?;
         // A flow drives a real application for minutes; the bus default is
         // sized for single commands.
@@ -494,6 +500,43 @@ async fn wait_for_module(client: &Connection) -> Result<(), LabError> {
     })
     .await
     .map_err(|_| io::Error::other("timed out waiting for tinycomputer"))??;
+    Ok(())
+}
+
+/// Waits until the loader reports the module ready for calls. The module
+/// claims its bus name while its setup is still running, and the loader
+/// refuses a reconfiguration until that setup has returned.
+async fn wait_until_ready(module_host: &ModuleHost) -> Result<(), LabError> {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        loop {
+            let state = module_host
+                .list()
+                .into_iter()
+                .find(|info| info.name == "tinycomputer")
+                .map(|info| info.state);
+            match state {
+                Some(ModuleState::Ready | ModuleState::Serving) => return Ok(()),
+                None
+                | Some(
+                    ModuleState::Discovered | ModuleState::Resolved | ModuleState::Initializing,
+                ) => tokio::time::sleep(std::time::Duration::from_millis(20)).await,
+                Some(
+                    state @ (ModuleState::Rejected { .. }
+                    | ModuleState::Unresolved { .. }
+                    | ModuleState::Faulted { .. }
+                    | ModuleState::Failed { .. }
+                    | ModuleState::Stopped
+                    | ModuleState::Disabled),
+                ) => {
+                    return Err(io::Error::other(format!(
+                        "tinycomputer did not start: {state:?}"
+                    )));
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|_| io::Error::other("timed out waiting for tinycomputer to finish starting"))??;
     Ok(())
 }
 
