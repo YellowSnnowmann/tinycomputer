@@ -194,10 +194,12 @@ fn module_config() -> Result<Value, LabError> {
 
 /// The model the Tiny Humans gateway plans, rescues, and shapes with when
 /// none is named: the managed default `OpenHuman` runs its own hosted work
-/// on. The gateway refuses the engine's `OpenRouter` vendor ids, and its
-/// `agentic-v1` tier reasons for 25 to 45 seconds over a small rescue, long
-/// enough on a real one to pass the module's 120-second rescue limit; this
-/// model answers the same rescue in 7 to 13 seconds.
+/// on, an `openrouter/`-prefixed id from the gateway's catalog. The gateway
+/// refuses the engine's own defaults, bare vendor ids such as
+/// `anthropic/claude-sonnet-5`, and its `agentic-v1` tier reasons for 25 to
+/// 45 seconds over a small rescue, long enough on a real one to pass the
+/// module's 120-second rescue limit; this model answers the same rescue in
+/// 7 to 13 seconds.
 const TINY_HUMANS_MODEL: &str = "openrouter/deepseek/deepseek-v4-flash";
 
 /// What this runner calls itself to the Tiny Humans routes.
