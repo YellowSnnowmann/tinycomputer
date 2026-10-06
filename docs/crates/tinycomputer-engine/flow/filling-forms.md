@@ -91,7 +91,20 @@ a slot after that, the step fails, naming which slots would not go in.
 A slot with no field to enter it into at all is treated as "not asked for"
 by the form when the probability that the form asks for it is under 0.35
 (`NOT_ASKED`), rather than as a hard failure: not every form has every
-field a caller might supply.
+field a caller might supply. A step none of whose slots is asked for has
+typed nothing, though, and fails ("nothing on screen asks for: …"): going
+on as if it had left the next step pressing a search for an empty box.
+
+Before it looks for a field the long way, a step whose fields do not show
+presses a link or button whose label holds a slot's own word (a store's
+search link for the slot "search box"). Within one step, a box one slot
+was typed into is never another slot's, by its ref or by the text it now
+holds: live, a pickup box was the only box in the next round, and the drop
+was typed over the pickup.
+
+A plain step that asks for typing ("enter 560001 into the pincode field",
+"type 'Maggi' in the search box", "fill in the pincode with 560001") runs as
+the `enter` it means: a `do` step cannot type.
 
 ## `enter` on the web: autocomplete and calendars
 
@@ -125,7 +138,19 @@ before the text was typed, it picks the one that matches it
   fits, which leaves the text as typed; so does a pick under 0.5
   (`SUGGESTION_FLOOR`), since pressing replaces what was typed;
 - a private text, a fact's value, is never offered: picking would show it
-  to Jev, so it stays as typed.
+  to Jev, so it stays as typed;
+- a search box (a `searchbox`, or a slot or box named for searching) takes
+  only a row that is the same search: the text as typed, or it after words
+  such as "Show all results for". Any other completion is another search
+  (live, "blue light blocking glasses" became another product's name), so
+  the text stays as typed;
+- a place box (a combo box, or a slot named for a place: pickup, drop,
+  from, to, address, city, …) is given two more looks, a wait apart, when
+  no row showed yet (`LATE_LOOKS`), and there a row that was already
+  showing still counts when it matches the text, as does a pressable box
+  sharing at least half the text's words: a ride app lists popular places
+  as soon as its box has the focus, and words its rows its own way ("MG
+  Road / Shivaji Nagar Bengaluru" for "MG Road Metro Station, Bengaluru").
 
 A field that opens no list costs nothing extra: no question is asked.
 

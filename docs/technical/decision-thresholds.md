@@ -43,6 +43,13 @@ Change a constant and its row together.
 | `SUGGESTION_FLOOR` | 0.5 | `steps/suggestion.rs` | least probability a suggestion Jev picks after typing needs before it is pressed; under it the text stays as typed |
 | `MOST_SUGGESTIONS` | 12 | `steps/suggestion.rs` | most new rows one pick of an autocomplete's suggestion is asked over |
 | `OPTION_EXTRA_WORDS` | 12 | `steps/matching.rs` | words beyond an option's own that a label may carry and still be the option; a label longer than that lists more than the option (a panel naming every row) and is not pressed for it |
+| `MAX_REPEAT_PRESSES` | 3 | `act/mod.rs` | presses of one control (by label and place, so a toggle's two looks count as one) or one key in one `do` step after which it is struck off for the step; pressing a named control also strikes off its copies on other items (same label, another card) unless the step says all, every, each, or both |
+| `LAYER_COVERS` | 3 | `front.rs` | controls something drawn over the window must cover, beyond what was covered before the press that opened it, on the same page, before it counts as a dialog the task opened (`surface` `layer`) |
+| `FRONT_CONTROLS` | 8 | `act/turns.rs` | most controls of the task's dialog in front a failed step's note names, so a rescue answers with one of them |
+| `STEADY_HOLD` / `STEADY_CHECKS` | 0.65 / 3 | `steps/mod.rs` | belief a `wait_for` condition must keep, on checks in a row of one unchanged screen, to be taken as held under `DONE` |
+| `LATE_LOOKS` | 2 | `steps/suggestion.rs` | looks again, a wait apart, for the suggestions a place or search box lists late, before its text is left as typed |
+| `BARE_CHARS` | 3 | `tinycomputer-core` `surface/groups.rs` | most letters and digits each field of a card may show for a list of such cards to be bare markers (carousel dots, size chips, page numbers), never results |
+| `CARD_LINK_CHARS` | 20 | `tinycomputer-core` `surface/groups.rs` | least characters (with a word in them) a link, option, radio, or button must show for a run of three or more under one parent to be a list of cards that are one control each |
 
 ## Deliberation
 

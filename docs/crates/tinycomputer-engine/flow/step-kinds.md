@@ -132,13 +132,18 @@ question then asks, for the first eight ranked cards at once, whether each
 belongs to the list `from` describes ("the Air India flights", "the
 results rated 4 stars or more"). The first that does, at 0.5 or more, is
 taken. Live, the cheapest card on a store's page was another brand rated
-3.1 stars. When none of the eight belongs, the list is judged as below. When it does not parse ("a morning flight with at most one
+3.1 stars. A `by` of "first" with a condition ("first product rated 4
+stars or more") ranks in page order the same way, asking whether each of
+the first eight belongs to `from` and meets the condition: judged over the
+whole list at once, live, it took the fifth result, another model. When
+none of the eight belongs, the list is judged as below. When it does not parse ("a morning flight with at most one
 stop"), and more than one list shows, one Choice first asks which list
 `from` names, then Jev gets one Choice over that list's cards. Either way,
 the winner's text goes into the named variable, capped at 400 characters,
 and its primary control (whatever looks most like "open this": select,
-book, choose, view, details, continue, reserve, deal, see) is clicked,
-after the same destructive check any other click gets.
+book, choose, view, details, continue, reserve, deal, see; failing that, a
+named link such as the product's title, and only then the first control)
+is clicked, after the same destructive check any other click gets.
 
 ## Choosing the list a step means
 
@@ -180,7 +185,11 @@ way is averaged as before.
   takes. A page that says it found nothing ("No results found", "0
   results", "No products found") on two checks in a row will not turn up
   what the step waits for, so the step fails there, naming the phrase, and
-  a rescue learns why instead of only that the condition never held.
+  a rescue learns why instead of only that the condition never held. A
+  settled screen judged at 0.65 or more on three checks in a row holds
+  (`STEADY_HOLD`, `STEADY_CHECKS`): waiting longer will not change it, and
+  live, a results page was judged to show its results at 0.70 to 0.80 on
+  each of ten checks.
 - `if` checks the condition and runs `then` at 0.75 or above, `else`
   otherwise. Its children show up in the step report as `3.1`, `3.2`, and
   so on, nested under the parent.
