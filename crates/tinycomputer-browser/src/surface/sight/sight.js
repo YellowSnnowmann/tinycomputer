@@ -76,6 +76,10 @@
     return element.isContentEditable
       && !(element.parentElement && element.parentElement.isContentEditable);
   };
+  const FIELDS = 'input, textarea, [contenteditable=""], [contenteditable="true"]';
+  // Whether a box to type in is drawn inside `element`.
+  const holdsField = (element) => [...element.querySelectorAll(FIELDS)]
+    .some((inner) => takesText(inner) && shown(inner));
 
   // The hidden checkbox or radio a label stands in for: pages draw their own
   // box and hide the real one — out of sight, or clipped away — and the
@@ -165,7 +169,7 @@
     if (TEXT_ROLES.includes(claimed)) {
       // A page's "text box" that holds no text box: a wrapper around the
       // real one, which is read instead, or a row or button to press.
-      if (element.querySelector('input, textarea, [contenteditable=""], [contenteditable="true"]')) {
+      if (element.querySelector(FIELDS)) {
         return null;
       }
       return 'button';
@@ -174,6 +178,10 @@
     if (name === 'a' && element.hasAttribute('href')) return 'link';
     if (name === 'button' || name === 'summary') return 'button';
     if (calendarDays.has(element)) return 'gridcell';
+    // A region that holds controls (a menu, a list, a tab panel, a dialog)
+    // takes a tab stop to move the focus inside it, not to be pressed: read
+    // as one button, it would hide every row inside it.
+    if (GROUP_ROLES.includes(claimed) || claimed === 'dialog' || claimed === 'alertdialog') return null;
     if (insideControl) return null;
     const tabindex = element.getAttribute('tabindex');
     const clickable = element.hasAttribute('onclick')
@@ -798,6 +806,12 @@
     if (controls.size >= limits.controls || disabled(element)) continue;
     const what = kind(element, insideControl(element));
     if (!what || !shown(element)) continue;
+    // A box to type in is never part of something pressed: a button or link
+    // that holds one is a panel (a popover with its own search box), and the
+    // rows it lists are read as controls of their own. Read as one button,
+    // its name strings every row together, and a press lands on whatever row
+    // sits at its middle.
+    if ((what === 'button' || what === 'link') && holdsField(element)) continue;
     if (tag(element) === 'input' && (element.type === 'checkbox' || element.type === 'radio')) {
       // Drawn by its label instead: the label stands in for it.
       if ([...(element.labels || [])].some((label) => standIn(label) === element)) continue;

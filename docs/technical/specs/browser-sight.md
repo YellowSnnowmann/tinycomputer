@@ -56,7 +56,13 @@ a caret.
    `combobox`, or `spinbutton` that takes no text is a `button`, or, when it
    wraps a real input, is read as that input. A label that stands in for a
    hidden checkbox or radio is that checkbox or radio. Disabled controls are
-   left out, as in the tree.
+   left out, as in the tree. A region a page marks as holding controls (a
+   menu, list, listbox, grid, tab panel, toolbar, dialog, or a landmark) is
+   never a control itself, whatever tab stop or cursor it takes, and a
+   button or link that holds a box to type in is a panel (a popover with its
+   own search box). The rows inside either are read as controls of their
+   own; read as one button, a panel's name strings every row together and a
+   press lands on whatever row sits at its middle.
 2. **Only what is drawn.** Zero-size, `display: none`, invisible, and
    transparent elements are left out, and so are disabled controls: the
    `disabled` property, `aria-disabled`, or a class name ending in
@@ -255,6 +261,8 @@ The `Screen` does not carry it.
   frames, ad-named and "Sponsored" blocks, ad links, and pixels are removed,
   while `header`, `shadow`, `download`, `adults`, and generated classes are
   kept; blank boxes are dropped while picture boxes and native buttons stay;
+  a panel holding a search box and a tab panel taking a tab stop leave their
+  rows to be read one by one;
   consent, cookie, and newsletter banners are kept whole; `inert`, clipped,
   and sideways `aria-hidden` content and the page behind a dialog are
   dropped, while `aria-hidden` content a person sees stays and hidden

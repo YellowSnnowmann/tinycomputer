@@ -193,6 +193,53 @@ async fn live_blank_containers_are_dropped() {
 
 #[cfg(feature = "agent-browser")]
 #[tokio::test]
+async fn live_panels_and_regions_leave_their_rows_to_be_read() {
+    // Live, a store's delivery-area popover took a tab stop and was read as
+    // one button whose name strung its rows together, so its rows could not
+    // be pressed; a tab panel's tab stop hid its fare rows the same way.
+    let Some(reading) = live_reading(
+        r#"<header>
+          <div tabindex="0" style="width: 340px">
+            <h3>Select a location for delivery</h3>
+            <input type="text" placeholder="Search for area or street name" value="560001">
+            <div style="cursor: pointer">560001, Bengaluru, Karnataka</div>
+            <div style="cursor: pointer">MG Road, Bengaluru 560001</div>
+          </div>
+        </header>
+        <main>
+          <div role="tabpanel" tabindex="0" style="width: 300px">
+            <div style="cursor: pointer">Economy</div>
+            <div style="cursor: pointer">Business</div>
+          </div>
+        </main>"#,
+    )
+    .await
+    else {
+        return;
+    };
+    let nodes = reading["nodes"].as_array().unwrap();
+    let named = |role: &str| {
+        nodes
+            .iter()
+            .filter(|node| node["role"] == role)
+            .map(|node| node["name"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        named("button"),
+        [
+            "560001, Bengaluru, Karnataka",
+            "MG Road, Bengaluru 560001",
+            "Economy",
+            "Business"
+        ],
+        "each row is its own control, and no panel strings them together"
+    );
+    assert_eq!(named("textbox").len(), 1, "the panel's search box is read");
+}
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
 async fn live_consent_banners_are_kept() {
     let Some(reading) = live_reading(
         r#"<main><button>Search</button></main>
