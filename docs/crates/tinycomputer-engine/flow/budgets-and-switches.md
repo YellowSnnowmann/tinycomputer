@@ -39,7 +39,7 @@ and the module's own hard cap from 5,000 to 10,000. See
 | Idle waits in a row | 2 (`MAX_IDLE_WAITS`) | after that, Jev is not let choose `wait` again that step |
 | Repairs after a failed reflection | 1 per step, at most 4 turns each | reflection never loops (see [Reflection](reflection.md)) |
 | Backtracks per step | 3 deep, 1 standard, 0 off (`MAX_BRANCHES`) | see [Undo and backtracking](undo-and-backtracking.md) |
-| Request size | 100,000 bytes (`MAX_REQUEST_BYTES`) | Jev refuses a request past its own token limit outright |
+| Request size | 48,000 bytes (`MAX_REQUEST_BYTES`) | Jev refuses a request past its own token limit outright, and the Tiny Humans gateway's limit is lower; a larger request is asked in parts split by its questions |
 | `so_far` entries in the brief | 12 (`MAX_SO_FAR`) | oldest dropped first |
 
 ## `disabled_loops`

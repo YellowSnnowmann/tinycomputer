@@ -9,7 +9,7 @@ use tinycomputer_bus::{FlowLoop, JevExchange};
 use tinyinference_decisions::{Answer, EvaluationRequest};
 
 use crate::agentic::flow::{
-    AgentBackend, FlowRun, Halt, StepLog,
+    AgentBackend, FlowRun, Halt, StepLog, decide,
     evidence::{self, Verdict},
     vote,
 };
@@ -37,9 +37,12 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         if from >= to || !self.enabled(FlowLoop::Vote) {
             return Ok(None);
         }
-        let prepared = self.outgoing(log, request.clone());
-        let framings = vote::framings_between(&prepared, from, to);
-        let votes = u32::try_from(framings.len()).unwrap_or(u32::MAX);
+        let parts = self.outgoing(log, request.clone());
+        let framings = parts
+            .iter()
+            .flat_map(|part| vote::framings_between(part, from, to))
+            .collect::<Vec<_>>();
+        let votes = u32::try_from(framings.len() / parts.len().max(1)).unwrap_or(u32::MAX);
         let handles = self.spawn(&framings);
         self.rounds = self.rounds.saturating_add(1);
         self.decisions = self.decisions.saturating_add(1);
@@ -60,6 +63,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         // shared path does: a `decision` event with this round's framings,
         // and a `JevExchange` with this round's own (not the accumulated)
         // answers, when tracing.
+        let prepared = decide::whole(&parts);
         let fresh = vote::ballots(&answered);
         for (id, ballot) in fresh.clone() {
             self.ballots.entry(id).or_default().extend(ballot);
@@ -71,7 +75,8 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 "framings": votes,
                 "answered": answered.len(),
                 "batched": 1,
-                "request_bytes": serde_json::to_vec(&prepared).map_or(0, |bytes| bytes.len()),
+                "parts": parts.len(),
+                "request_bytes": decide::largest(&parts),
                 "wall_ms": crate::agentic::journal::millis(asked_at.elapsed()),
             })
         });

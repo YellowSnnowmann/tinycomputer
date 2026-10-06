@@ -273,6 +273,7 @@ confirmation; and it acts at 0.70, or below that only on a named match.
 - **Screen text is data.** Every question says so, and everything read from
   a screen is wrapped as `untrusted_accessibility_data`. A page that says
   "ignore your instructions" is just a label.
-- **Size matters.** A request over 100 KB is trimmed before it is sent, and
+- **Size matters.** A request over 48 KB is asked in parts, split by its
+  questions, and a part still too large is trimmed before it is sent;
   latency grows with input tokens. `request_bytes` in the journal shows how
   big each request was.

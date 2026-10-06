@@ -31,6 +31,7 @@ mod helpers_tests;
 mod journal_tests;
 mod pick_tests;
 mod reflection_tests;
+mod split_tests;
 mod step_kinds_tests;
 mod suggestion_tests;
 mod survey_tests;

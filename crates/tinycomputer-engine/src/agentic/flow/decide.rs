@@ -63,32 +63,46 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let batched = requests.len();
         let mut asked = Vec::with_capacity(batched);
         for request in requests {
-            let request = self.outgoing(log, request);
-            let framings = vote::framings(&request, votes);
-            let handles = self.spawn(&framings);
-            asked.push((request, framings, handles));
+            let parts = self.outgoing(log, request);
+            let framings = parts
+                .iter()
+                .map(|part| vote::framings(part, votes))
+                .collect::<Vec<_>>();
+            let handles = framings
+                .iter()
+                .map(|framings| self.spawn(framings))
+                .collect::<Vec<_>>();
+            asked.push((parts, framings, handles));
         }
         self.rounds = self.rounds.saturating_add(1);
         let asked_at = Instant::now();
         let mut replies = Vec::with_capacity(batched);
-        for (request, framings, handles) in asked {
+        for (parts, framings, handles) in asked {
             self.decisions = self.decisions.saturating_add(1);
             let mut answered = Vec::new();
             let mut failure = None;
-            for (framing, handle) in framings.into_iter().zip(handles) {
-                match handle.await {
-                    Ok(Ok(evaluation)) => {
-                        merge_metrics(&mut self.metrics, &evaluation);
-                        log.calls = log.calls.saturating_add(1);
-                        answered.push((framing, evaluation.response.answers));
+            // A part none of whose framings answered leaves its questions
+            // without an answer, which fails the decision as a whole.
+            let mut unanswered = false;
+            for (framings, handles) in framings.into_iter().zip(handles) {
+                let before = answered.len();
+                for (framing, handle) in framings.into_iter().zip(handles) {
+                    match handle.await {
+                        Ok(Ok(evaluation)) => {
+                            merge_metrics(&mut self.metrics, &evaluation);
+                            log.calls = log.calls.saturating_add(1);
+                            answered.push((framing, evaluation.response.answers));
+                        }
+                        Ok(Err(error)) => {
+                            failure.get_or_insert(error);
+                        }
+                        Err(_) => {}
                     }
-                    Ok(Err(error)) => {
-                        failure.get_or_insert(error);
-                    }
-                    Err(_) => {}
                 }
+                unanswered |= answered.len() == before;
             }
-            let answers = match (answered.is_empty(), failure) {
+            let request = whole(&parts);
+            let answers = match (unanswered, failure) {
                 (true, Some(failure)) => return Err(Halt::Error(provider_error(&failure))),
                 (true, None) => {
                     return Err(Halt::Failed("no Jev evaluation completed".to_owned()));
@@ -110,7 +124,8 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     "framings": votes,
                     "answered": answered.len(),
                     "batched": batched,
-                    "request_bytes": serde_json::to_vec(&request).map_or(0, |bytes| bytes.len()),
+                    "parts": parts.len(),
+                    "request_bytes": largest(&parts),
                     "wall_ms": millis(asked_at.elapsed()),
                 })
             });
@@ -131,12 +146,13 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     }
 
     /// `request` as it leaves for Jev: with the page-kind question on a web
-    /// page, briefed, masked, and fitted to size.
+    /// page, briefed, masked, and fitted to size, in parts when its
+    /// questions outgrow one request ([`split`]).
     pub(super) fn outgoing(
         &self,
         log: &mut StepLog,
         mut request: EvaluationRequest,
-    ) -> EvaluationRequest {
+    ) -> Vec<EvaluationRequest> {
         if self.enabled(FlowLoop::PageKind) && self.app == crate::workspace::BROWSER {
             log.used(FlowLoop::PageKind);
             request
@@ -146,8 +162,13 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         self.brief_into(&mut request);
         self.mask(&mut request);
         clip_masked_state(&mut request.state);
-        fit(&mut request, MAX_REQUEST_BYTES);
-        request
+        split(request, MAX_REQUEST_BYTES)
+            .into_iter()
+            .map(|mut part| {
+                fit(&mut part, MAX_REQUEST_BYTES);
+                part
+            })
+            .collect()
     }
 
     /// Sends every framing to Jev at once.
@@ -191,6 +212,73 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
 
 /// The id of the page-kind question a request on a web page carries.
 pub(super) const PAGE_KIND: &str = "page_kind";
+
+/// `request` cut by its questions into requests of at most `limit` bytes of
+/// JSON, each carrying the whole state and as many of the questions, in
+/// order, as fit beside it. Jev evaluates every question on its own against
+/// the state, so the parts ask exactly what the whole would have, and their
+/// answers merge back by question id; shrinking the request instead would
+/// cut the screen and the brief. A request that fits, or holds one question,
+/// stays whole, and a question too large to share a part goes alone, for
+/// [`fit`] to shrink.
+pub(in crate::agentic::flow) fn split(
+    request: EvaluationRequest,
+    limit: usize,
+) -> Vec<EvaluationRequest> {
+    if request.questions.len() < 2 || bytes(&request) <= limit {
+        return vec![request];
+    }
+    let EvaluationRequest {
+        state,
+        model,
+        questions,
+    } = request;
+    let empty = EvaluationRequest {
+        state,
+        model,
+        questions: BTreeMap::new(),
+    };
+    let base = bytes(&empty);
+    let mut parts = Vec::new();
+    let mut part = empty.clone();
+    let mut used = base;
+    for (id, question) in questions {
+        // `"id":{...},` in the part's JSON.
+        let size = id.len() + 4 + serde_json::to_vec(&question).map_or(0, |json| json.len());
+        if !part.questions.is_empty() && used + size > limit {
+            parts.push(std::mem::replace(&mut part, empty.clone()));
+            used = base;
+        }
+        used += size;
+        part.questions.insert(id, question);
+    }
+    parts.push(part);
+    parts
+}
+
+/// The request `parts` were cut from: the first part's state with every
+/// part's questions, as the journal and the trace record a decision.
+pub(in crate::agentic::flow) fn whole(parts: &[EvaluationRequest]) -> EvaluationRequest {
+    let mut whole = parts.first().cloned().unwrap_or_else(|| EvaluationRequest {
+        state: Value::Null,
+        model: String::new(),
+        questions: BTreeMap::new(),
+    });
+    for part in parts.iter().skip(1) {
+        whole.questions.extend(part.questions.clone());
+    }
+    whole
+}
+
+/// The size of the largest of `parts`, in bytes of JSON.
+pub(in crate::agentic::flow) fn largest(parts: &[EvaluationRequest]) -> usize {
+    parts.iter().map(bytes).max().unwrap_or_default()
+}
+
+/// The size of `request`, in bytes of JSON.
+fn bytes(request: &EvaluationRequest) -> usize {
+    serde_json::to_vec(request).map_or(0, |json| json.len())
+}
 
 /// Shrinks `request` until its JSON is at most `limit` bytes: first the
 /// brief is kept on the first briefed question only, then the longest lists

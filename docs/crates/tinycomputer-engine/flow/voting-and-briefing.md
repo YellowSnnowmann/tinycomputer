@@ -70,14 +70,25 @@ picture of what stays local and why.
 
 ## Fitting: keeping requests inside Jev's window
 
-A request over 100,000 bytes of JSON (`MAX_REQUEST_BYTES`) is shrunk before
-it is sent, because Jev refuses a request past its token limit outright
-(an HTTP 400 that would otherwise end the run). Fitting keeps the brief on
-only the first briefed question, then repeatedly finds the longest list
-anywhere in the shared state, such as a long list of elements or lines of
-screen text, and trims it from the end. What survives is whatever the run
-read first, which tends to be the part of the screen closest to what a
-person would look at first too.
+A request over 48,000 bytes of JSON (`MAX_REQUEST_BYTES`) is never sent
+whole, because Jev refuses a request past its token limit outright, which
+would end the run: an HTTP 400 directly, and an HTTP 502 through the Tiny
+Humans gateway, whose limit is lower (57 KB passed and 68 KB did not).
+
+First the request is **split** by its questions: each part carries the
+whole state and as many of the questions as fit beside it, in order, and
+all the parts are asked at once. Jev evaluates every question on its own
+against the state, so the parts ask exactly what the whole would have, and
+their answers merge back by question id. A grounding knockout over a long
+results page, sixteen groups or more, is the usual case.
+
+Then each part is **fitted**, which matters only when the state alone, or
+one question with it, is still too large. Fitting keeps the brief on only
+the first briefed question, then repeatedly finds the longest list anywhere
+in the shared state, such as a long list of elements or lines of screen
+text, and trims it from the end. What survives is whatever the run read
+first, which tends to be the part of the screen closest to what a person
+would look at first too.
 
 ## Voting: asking each decision several ways at once
 

@@ -98,10 +98,14 @@ const MAX_GOAL: usize = 600;
 const MAX_PLAN_LINE: usize = 120;
 /// Longest `so_far` note the brief carries, in characters.
 const MAX_SO_FAR_NOTE: usize = 200;
-/// Largest request sent to Jev, in bytes of JSON. Jev refuses one past its
-/// token limit outright (HTTP 400, `max_tokens_exceeded`), which ends the
-/// run; measured, 120 KB passed and 160 KB did not.
-const MAX_REQUEST_BYTES: usize = 100_000;
+/// Largest request sent to Jev, in bytes of JSON. Past its token limit a
+/// request is refused outright, which ends the run: directly, Jev answers
+/// HTTP 400 (`max_tokens_exceeded`), and 120 KB passed while 160 KB did not;
+/// through the Tiny Humans gateway the limit is lower and comes back as HTTP
+/// 502, where 57 KB (23,600 tokens) passed and 68 KB did not. A request whose
+/// questions outgrow it is asked in parts (`decide::split`), so only a state
+/// too large on its own is ever cut (`decide::fit`).
+const MAX_REQUEST_BYTES: usize = 48_000;
 /// Consecutive unreadable observations that fail a step.
 const MAX_BLIND_LOOKS: u32 = 3;
 /// Truncated subtrees one exploration reads at most.

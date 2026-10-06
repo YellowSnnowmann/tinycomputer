@@ -92,9 +92,13 @@ framing of every request together: one round trip. In order:
 5. **Mask.** Every secret's value is replaced by `${name}` anywhere in the
    state or the questions. Nothing after this point, including the journal,
    sees a secret.
-6. **Fit.** A request over 100 KB of JSON (`MAX_REQUEST_BYTES`) is shrunk:
-   the brief is kept on one question only, then the longest element and text
-   lists lose their tails. Jev rejects requests past its token limit outright.
+6. **Split and fit.** A request over 48 KB of JSON (`MAX_REQUEST_BYTES`)
+   is cut by its questions into parts asked at once, each with the whole
+   state (`decide::split`); their answers merge back by question id. A part
+   still too large is shrunk: the brief is kept on one question only, then
+   the longest element and text lists lose their tails. Jev rejects requests
+   past its token limit outright, and the Tiny Humans gateway's limit is the
+   lower one (57 KB passed, 68 KB came back HTTP 502).
 7. **Frame.** `vote::framings` makes `votes` copies (default 7, at most 9):
    label-keyed Choices are shuffled and relabelled, and each copy gets a
    different one-line perspective. Framing 0 is the request as built.
