@@ -14,8 +14,8 @@ use crate::agentic::flow::{
     ground::{AGREED, Grounded, NAMED_FLOOR},
     memory::recall,
     view::{
-        ACT, Candidate, Screen, digest, distinct, element_kind, exact_named_match, is_destructive,
-        label, named_first, signature,
+        ACT, Candidate, Screen, digest, distinct, element_kind, exact_named_match, is_banned,
+        is_destructive, label, named_first,
     },
 };
 
@@ -67,8 +67,9 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                         .filter_map(|index| screen.candidates.get(*index))
                         .filter(|candidate| {
                             supports(candidate, capability)
-                                && !banned.contains(&signature(candidate))
+                                && !is_banned(banned, candidate)
                                 && !self.refused.contains(&element_kind(candidate))
+                                && self.reachable(candidate, intent)
                         })
                         .cloned()
                         .collect(),

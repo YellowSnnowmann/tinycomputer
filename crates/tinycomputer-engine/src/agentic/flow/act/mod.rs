@@ -31,7 +31,10 @@ mod turns;
 
 pub(super) use judge::Judgement;
 
-use std::{collections::BTreeSet, time::Instant};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    time::Instant,
+};
 
 use tinycomputer_bus::StepOutcome;
 
@@ -61,6 +64,15 @@ const SHORTCUT_FLOOR: f64 = 0.5;
 const STALL_TURNS: u32 = 3;
 /// Waits in a row that changed nothing after which Jev is not let wait again.
 const MAX_IDLE_WAITS: u32 = 2;
+/// Scrolls that showed nothing new after which a step's "scroll" is taken
+/// as "activate": the screen already lists what lies below the fold, so a
+/// step that keeps scrolling never acts (live, a movie list three times).
+const MAX_IDLE_SCROLLS: u32 = 1;
+/// Presses of one control in one step after which it is not pressed again.
+/// A toggle pressed over and over keeps changing the screen, so the stall
+/// guard never fires (live, a header button seven times in one step), while
+/// a quantity stepper still goes up by three.
+const MAX_REPEAT_PRESSES: u32 = 3;
 /// Obstacles dismissed per step at most.
 const MAX_OBSTACLES: u32 = 2;
 /// Undos per step at most.
@@ -86,7 +98,9 @@ const CHANGES_VIEW: &str =
 const MOVES: &[(&str, &str)] = &[
     (
         "activate",
-        "Press one visible control: a button, link, tab, list row, toolbar item, or menu item.",
+        // Live, every control of a page scrolled down read as offscreen,
+        // and the judge called the step stuck rather than press one.
+        "Press one control: a button, link, tab, list row, toolbar item, or menu item. One scrolled out of view counts: pressing it brings it into view; one something covers does not.",
     ),
     (
         "shortcut",
@@ -146,6 +160,8 @@ struct LastAction {
     progress: Option<f64>,
     /// Whether the action was a wait rather than a press or a shortcut.
     waited: bool,
+    /// Whether the action was a scroll.
+    scrolled: bool,
     /// Under deliberation: what the press should have changed, and where it
     /// started.
     expected: Option<Expected>,
@@ -172,6 +188,8 @@ struct DoState {
     unchanged: u32,
     /// Waits in a row that changed nothing.
     idle_waits: u32,
+    /// Scrolls that showed nothing new.
+    idle_scrolls: u32,
     obstacles: u32,
     undos: u32,
     /// Under deliberation: each turn's screen fingerprint, oldest first, and
@@ -186,6 +204,11 @@ struct DoState {
     branch: Option<Candidate>,
     /// Distractions cleared this step (`attention/`).
     cleared: Cleared,
+    /// How often each control was pressed this step, by its press key.
+    presses: BTreeMap<String, u32>,
+    /// The press keys struck off because a copy of theirs on another item
+    /// was pressed: an undo of that press lifts them again.
+    copies: Vec<String>,
 }
 
 /// What a move did.
@@ -213,6 +236,15 @@ pub(super) fn creates_new(intent: &str) -> bool {
     words
         .iter()
         .any(|word| matches!(word.as_str(), "new" | "create"))
+}
+
+/// Whether `intent` asks for something done to every item of a list
+/// ("remove all items", "select each file"), where pressing a control's
+/// copy on the next item is the step's work rather than a slip.
+pub(super) fn asks_for_every(intent: &str) -> bool {
+    words(intent)
+        .iter()
+        .any(|word| matches!(word.as_str(), "all" | "every" | "each" | "both"))
 }
 
 /// Words of a step that ask for an overlay to go away.

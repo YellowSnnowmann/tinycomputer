@@ -29,7 +29,12 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         intent: &str,
         cleared: &mut Cleared,
     ) -> Result<bool, Halt> {
-        if !self.deliberates(FlowLoop::Attention) || cleared.count >= MAX_CLEARED {
+        // A dialog the run's own press opened is its next stage, not a
+        // distraction (`FlowRun::opened_dialog`).
+        if !self.deliberates(FlowLoop::Attention)
+            || cleared.count >= MAX_CLEARED
+            || self.front.opened_dialog
+        {
             return Ok(false);
         }
         // What the step cleared in any loop is not offered again: the reveal

@@ -53,6 +53,7 @@ mod enter;
 mod escalate;
 mod evidence;
 mod expect;
+mod front;
 mod ground;
 mod ledger;
 mod look;
@@ -83,6 +84,7 @@ use tinycomputer_core::Facts;
 
 use super::{JevRuntime, merge_metrics, response};
 use backend::AgentBackend;
+use front::Front;
 use view::Candidate;
 
 /// Upper bound on [`RunFlowRequest::max_actions`].
@@ -303,6 +305,9 @@ pub(super) struct FlowRun<'r, B> {
     /// control signature, across every loop that attends within it: an
     /// Escape or a close that did not clear it once will not the next time.
     pub(super) step_cleared: BTreeSet<String>,
+    /// What is in front, and whether the run's own press put it there
+    /// (`front.rs`).
+    pub(in crate::agentic::flow) front: Front,
 }
 
 #[cfg(test)]

@@ -22,6 +22,8 @@ const CLOSERS: &[&[&str]] = &[
         "necessary only",
         "only necessary",
         "use necessary cookies only",
+        "allow selection",
+        "save my choices",
     ],
     &[
         "close",
@@ -267,18 +269,36 @@ fn covering(screen: &Screen, intent: &[String], cleared: &BTreeSet<String>) -> O
         })
         .map(label)
         .collect::<Vec<_>>();
+    // How many of the step's words a label shares.
+    let shared = |text: &str| {
+        words(text)
+            .into_iter()
+            .filter(|word| word.len() > 3 && intent.contains(word))
+            .collect::<BTreeSet<_>>()
+            .len()
+    };
     let needed = covered
         .iter()
-        .filter(|candidate| {
-            words(&label(candidate))
-                .iter()
-                .any(|word| word.len() > 3 && intent.contains(word))
-        })
-        .map(|candidate| format!("{} (covered: the step needs it)", label(candidate)))
+        .filter(|candidate| shared(&label(candidate)) > 0)
         .collect::<Vec<_>>();
-    if needed.is_empty() {
+    // A control in front that names the step as well as anything covered
+    // is where the step works: live, a location dialog open over a store's
+    // header was escaped by the step "press Use My Current Location", whose
+    // button sat in that dialog, because the header's own location button
+    // shared the word "location".
+    let in_front = front.iter().map(|text| shared(text)).max().unwrap_or(0);
+    let behind = needed
+        .iter()
+        .map(|candidate| shared(&label(candidate)))
+        .max()
+        .unwrap_or(0);
+    if needed.is_empty() || in_front >= behind {
         return None;
     }
+    let needed = needed
+        .into_iter()
+        .map(|candidate| format!("{} (covered: the step needs it)", label(candidate)))
+        .collect::<Vec<_>>();
     // What the step needs and cannot reach comes first: it is the reason to
     // clear, and what lies over it only says what it is.
     Some(Distraction {

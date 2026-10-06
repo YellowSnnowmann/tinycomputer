@@ -11,10 +11,12 @@ use crate::agentic::flow::{
     ask::{self, Questions, chosen},
     backend::AgentBackend,
     memory::{learn, remember},
-    view::{Candidate, Screen, element_kind, is_destructive, label, signature},
+    view::{Candidate, Screen, element_kind, is_banned, is_destructive, label},
 };
 
-use super::{Expected, Move, activate_purpose, covered, creates_new, judge::Judgement};
+use super::{
+    Expected, MAX_REPEAT_PRESSES, Move, activate_purpose, covered, creates_new, judge::Judgement,
+};
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// Carries out the move Jev chose.
@@ -61,6 +63,12 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                         .push("no standard shortcut fits; press a visible control".to_owned());
                     return Ok(Move::Skipped);
                 };
+                if banned.contains(&format!("key:{combo}")) {
+                    self.history.push(format!(
+                        "did not press {combo} again: it was pressed {MAX_REPEAT_PRESSES} times in this step; judge whether the step is done, or act on something else"
+                    ));
+                    return Ok(Move::Skipped);
+                }
                 if combo == "return" && screen.surface != "window" {
                     self.history.push(format!(
                         "refused return while a {} is showing: it would press its default button",
@@ -101,13 +109,15 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
     }
 
-    /// The elements a move of `capability` may target: not banned this
-    /// step, and not of a kind that refused text.
+    /// The elements a move of `capability` may target for the step
+    /// `intent`: not banned this step, not of a kind that refused text,
+    /// and reachable with what is in front (`reachable`).
     pub(super) fn pool(
         &self,
         screen: &Screen,
         capability: &str,
         banned: &BTreeSet<String>,
+        intent: &str,
     ) -> Vec<Candidate> {
         screen
             .candidates
@@ -117,11 +127,29 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     .available_actions
                     .iter()
                     .any(|action| action == capability)
-                    && !banned.contains(&signature(candidate))
+                    && !is_banned(banned, candidate)
                     && !self.refused.contains(&element_kind(candidate))
+                    && self.reachable(candidate, intent)
             })
             .cloned()
             .collect()
+    }
+
+    /// Whether a move may target `candidate` with what is in front: not
+    /// something a dialog or layer in front covers, which no press reaches
+    /// (live, rescues kept pressing a language link behind a booking
+    /// dialog), nor, while the dialog in front is the task's own, its close
+    /// control, unless the step asks to close it: live, the format dialog
+    /// a booking button opened was closed and opened again in a loop.
+    pub(in crate::agentic::flow) fn reachable(&self, candidate: &Candidate, intent: &str) -> bool {
+        let covered = candidate
+            .states
+            .iter()
+            .any(|state| state.eq_ignore_ascii_case("covered"));
+        if covered && self.front.surface != "window" {
+            return false;
+        }
+        !(self.front.opened_dialog && closes(candidate) && !asks_to_close(intent))
     }
 
     /// Grounds and performs an `activate`, `expand`, or `scroll` move; the
@@ -160,7 +188,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     .await?
             }
             _ => {
-                let pool = self.pool(screen, capability, banned);
+                let pool = self.pool(screen, capability, banned, intent);
                 self.ground(log, screen, &purpose, intent, pool).await?
             }
         };
@@ -214,6 +242,19 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             })
             .await?;
         if !covered(&reply) {
+            return Ok(reply);
+        }
+        // A dialog in front is the page's question (a format, a quantity),
+        // not a popover in the way: Escape would close it, and pressing what
+        // lies behind it leaves the flow it began (live, a movie's language
+        // link behind its booking dialog led to a listing of other films).
+        // A layer drawn over the window is such a question only when the
+        // task's own press opened it; a calendar left open is in the way.
+        if self.front.opened_dialog || !matches!(self.front.surface.as_str(), "window" | "layer") {
+            self.history.push(format!(
+                "{} lies behind the dialog in front; act within the dialog instead",
+                label(target)
+            ));
             return Ok(reply);
         }
         let app = self.app.clone();
@@ -305,4 +346,33 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
         Ok(())
     }
+}
+
+/// Labels of a control that closes what it sits in. A dialog's "Cancel"
+/// is an answer, not a close: live, it was the way back from a show that
+/// had already started.
+const CLOSE_LABELS: &[&str] = &["close", "×", "x", "✕", "✖"];
+
+/// Whether `candidate` closes the dialog it sits in.
+fn closes(candidate: &Candidate) -> bool {
+    let said = candidate
+        .name
+        .as_deref()
+        .or(candidate.description.as_deref())
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    CLOSE_LABELS.contains(&said.as_str()) || said.starts_with("close ")
+}
+
+/// Whether the step `intent` asks for something to be closed or left.
+fn asks_to_close(intent: &str) -> bool {
+    intent
+        .split(|character: char| !character.is_alphanumeric())
+        .any(|word| {
+            matches!(
+                word.to_ascii_lowercase().as_str(),
+                "close" | "dismiss" | "cancel" | "exit" | "leave" | "back"
+            )
+        })
 }

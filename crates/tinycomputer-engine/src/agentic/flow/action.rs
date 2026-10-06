@@ -28,6 +28,11 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             return Err(Halt::Stop(FlowStopReason::ActionBudget));
         }
         self.actions = self.actions.saturating_add(1);
+        self.front.act(
+            target.is_some(),
+            action.starts_with("fill") || action.starts_with("type"),
+            action.starts_with("browse"),
+        );
         let started = Instant::now();
         let reply = self.backend_call(call).await;
         let acted_ms = millis(started.elapsed());

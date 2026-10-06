@@ -163,7 +163,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         if questions.is_empty() || !self.enabled(FlowLoop::Moves) {
             return self.judge(log, screen, intent, None).await;
         }
-        let pool = self.pool(screen, "Click", banned);
+        let pool = self.pool(screen, "Click", banned, intent);
         let opening = self.opening(
             log,
             screen,

@@ -18,6 +18,7 @@ use tinycomputer_core::Facts;
 use super::{
     Ended, FlowRun, Halt, MAX_ACTIONS, MAX_CALLS, StepLog,
     backend::AgentBackend,
+    front::Front,
     ledger, steps,
     validate::{self, step_path, substitute_safe},
     vote,
@@ -135,6 +136,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
             expecting: None,
             step_location: None,
             step_cleared: BTreeSet::new(),
+            front: Front::default(),
         }
     }
 
