@@ -110,16 +110,13 @@ impl BrowserSurface {
     /// (`SAME_TAB_JS`). Best effort: a page that refuses the script, or an
     /// element it cannot find, is pressed as it is.
     pub(super) fn keep_in_tab(&self, reference: &str) {
-        let Ok(id) = self.ensure_session() else {
-            return;
-        };
-        let Ok(selector) = serde_json::to_string(&sight::selector(reference)) else {
-            return;
-        };
+        let selector = Value::String(sight::selector(reference));
         let script = format!("{SAME_TAB_JS}(document.querySelector({selector}))");
-        let _kept = self.block(
-            self.browser
-                .command(&id, json!({"action": "evaluate", "script": script})),
-        );
+        if let Ok(id) = self.ensure_session() {
+            let _kept = self.block(
+                self.browser
+                    .command(&id, json!({"action": "evaluate", "script": script})),
+            );
+        }
     }
 }
