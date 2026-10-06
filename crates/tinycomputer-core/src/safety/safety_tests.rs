@@ -302,8 +302,27 @@ fn walls_only_a_person_can_pass_are_named() {
         "Login required",
         "Sign up or Log in with Uber",
         "Login/ Sign up Using OTP",
+        "Please log in to check exact prices",
+        "Log in to view your orders",
+        "Sign in to see your bookings",
+        "Login with OTP",
     ] {
         assert_eq!(needs(wall).as_deref(), Some("sign in"), "{wall}");
+    }
+    assert_eq!(
+        needs("Verify your phone number to continue").as_deref(),
+        Some("verify the phone number"),
+        "a phone check is no sign-in"
+    );
+    assert_eq!(
+        needs("Enter OTP").as_deref(),
+        Some("enter the one-time password")
+    );
+    for challenge in [
+        "Please check the reCAPTCHA box",
+        "Please verify that you are not a robot",
+    ] {
+        assert!(needs(challenge).is_some(), "{challenge}");
     }
     // The invisible reCAPTCHA badge asks nothing, by its frame's title or its
     // notice; a challenge beside it does.

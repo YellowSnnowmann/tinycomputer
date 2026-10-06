@@ -75,9 +75,11 @@ otherwise reads the number immediately before the word "stop".
 ## `Criterion` and `rank`: picking "the best" deterministically
 
 `Criterion::parse(text)` reads plain words like "cheapest" or "fewest stops"
-into one of six criteria (`LowestPrice`, `HighestPrice`, `Earliest`,
-`Latest`, `FewestStops`, `Shortest`), and returns `None` when the wording
-does not map cleanly onto one of them. That is the deliberate cue for a
+into one of eight criteria (`LowestPrice`, `HighestPrice`, `Earliest`,
+`Latest`, `FewestStops`, `Shortest`, and `First` or `Last` for a bare
+"first" or "last", the list's own order), and returns `None` when the
+wording does not map cleanly onto one of them ("first product rated 4 stars
+or more", "First AC"). That is the deliberate cue for a
 caller to fall back to asking a decision model instead of guessing.
 
 `rank(records, criterion)` sorts a slice of `Record`s best-first for a given
