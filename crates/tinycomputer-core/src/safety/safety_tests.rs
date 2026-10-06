@@ -300,6 +300,8 @@ fn walls_only_a_person_can_pass_are_named() {
         "Sign in to view your basket",
         "You must be logged in to view this page",
         "Login required",
+        "Sign up or Log in with Uber",
+        "Login/ Sign up Using OTP",
     ] {
         assert_eq!(needs(wall).as_deref(), Some("sign in"), "{wall}");
     }
@@ -326,7 +328,13 @@ fn walls_only_a_person_can_pass_are_named() {
     }
     assert_eq!(needs("I am human").as_deref(), Some("prove you are human"));
     // A header's account links are no wall.
-    for links in ["Log in | Sign up", "Login / Signup", "Log in", "Sign up"] {
+    for links in [
+        "Log in | Sign up",
+        "Login / Signup",
+        "Login/ Sign Up",
+        "Log in",
+        "Sign up",
+    ] {
         assert_eq!(needs(links), None, "{links}");
     }
     assert_eq!(needs("Verification complete"), None);

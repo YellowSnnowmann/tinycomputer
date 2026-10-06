@@ -19,6 +19,9 @@ const HUMAN_GATES: &[(&str, &str)] = &[
     ("are you a robot", "prove you are human"),
     ("one time password", "enter the one-time password"),
     ("enter the otp", "enter the one-time password"),
+    ("enter otp", "enter the one-time password"),
+    ("verify your mobile number", "sign in"),
+    ("verify your phone number", "sign in"),
     ("verification code", "enter the verification code"),
     ("enter the code we sent", "enter the verification code"),
     ("two factor", "complete two-factor authentication"),
@@ -41,6 +44,16 @@ const HUMAN_GATES: &[(&str, &str)] = &[
     ("log in or sign up", "sign in"),
     ("login or sign up", "sign in"),
     ("sign in or sign up", "sign in"),
+    ("sign up or log in", "sign in"),
+    ("sign up or login", "sign in"),
+    // A sign-in dialog by one-time code: a store's "Login/ Sign up Using
+    // OTP" over its basket. The header's bare "Login/ Sign Up" says no
+    // more and is no wall.
+    ("sign up using otp", "sign in"),
+    ("login using otp", "sign in"),
+    ("log in using otp", "sign in"),
+    ("login with otp", "sign in"),
+    ("log in with otp", "sign in"),
     ("you must be logged in", "sign in"),
     ("you need to be logged in", "sign in"),
     ("login required", "sign in"),
