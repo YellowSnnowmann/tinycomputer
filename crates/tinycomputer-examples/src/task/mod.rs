@@ -15,6 +15,10 @@ use tinycomputer_bus::browser::SessionInfo;
 
 use crate::host::{Host, LabError};
 
+mod person;
+
+pub use person::{Person, Terminal, reply};
+
 /// The longest one `AwaitTask` call blocks before the loop looks again.
 pub const AWAIT_SLICE: Duration = Duration::from_secs(30);
 
@@ -22,6 +26,11 @@ pub const AWAIT_SLICE: Duration = Duration::from_secs(30);
 /// `needs_input` from `answers` when every field it asks for is there, and
 /// cancels the task once `limit` has passed — checked on every state it
 /// reports, so an answerable pause past the limit is cancelled, not answered.
+///
+/// With a `person`, the pauses only a person can answer wait for them
+/// instead of ending the run: an approval, a login or captcha, a detail
+/// `answers` lacks (see [`reply`]), and a payment page, which stays open
+/// until they say they are done.
 ///
 /// # Errors
 ///
@@ -31,6 +40,7 @@ pub async fn follow(
     mut view: TaskView,
     answers: &BTreeMap<String, String>,
     limit: Duration,
+    person: Option<&dyn Person>,
 ) -> Result<TaskView, LabError> {
     let started = Instant::now();
     let id = view.id.clone();
@@ -40,6 +50,17 @@ pub async fn follow(
         if line != last {
             println!("{line}");
             last = line;
+        }
+        if let (
+            Some(person),
+            TaskStatus::Checkpoint {
+                reason,
+                continuable: false,
+                ..
+            },
+        ) = (person, &view.status)
+        {
+            person.finish(reason);
         }
         if view.status.is_final() {
             return Ok(view);
@@ -53,7 +74,7 @@ pub async fn follow(
                 let timeout_ms = u64::try_from(wait.as_millis()).unwrap_or(u64::MAX);
                 host.await_task(&id, timeout_ms).await?
             }
-            TaskStatus::NeedsInput { fields } => {
+            TaskStatus::NeedsInput { fields } if person.is_none() => {
                 let Some(inputs) = inputs_for(fields, answers) else {
                     return Ok(view);
                 };
@@ -68,7 +89,13 @@ pub async fn follow(
                 })
                 .await?
             }
-            _ => return Ok(view),
+            status => {
+                let Some(request) = person.and_then(|person| reply(&id, status, answers, person))
+                else {
+                    return Ok(view);
+                };
+                host.continue_task(&request).await?
+            }
         };
     }
 }

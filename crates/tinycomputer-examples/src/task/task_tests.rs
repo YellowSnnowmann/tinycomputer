@@ -1,5 +1,5 @@
-//! Tests for the task follower's pure parts: pacing, and what counts as a
-//! pass.
+//! Tests for the task follower's pure parts: pacing, what counts as a pass,
+//! and what a person at the terminal sends a paused task.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use tinycomputer_bus::agent::TaskStatus;
 
-use super::{AWAIT_SLICE, inputs_for, loggable, next_wait, passed, state};
-use tinycomputer_bus::agent::{InputField, InputKind};
+use super::{AWAIT_SLICE, Person, inputs_for, loggable, next_wait, passed, reply, state};
+use tinycomputer_bus::agent::{InputField, InputKind, TaskId};
 
 const LIMIT: Duration = Duration::from_secs(20 * 60);
 
@@ -104,4 +104,143 @@ fn a_logged_url_keeps_only_its_scheme_and_host() {
     assert_eq!(loggable("about:blank"), "about:");
     assert_eq!(loggable("data:text/html,<p>token=abc</p>"), "data:");
     assert_eq!(loggable("not a url"), "");
+}
+
+/// A person who answers from a script and remembers what they were asked.
+struct Scripted {
+    approves: bool,
+    handles: bool,
+    inputs: BTreeMap<String, String>,
+    asked: std::sync::Mutex<Vec<String>>,
+}
+
+impl Scripted {
+    fn new(approves: bool, handles: bool) -> Self {
+        Self {
+            approves,
+            handles,
+            inputs: BTreeMap::new(),
+            asked: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn asked(&self) -> Vec<String> {
+        self.asked.lock().unwrap().clone()
+    }
+}
+
+impl Person for Scripted {
+    fn approve(&self, action: &str, target: &str) -> bool {
+        self.asked
+            .lock()
+            .unwrap()
+            .push(format!("approve {action} {target}"));
+        self.approves
+    }
+
+    fn handled(&self, reason: &str) -> bool {
+        self.asked.lock().unwrap().push(format!("handled {reason}"));
+        self.handles
+    }
+
+    fn input(&self, field: &InputField) -> Option<String> {
+        self.asked
+            .lock()
+            .unwrap()
+            .push(format!("input {}", field.name));
+        self.inputs.get(&field.name).cloned()
+    }
+
+    fn finish(&self, reason: &str) {
+        self.asked.lock().unwrap().push(format!("finish {reason}"));
+    }
+}
+
+fn status(json: serde_json::Value) -> TaskStatus {
+    serde_json::from_value(json).unwrap()
+}
+
+#[test]
+fn an_approval_is_sent_as_the_person_decides() {
+    let id = TaskId("t-1".to_owned());
+    let pause = status(serde_json::json!({
+        "state": "needs_approval", "action": "clicking Submit", "target": "Submit"
+    }));
+    let yes = Scripted::new(true, false);
+    let approved = reply(&id, &pause, &BTreeMap::new(), &yes).unwrap();
+    assert_eq!(approved.id, id);
+    assert_eq!(approved.approve, Some(true));
+    assert_eq!(yes.asked(), ["approve clicking Submit Submit"]);
+    // A decline is sent too, so the task learns it and stops.
+    let no = Scripted::new(false, false);
+    let declined = reply(&id, &pause, &BTreeMap::new(), &no).unwrap();
+    assert_eq!(declined.approve, Some(false));
+}
+
+#[test]
+fn a_wall_goes_on_only_once_the_person_has_dealt_with_it() {
+    let id = TaskId("t-2".to_owned());
+    let wall = status(serde_json::json!({
+        "state": "needs_human", "reason": "sign in, then continue the task"
+    }));
+    let done = reply(&id, &wall, &BTreeMap::new(), &Scripted::new(false, true)).unwrap();
+    assert_eq!(done.answer.as_deref(), Some("done"));
+    assert_eq!(done.approve, None);
+    assert!(reply(&id, &wall, &BTreeMap::new(), &Scripted::new(false, false)).is_none());
+}
+
+#[test]
+fn a_missing_detail_takes_the_answers_first_and_asks_for_the_rest() {
+    let id = TaskId("t-3".to_owned());
+    let pause = TaskStatus::NeedsInput {
+        fields: vec![field("phone"), field("email")],
+    };
+    let answers = BTreeMap::from([("phone".to_owned(), "+91".to_owned())]);
+    let mut person = Scripted::new(false, false);
+    person
+        .inputs
+        .insert("email".to_owned(), "asha@example.com".to_owned());
+    let continued = reply(&id, &pause, &answers, &person).unwrap();
+    assert_eq!(continued.inputs["phone"], "+91");
+    assert_eq!(continued.inputs["email"], "asha@example.com");
+    assert_eq!(
+        person.asked(),
+        ["input email"],
+        "only the missing one is asked"
+    );
+    // A detail the person does not give stops following.
+    let silent = Scripted::new(false, false);
+    assert!(reply(&id, &pause, &BTreeMap::new(), &silent).is_none());
+}
+
+#[test]
+fn a_continuable_checkpoint_goes_on_only_when_approved() {
+    let id = TaskId("t-4".to_owned());
+    let stop = status(serde_json::json!({
+        "state": "checkpoint", "reason": "review the order", "location": "review page",
+        "summary": "", "continuable": true
+    }));
+    let approved = reply(&id, &stop, &BTreeMap::new(), &Scripted::new(true, false)).unwrap();
+    assert_eq!(approved.approve, Some(true));
+}
+
+#[test]
+fn nothing_is_sent_for_a_state_no_person_answers() {
+    let id = TaskId("t-5".to_owned());
+    let person = Scripted::new(true, true);
+    for paused in [
+        status(serde_json::json!({"state": "running"})),
+        status(serde_json::json!({"state": "cancelled"})),
+        status(serde_json::json!({
+            "state": "checkpoint", "reason": "payment", "location": "pay page",
+            "summary": "", "continuable": false
+        })),
+        TaskStatus::NeedsInput { fields: Vec::new() },
+    ] {
+        assert!(
+            reply(&id, &paused, &BTreeMap::new(), &person).is_none(),
+            "{paused:?}"
+        );
+    }
+    assert!(person.asked().is_empty());
 }

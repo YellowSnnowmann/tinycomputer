@@ -132,6 +132,7 @@ they control.
 | `TINYCOMPUTER_BROWSER_PERCEPTION` | `sight` (default) or `tree`: how pages are read |
 | `TINYCOMPUTER_BROWSER_ENDPOINT` | attach to a running Chrome (e.g. `http://127.0.0.1:9222`) instead of launching one |
 | `TASK_HEADED` | `1` shows the browser the task launches instead of running it headless; a headed run needs a display, so it runs on the host |
+| `TASK_INTERACTIVE` | `1` waits for you at the terminal where only a person can go on, instead of ending the run: approve or decline an irreversible action, log in or solve a captcha in the browser and press Enter, type a detail the task lacks, finish on a payment page before the browser closes; end of input answers no |
 
 All but the endpoint and `TASK_HEADED` become the module's `browser`
 configuration; those two become the task's `constraints.browser_endpoint`
