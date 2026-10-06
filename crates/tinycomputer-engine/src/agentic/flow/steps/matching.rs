@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use crate::agentic::flow::view::{Candidate, Screen, element_kind, label};
 
-use super::date::{date_words, looks_like_date};
+use super::date::{date_words, looks_like_date, shows_date};
 
 /// Every text field on `screen` that holds text, with that text: what a
 /// failed `choose` puts back.
@@ -263,9 +263,7 @@ pub(super) fn mentions(candidate: &Candidate, option: &str) -> bool {
         .any(|text| {
             let shown = format!(" {} ", plain(&text));
             match &date {
-                Some(words) => words
-                    .iter()
-                    .all(|word| shown.contains(&format!(" {word} "))),
+                Some(words) => shows_date(&text, words),
                 // "Srinagar (SXR)" is the "Srinagar ... Airport SXR" row: the
                 // exact phrase, or else every one of its words.
                 None => {

@@ -198,3 +198,54 @@ async fn a_private_text_is_never_offered_as_a_suggestion_to_pick() {
     });
     assert!(!leaked, "a fact's value must never reach a Jev request");
 }
+
+#[test]
+fn a_search_box_takes_only_the_same_search_and_a_place_box_its_reworded_rows() {
+    use super::steps::{same_search, searches, shares_most_words, suggests};
+    let box_named = |name: &str, role: &str| node(name, role, &["Click", "SetValue"], &[], 0.0);
+    assert!(searches("search", &box_named("Products", "textbox")));
+    assert!(searches("query", &box_named("Products", "textbox")));
+    assert!(searches(
+        "product",
+        &box_named("What are you looking for?", "searchbox")
+    ));
+    assert!(!searches(
+        "pickup",
+        &box_named("Enter address..", "textbox")
+    ));
+
+    assert!(same_search(
+        "Blue light blocking glasses",
+        "blue light blocking glasses"
+    ));
+    assert!(same_search(
+        "Show all results for blue light blocking glasses",
+        "blue light blocking glasses"
+    ));
+    assert!(
+        !same_search(
+            "lenskart blu screen glasses full rim blue",
+            "blue light blocking glasses"
+        ),
+        "another product's name is another search"
+    );
+    assert!(!same_search(
+        "blue light blocking glasses for kids",
+        "blue light blocking glasses"
+    ));
+
+    assert!(suggests("pickup", &box_named("Enter address..", "textbox")));
+    assert!(suggests("where to", &box_named("Destination", "textbox")));
+    assert!(suggests("anything", &box_named("Find", "combobox")));
+    assert!(!suggests("first name", &box_named("First name", "textbox")));
+
+    let row = |name: &str| node(name, "generic", &["Click"], &[], 0.0);
+    assert!(shares_most_words(
+        &row("MG Road / Shivaji Nagar Bengaluru Karnataka"),
+        "MG Road Metro Station, Bengaluru"
+    ));
+    assert!(!shares_most_words(
+        &row("Indiranagar Bengaluru"),
+        "MG Road Metro Station, Bengaluru"
+    ));
+}

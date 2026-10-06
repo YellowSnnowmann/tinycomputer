@@ -311,10 +311,16 @@ async fn a_field_that_refuses_the_text_is_struck_and_the_real_one_is_used() {
     .await;
     let step = &run.result.steps[0];
     assert_eq!(step.outcome, StepOutcome::Done, "{}", step.note);
+    // The waits for a place box's late suggestions have no target.
     let fills = step
         .actions
         .iter()
-        .map(|action| (action.target.as_ref().unwrap().ref_id.clone(), action.ok))
+        .filter_map(|action| {
+            action
+                .target
+                .as_ref()
+                .map(|target| (target.ref_id.clone(), action.ok))
+        })
         .collect::<Vec<_>>();
     assert_eq!(
         fills,

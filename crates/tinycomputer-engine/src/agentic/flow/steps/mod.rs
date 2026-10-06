@@ -19,15 +19,19 @@ mod read;
 mod reveal;
 mod stop;
 mod suggestion;
+mod typing;
 
 pub(super) use matching::left_unchosen;
 #[cfg(test)]
 pub(super) use {
-    date::looks_like_date,
+    date::{date_words, looks_like_date, shows_date},
+    list::first_meeting,
     matching::{
         already_chosen, already_holds, closest, in_region, lists_more_than, redacted, search_text,
     },
     read::readable,
+    suggestion::{same_search, searches, shares_most_words, suggests},
+    typing::typing,
 };
 
 use tinycomputer_bus::FlowAction;
@@ -45,6 +49,12 @@ pub(super) const WAIT_CHECKS: u32 = 10;
 /// Checks in a row, a wait apart, on which a page says it found nothing
 /// before a `wait_for` stops waiting for what it searched for.
 pub(super) const EMPTY_CHECKS: u32 = 2;
+/// Belief a condition must keep, on a screen that no longer changes, for a
+/// `wait_for` to take it as held after [`STEADY_CHECKS`] checks.
+pub(super) const STEADY_HOLD: f64 = 0.65;
+/// Checks in a row of one unchanged screen, each judged at [`STEADY_HOLD`]
+/// or more, after which a `wait_for` takes its condition as held.
+pub(super) const STEADY_CHECKS: u32 = 3;
 /// Most characters of a picked item's text kept in its variable.
 pub(super) const MAX_PICK_SUMMARY: usize = 400;
 /// Items an exact ranking puts first that a `pick` asks Jev about, at once,
@@ -71,7 +81,11 @@ pub(super) async fn run<B: AgentBackend + Sync>(
     match action {
         FlowAction::Open(app) => run.open(log, app).await,
         FlowAction::Browse(url) => run.browse(log, url).await,
-        FlowAction::Do(_) => run.accomplish(log, text, DO_TURNS).await,
+        // A plain step that types is an `enter`: a `do` cannot type.
+        FlowAction::Do(_) => match typing::typing(text) {
+            Some(slot) => run.enter(log, &[slot]).await,
+            None => run.accomplish(log, text, DO_TURNS).await,
+        },
         FlowAction::Enter(slots) => run.enter(log, &slots.0).await,
         FlowAction::Choose(choose) => run.choose(log, choose).await,
         FlowAction::Read(read) => run.read(log, read).await,

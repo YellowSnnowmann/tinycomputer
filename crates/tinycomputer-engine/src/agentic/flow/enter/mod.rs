@@ -106,6 +106,15 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 }
             }
         }
+        // A step that entered nothing typed nothing: going on as if it had
+        // left the next step pressing a search for an empty box (live, the
+        // search box went unrecognised and the step still reported done).
+        if pending.is_empty() && unasked.len() == slots.len() && !slots.is_empty() {
+            return Err(Halt::Failed(format!(
+                "nothing on screen asks for: {}; no text was entered",
+                names(&slots, &unasked)
+            )));
+        }
         if pending.is_empty() {
             self.remember_choice(&format!(
                 "entered: {}",

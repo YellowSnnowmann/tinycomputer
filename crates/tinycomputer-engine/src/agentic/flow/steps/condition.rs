@@ -10,10 +10,10 @@ use crate::agentic::flow::{
     backend::AgentBackend,
     escalate::Belief,
     validate::{MAX_REPEAT, substitute_safe},
-    view::Screen,
+    view::{Screen, fingerprint},
 };
 
-use super::{EMPTY_CHECKS, WAIT_CHECKS, matching::plain};
+use super::{EMPTY_CHECKS, STEADY_CHECKS, STEADY_HOLD, WAIT_CHECKS, matching::plain};
 
 /// What a page says when a search found nothing, as whole-word phrases in
 /// its title or its visible text: what a `wait_for` waits for will not come.
@@ -27,6 +27,11 @@ const FOUND_NOTHING: &[&str] = &[
     "no matching results",
     "nothing found",
     "did not match any",
+    "could not find any",
+    "couldn t find any",
+    "no matching products",
+    "no products",
+    "0 products",
 ];
 
 /// The phrase of [`FOUND_NOTHING`] `screen` shows in its title or visible
@@ -144,12 +149,41 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         condition_text: &str,
     ) -> Result<Ended, Halt> {
         let mut empty = 0;
+        // A settled screen judged likely to show the condition, check after
+        // check, will not be judged otherwise by waiting longer: live, a
+        // results page was judged to show its results at 0.70 to 0.80 on
+        // every one of ten checks, under the bar each time.
+        let mut steady = (0, String::new());
         for check in 0..WAIT_CHECKS {
             let (held, screen) = self.holds_on(log, condition_text).await?;
             if held >= DONE {
                 return Ok(Ended::new(
                     StepOutcome::Done,
                     format!("held after {} check(s)", check + 1),
+                ));
+            }
+            let seen = fingerprint(&screen);
+            steady = if held >= STEADY_HOLD && (steady.0 == 0 || steady.1 == seen) {
+                (steady.0 + 1, seen)
+            } else if held >= STEADY_HOLD {
+                (1, seen)
+            } else {
+                (0, String::new())
+            };
+            if steady.0 >= STEADY_CHECKS {
+                return Ok(Ended::new(
+                    StepOutcome::Done,
+                    format!(
+                        "held on {STEADY_CHECKS} checks of a settled screen (confidence {held:.2})"
+                    ),
+                ));
+            }
+            // A dialog the task opened asks its question first (a format, a
+            // quantity): what lies past it will not show while it waits.
+            if self.front.opened_dialog && check >= 1 {
+                return Err(Halt::Failed(
+                    "a dialog the task opened is waiting for an answer, so nothing past it shows: choose what it asks, then continue"
+                        .to_owned(),
                 ));
             }
             match found_nothing(&screen) {

@@ -320,3 +320,25 @@ async fn a_picked_card_that_cannot_be_opened_says_why() {
         "only a covered click is retried"
     );
 }
+
+#[test]
+fn a_first_with_a_condition_walks_the_list_in_order() {
+    use super::steps::first_meeting;
+    assert_eq!(
+        first_meeting("first product rated 4 stars or more").as_deref(),
+        Some("product rated 4 stars or more")
+    );
+    assert_eq!(
+        first_meeting("The first one under ₹500").as_deref(),
+        Some("one under ₹500")
+    );
+    for bare in [
+        "first",
+        "the first",
+        "first one",
+        "first result",
+        "lowest price",
+    ] {
+        assert_eq!(first_meeting(bare), None, "{bare}");
+    }
+}

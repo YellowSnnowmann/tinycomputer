@@ -469,3 +469,21 @@ fn redacted_strips_the_shown_text_but_keeps_the_ref_and_role() {
     assert_eq!(logged.ref_id, target.ref_id);
     assert_eq!(logged.role, target.role);
 }
+
+#[test]
+fn a_day_in_a_strip_of_dates_is_found_by_its_short_label() {
+    use super::steps::{date_words, shows_date};
+    let wednesday = date_words("Wednesday 7 October 2026");
+    assert!(
+        shows_date("WED 07 OCT", &wednesday),
+        "a strip leaves the year out"
+    );
+    assert!(shows_date("Wednesday, 7 October 2026", &wednesday));
+    assert!(!shows_date("THU 08 OCT", &wednesday));
+    assert!(!shows_date("WED 07 NOV", &wednesday));
+    assert!(
+        !shows_date("Wednesday, 7 October 2027", &wednesday),
+        "a year the control shows must be the year asked for"
+    );
+    assert!(shows_date("7 Sept", &date_words("7 September")));
+}

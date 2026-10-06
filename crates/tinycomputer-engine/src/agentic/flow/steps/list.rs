@@ -35,15 +35,35 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
         // A page can repeat several things (a strip of dates above the
         // flights); a measurable criterion ranks the first list that has
-        // the measure, and judgement falls to the longest.
-        let ranked = Criterion::parse(&by).and_then(|criterion| {
-            families.iter().find_map(|groups| {
+        // the measure, and judgement falls to the longest. "The first one
+        // rated 4 stars or more" walks the list in its order too, taking
+        // the first item that meets the condition: judged over the whole
+        // list at once, live, it took the fifth result, another model.
+        let condition = first_meeting(&by);
+        let criterion =
+            Criterion::parse(&by).or_else(|| condition.as_ref().map(|_| Criterion::First));
+        let ranked = match criterion {
+            // The list's own order fits every list on the page, so the one
+            // `from` names is asked for first, as a judged pick does.
+            Some(order @ (Criterion::First | Criterion::Last)) => {
+                let list = if families.len() > 1 {
+                    self.judge_list(log, &screen, &from, &families).await?
+                } else {
+                    0
+                };
+                let groups = &families[list];
+                rank(&records_of(groups), order).map(|ranking| (groups, ranking))
+            }
+            Some(criterion) => families.iter().find_map(|groups| {
                 rank(&records_of(groups), criterion).map(|order| (groups, order))
-            })
-        });
+            }),
+            None => None,
+        };
+        let meets =
+            condition.map_or_else(|| from.clone(), |condition| format!("{from}, {condition}"));
         let belonging = match ranked {
             Some((groups, order)) => self
-                .first_belonging(log, &screen, &from, groups, &order)
+                .first_belonging(log, &screen, &meets, groups, &order)
                 .await?
                 .map(|best| (groups, best)),
             None => None,
@@ -301,4 +321,15 @@ fn records_of(groups: &[Group]) -> Vec<Record> {
                 .collect(),
         })
         .collect()
+}
+
+/// The condition a criterion such as "first product rated 4 stars or more"
+/// puts on the first item, when it is "first" and a condition: `None` for a
+/// bare "first", which is the list's own order, and for anything else.
+pub(in crate::agentic::flow) fn first_meeting(by: &str) -> Option<String> {
+    let lower = by.trim().to_ascii_lowercase();
+    let lower = lower.strip_prefix("the ").unwrap_or(&lower);
+    let rest = lower.strip_prefix("first ")?.trim();
+    let bare = matches!(rest, "one" | "result" | "item" | "product" | "listed" | "");
+    (!bare).then(|| rest.to_owned())
 }

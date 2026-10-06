@@ -274,3 +274,42 @@ async fn browse_fails_the_flow_where_there_is_no_browser_or_no_page() {
             .contains("no readable page yet")
     );
 }
+
+#[test]
+fn a_plain_step_that_types_is_read_as_the_enter_it_means() {
+    use super::steps::typing;
+    let slot = |intent: &str| typing(intent).map(|slot| (slot.slot, slot.text));
+    assert_eq!(
+        slot("enter 560001 into the pincode field"),
+        Some(("pincode".to_owned(), "560001".to_owned()))
+    );
+    assert_eq!(
+        slot("Type 'Maggi' in the search box."),
+        Some(("search".to_owned(), "Maggi".to_owned()))
+    );
+    assert_eq!(
+        slot("fill in the pincode with 560001"),
+        Some(("pincode".to_owned(), "560001".to_owned()))
+    );
+    assert_eq!(
+        slot("enter Amul Taaza milk in 1 litre packs in the search bar"),
+        Some((
+            "search".to_owned(),
+            "Amul Taaza milk in 1 litre packs".to_owned()
+        )),
+        "the last \" in \" splits a text that has \"in\" in it"
+    );
+    assert_eq!(
+        slot("enter Bengaluru as the city"),
+        Some(("city".to_owned(), "Bengaluru".to_owned()))
+    );
+    for plain in [
+        "enter the store",
+        "press enter in the search box",
+        "type in the search box",
+        "enter your name in the name field",
+        "open the cart",
+    ] {
+        assert_eq!(slot(plain), None, "{plain}");
+    }
+}
