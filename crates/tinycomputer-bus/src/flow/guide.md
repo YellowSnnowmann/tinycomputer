@@ -150,7 +150,9 @@ do.
    `choose` from: set it with a plain step ("increase the quantity to 2"),
    which presses + until the count reads it. Most stores show those
    buttons only once the item is in the cart, so to buy more than one,
-   add the item first and raise its count in the next step. A
+   add the item first and raise its count in the next step; a − count +
+   stepper where the add button was means the item is in the cart with
+   that count. A
    `pick` opens a whole result card; to press one of several buttons inside
    the cards (a time or a slot listed under each place), use a plain step
    that names it ("press the earliest time listed"). A dialog's headings
