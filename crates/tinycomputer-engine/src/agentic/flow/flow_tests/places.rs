@@ -17,6 +17,9 @@ pub(super) const PLACES: [&str; 4] = [
     "Indore Airport Indore, Madhya Pradesh, India",
 ];
 
+/// The heading a panel of suggestions opens with (`Places::panel`).
+const PANEL_HEADING: &str = "Select a pickup point Choose where your driver meets you";
+
 /// The ride form's state.
 #[derive(Debug, Default)]
 pub(super) struct Places {
@@ -24,6 +27,10 @@ pub(super) struct Places {
     pub(super) open: Option<String>,
     /// Boxes whose text came from a picked suggestion.
     pub(super) picked: BTreeSet<String>,
+    /// Whether the list is drawn inside one panel the page reads as a
+    /// button, its rows unread and its name stringing them all together, as
+    /// a store's delivery-area popover was read live.
+    pub(super) panel: bool,
 }
 
 /// The places suggested for `typed`: each one that holds every typed word.
@@ -67,8 +74,16 @@ pub(super) fn places_widget(
     if let Some(open) = &places.open {
         let typed = sim.fields.get(open).cloned().unwrap_or_default();
         let list = [root, "group \"Get a ride\"", "listbox \"Suggestions\""];
-        for place in suggested(&typed) {
-            candidates.push(node(place, "option", &["Click"], &list, 300.0));
+        if places.panel {
+            let rows = suggested(&typed);
+            if !rows.is_empty() {
+                let name = format!("{PANEL_HEADING} {}", rows.join(" "));
+                candidates.push(node(&name, "button", &["Click"], &form, 300.0));
+            }
+        } else {
+            for place in suggested(&typed) {
+                candidates.push(node(place, "option", &["Click"], &list, 300.0));
+            }
         }
     }
     candidates.push(node("See prices", "link", &["Click"], &form, 400.0));
@@ -111,7 +126,8 @@ pub(super) fn drop_unpicked(sim: &mut Sim) {
 }
 
 /// Presses `name` on the ride form; whether it was a suggestion row, which
-/// fills the open box with that place and keeps it.
+/// fills the open box with that place and keeps it. A press on a panel of
+/// rows lands on the row drawn at its middle, whichever that is.
 pub(super) fn press_place(sim: &mut Sim, name: &str) -> bool {
     let Some(places) = sim.places.as_mut() else {
         return false;
@@ -119,11 +135,20 @@ pub(super) fn press_place(sim: &mut Sim, name: &str) -> bool {
     let Some(open) = places.open.clone() else {
         return false;
     };
-    if !PLACES.contains(&name) {
+    let place = if name.starts_with(PANEL_HEADING) {
+        let typed = sim.fields.get(&open).cloned().unwrap_or_default();
+        let rows = suggested(&typed);
+        match rows.get(rows.len() / 2) {
+            Some(middle) => *middle,
+            None => return false,
+        }
+    } else if PLACES.contains(&name) {
+        name
+    } else {
         return false;
-    }
+    };
     places.picked.insert(open.clone());
     places.open = None;
-    sim.fields.insert(open, name.to_owned());
+    sim.fields.insert(open, place.to_owned());
     true
 }

@@ -112,6 +112,9 @@ before the text was typed, it picks the one that matches it
 
 - rows that mention the text come first; a single match, or several that
   all read the same, is pressed without asking;
+- a panel whose label strings its rows together (a popover the page draws
+  as one button) mentions the text without being a row, and is never
+  pressed: a press lands on whatever row sits at its middle;
 - when none mentions it, only new rows drawn as a list's rows (`option`,
   `menuitem`, `listitem`, `row`, `gridcell`) are offered, so a differently
   worded suggestion can still be matched while a button that appeared

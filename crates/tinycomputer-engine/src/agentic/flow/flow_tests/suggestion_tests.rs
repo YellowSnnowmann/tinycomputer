@@ -1,6 +1,7 @@
 //! Committing an autocomplete in `enter`: the suggestion a box lists for the
 //! text typed into it is picked before the focus moves on, a box that lists
-//! none is left as typed, and a private text is never offered for picking.
+//! none is left as typed, a panel that strings its rows together is never
+//! pressed, and a private text is never offered for picking.
 
 use super::*;
 
@@ -85,6 +86,43 @@ async fn enter_leaves_a_box_that_lists_no_suggestion_as_typed() {
     .await;
     assert_eq!(run.result.stop, FlowStopReason::Completed);
     assert_eq!(run.app.sim().fields["Subject"], "Connaught Place");
+    assert!(!asked_for_a_suggestion(&run));
+}
+
+#[tokio::test]
+async fn enter_never_presses_a_panel_that_strings_its_suggestions_together() {
+    // Live, a store's delivery-area popover was read as one button whose
+    // name held every row, and pressing it picked the row at its middle:
+    // another area than the one typed. A panel that lists more than the text
+    // is not a suggestion, so the box keeps the text as typed.
+    let run = run_with(
+        App::with(|sim| {
+            sim.places = Some(Places {
+                panel: true,
+                ..Places::default()
+            });
+        }),
+        json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Connaught Place"}}]}),
+        |_| {},
+        ride,
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    let sim = run.app.sim();
+    assert_eq!(sim.fields["Pickup location"], "Connaught Place");
+    assert!(
+        !sim.places
+            .as_ref()
+            .unwrap()
+            .picked
+            .contains("Pickup location")
+    );
+    drop(sim);
     assert!(!asked_for_a_suggestion(&run));
 }
 

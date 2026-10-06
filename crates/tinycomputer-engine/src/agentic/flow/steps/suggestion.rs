@@ -12,7 +12,9 @@ use crate::agentic::flow::{
     view::{Candidate, Screen, is_destructive, label},
 };
 
-use super::matching::{clickable, closest, editable, mentions, one_option, plainest};
+use super::matching::{
+    clickable, closest, editable, lists_more_than, mentions, one_option, plainest,
+};
 
 /// Roles a suggestion list draws its rows with. A row that does not mention
 /// the typed text is only offered when it carries one of these, so a button
@@ -36,6 +38,11 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// suggestion ("IGI Airport" for "Indira Gandhi International Airport")
     /// is matched among the new rows a list draws. Jev may answer that none
     /// fits, which leaves the text as typed.
+    ///
+    /// A panel whose label strings every row together mentions the text
+    /// without being a row, and is never pressed: a press lands wherever its
+    /// middle is, and live it set a store's delivery area to another place
+    /// than the one typed.
     pub(in crate::agentic::flow) async fn commit_suggestion(
         &mut self,
         log: &mut StepLog,
@@ -56,6 +63,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 candidate.ref_id != field.ref_id
                     && !editable(candidate)
                     && !shown.contains(&(candidate.role.as_str(), candidate.name.as_deref()))
+                    && !lists_more_than(candidate, text)
                     && !is_destructive(candidate, &screen, &self.stop_before)
             })
             .collect::<Vec<_>>();
