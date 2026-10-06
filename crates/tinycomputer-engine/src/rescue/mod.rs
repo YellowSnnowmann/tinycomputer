@@ -63,7 +63,11 @@ location button) and search again, with fewer words when the query was long. Wri
 concrete steps, one action each. Name what a step chooses with all the task's own words for \
 it, its size and variant included (the 1 litre pack the task asks for, not any pack of the \
 same name). A store item whose add button became a minus, count, plus stepper is in the cart \
-with that count: never add it again, nor another size of it. Every step must change something \
+with that count: never add it again, nor another size of it. A strip of dates opens on today: \
+the day the task asks for is chosen only when the strip shows it selected, so choose it again \
+after a dialog or a new page, and never skip that step because the day is on screen. To press \
+one of several times or slots listed inside a card, write a plain step naming it, never a pick, \
+which opens the whole card. Every step must change something \
 on the screen: to leave \
 an offer, an add-on, or a field as it is, write no step for it and move on to the control \
 that continues. To pass an optional page without choosing anything on it, press its \

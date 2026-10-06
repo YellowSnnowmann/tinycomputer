@@ -125,6 +125,9 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             pool
         };
         let purpose = format!("pick the suggestion that completes the {slot} as {text:?}");
+        // A place box keeps a place only once a row is chosen: when no row
+        // names it exactly, the closest row is taken rather than none.
+        let closest = closest_place(&pool, text).filter(|_| place && !searches(slot, field));
         let exact = one_option(&pool)
             && pool
                 .iter()
@@ -138,14 +141,16 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             self.ground(log, &screen, &purpose, &format!("{slot} suggestion"), pool)
                 .await?
         };
-        let Some(grounded) = grounded.filter(|grounded| grounded.confidence >= SUGGESTION_FLOOR)
+        let Some(target) = grounded
+            .filter(|grounded| grounded.confidence >= SUGGESTION_FLOOR)
+            .map(|grounded| grounded.candidate)
+            .or(closest)
         else {
             self.history.push(format!(
                 "no suggestion clearly fit the {slot}; it stays as typed"
             ));
             return Ok(());
         };
-        let target = grounded.candidate;
         let clicked = target.clone();
         let reply = self
             .act(
@@ -282,4 +287,35 @@ fn same_search_row(pool: Vec<Candidate>, typed: &str) -> Option<Candidate> {
             .filter(|candidate| same_search(candidate.name.as_deref().unwrap_or_default(), typed))
             .collect(),
     )
+}
+
+/// The row of `rows` that shares the most of `text`'s words, when it
+/// shares most of them (`shares_most_words`), the first on a tie. Live, a
+/// ride app listed "MG Road Shivaji Nagar Bengaluru" for "MG Road Metro
+/// Station, Bengaluru", no row named the station, and a pickup left as
+/// typed is no pickup: the flow could go no further.
+pub(in crate::agentic::flow) fn closest_place(rows: &[Candidate], text: &str) -> Option<Candidate> {
+    let typed = plain(text);
+    let words = typed
+        .split(' ')
+        .filter(|word| word.chars().count() >= 2)
+        .collect::<Vec<_>>();
+    rows.iter()
+        .filter(|row| shares_most_words(row, text))
+        .map(|row| {
+            let shown = format!(" {} ", plain(&label(row)));
+            let shared = words
+                .iter()
+                .filter(|word| shown.contains(&format!(" {word} ")))
+                .count();
+            (shared, row)
+        })
+        .fold(
+            None::<(usize, &Candidate)>,
+            |best, (shared, row)| match best {
+                Some((most, _)) if most >= shared => best,
+                _ => Some((shared, row)),
+            },
+        )
+        .map(|(_, row)| row.clone())
 }

@@ -30,7 +30,7 @@ pub(super) use {
         already_chosen, already_holds, closest, in_region, lists_more_than, redacted, search_text,
     },
     read::readable,
-    suggestion::{same_search, searches, shares_most_words, suggests},
+    suggestion::{closest_place, same_search, searches, shares_most_words, suggests},
     typing::typing,
 };
 

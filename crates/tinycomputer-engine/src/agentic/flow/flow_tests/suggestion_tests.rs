@@ -86,10 +86,13 @@ async fn enter_picks_the_suggestion_an_autocomplete_box_lists_for_the_typed_text
 }
 
 #[tokio::test]
-async fn enter_keeps_the_typed_text_when_no_suggestion_clearly_fits() {
-    // Live, a search box listed completions of the typed search ("boat
-    // airdopes 141 anc"), and a pick at 0.43, a near tie with "none fits",
-    // replaced the search with one of them. An unsure pick is not pressed.
+async fn a_place_box_takes_its_closest_row_when_no_suggestion_clearly_fits() {
+    // An unsure pick (0.45) is not pressed as such. A search box's
+    // completions are other searches and stay unpressed (live, "boat
+    // airdopes 141 anc" replaced a search; `same_search` keeps it as typed).
+    // A place box, though, keeps a place only once a row is chosen, so the
+    // row sharing the most of the typed words is taken: live, a ride app
+    // had no row naming the station typed, and its pickup was never set.
     let run = run_with(
         App::with(|sim| sim.places = Some(Places::default())),
         json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Connaught Place"}}]}),
@@ -104,9 +107,10 @@ async fn enter_keeps_the_typed_text_when_no_suggestion_clearly_fits() {
         run.result.steps
     );
     let sim = run.app.sim();
-    assert_eq!(sim.fields["Pickup location"], "Connaught Place");
+    assert_ne!(sim.fields["Pickup location"], "Connaught Place");
+    assert!(sim.fields["Pickup location"].starts_with("Connaught Place"));
     assert!(
-        !sim.places
+        sim.places
             .as_ref()
             .unwrap()
             .picked
@@ -248,4 +252,24 @@ fn a_search_box_takes_only_the_same_search_and_a_place_box_its_reworded_rows() {
         &row("Indiranagar Bengaluru"),
         "MG Road Metro Station, Bengaluru"
     ));
+}
+
+#[test]
+fn a_place_no_row_names_exactly_takes_the_row_sharing_most_of_its_words() {
+    use super::steps::closest_place;
+    let row = |name: &str| node(name, "generic", &["Click"], &[], 0.0);
+    let rows = [
+        row("Mahatma Gandhi Road Shivaji Nagar Bengaluru Karnataka India MAP"),
+        row("MG Road Shivaji Nagar Bengaluru Karnataka MAP"),
+        row("MG Road Shanthala Nagar Ashok Nagar Bengaluru Karnataka MAP"),
+        row("Photobooth Church Street Bengaluru Karnataka India MAP"),
+    ];
+    assert_eq!(
+        closest_place(&rows, "MG Road Metro Station, Bengaluru")
+            .and_then(|row| row.name)
+            .as_deref(),
+        Some("MG Road Shivaji Nagar Bengaluru Karnataka MAP"),
+        "the first of the rows sharing the most words"
+    );
+    assert!(closest_place(&rows, "Indiranagar Metro, Bengaluru").is_none());
 }
