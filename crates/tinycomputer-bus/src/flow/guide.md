@@ -126,6 +126,11 @@ do.
    on which result to take ("skip Sponsored items", "rated 4 stars or
    more") belongs in that `pick`'s `from` or `by`, never in a step of its
    own: there is nothing on screen to do for it, so such a step fails.
+   Keep the task's own words in a `pick`: its `from` names the item asked
+   for ("the boAt Airdopes 141 results", not "the search results"), and its
+   `by` is the task's criterion, "first" when the task says the first one,
+   never a stand-in such as "lowest price": a store lists other brands
+   beside the one searched for, and the cheapest of them is another item.
 
 ## A full example
 
