@@ -17,6 +17,7 @@ use crate::host::{Host, LabError};
 
 mod person;
 
+use person::printable;
 pub use person::{Person, Terminal, reply};
 
 /// The longest one `AwaitTask` call blocks before the loop looks again.
@@ -30,7 +31,10 @@ pub const AWAIT_SLICE: Duration = Duration::from_secs(30);
 /// With a `person`, the pauses only a person can answer wait for them
 /// instead of ending the run: an approval, a login or captcha, a detail
 /// `answers` lacks (see [`reply`]), and a payment page, which stays open
-/// until they say they are done.
+/// until they say they are done. A person is never cut short, as a browser
+/// closed under someone mid-login or on a payment page would be: their
+/// answer is sent however long it took, and the limit is checked again on
+/// the state that follows.
 ///
 /// # Errors
 ///
@@ -46,7 +50,7 @@ pub async fn follow(
     let id = view.id.clone();
     let mut last = String::new();
     loop {
-        let line = format!("[{}] {}", state(&view.status), view.summary);
+        let line = format!("[{}] {}", state(&view.status), printable(&view.summary));
         if line != last {
             println!("{line}");
             last = line;

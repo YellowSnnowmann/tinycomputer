@@ -85,7 +85,7 @@ pub struct Terminal;
 
 impl Terminal {
     fn ask(prompt: &str) -> Option<String> {
-        print!("{prompt}");
+        print!("{}", printable(prompt));
         io::stdout().flush().ok()?;
         let mut line = String::new();
         match io::stdin().lock().read_line(&mut line) {
@@ -125,6 +125,30 @@ impl Person for Terminal {
             sentence(reason)
         ));
     }
+}
+
+/// Marks that turn the direction of the text around them, so the words a
+/// person reads are not in the order they were written.
+const DIRECTION_MARKS: &[char] = &[
+    '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}',
+    '\u{2067}', '\u{2068}', '\u{2069}',
+];
+
+/// `text` safe to print at a terminal: each control character and
+/// direction mark becomes a space. What a task reports carries words from
+/// the pages it read, and a page chooses its own: an escape sequence in a
+/// button's name could recolour, hide, or rewrite the prompt a person
+/// approves an irreversible action from.
+pub(super) fn printable(text: &str) -> String {
+    text.chars()
+        .map(|character| {
+            if character.is_control() || DIRECTION_MARKS.contains(&character) {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect()
 }
 
 /// `reason` as a sentence for a prompt to go on from: trimmed, and ending in

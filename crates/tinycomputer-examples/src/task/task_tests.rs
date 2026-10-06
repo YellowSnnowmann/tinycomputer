@@ -285,3 +285,21 @@ fn a_pause_reads_as_one_sentence_before_the_prompt() {
         "sign in, then continue the task."
     );
 }
+
+#[test]
+fn page_words_reach_the_terminal_without_escape_sequences_or_direction_marks() {
+    use super::person::printable;
+    // A button named to hide what it does behind an escape sequence, or to
+    // read backwards behind a direction mark, prints as plain words.
+    let disguised = "Pay \u{1b}[8m₹50,000\u{1b}[0m\u{1b}]0;title\u{7}now \u{202e}eerf\u{202c}";
+    let shown = printable(disguised);
+    assert!(
+        !shown
+            .chars()
+            .any(|character| character.is_control()
+                || ('\u{202a}'..='\u{202e}').contains(&character)),
+        "{shown:?}"
+    );
+    assert!(shown.starts_with("Pay  [8m₹50,000"), "{shown:?}");
+    assert_eq!(printable("Place Order (₹759)"), "Place Order (₹759)");
+}
