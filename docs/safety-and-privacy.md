@@ -116,6 +116,16 @@ rather than guessing. There's never a fallback click.
 - **Websites.** `origins` limits which sites the browser may load.
 - **Budgets.** Caps on actions, questions to Jev, time, and rescues apply to
   the whole task. Pausing never refills them.
+- **Your location.** When a task presses a page's own "use my current
+  location" button, the browser would ask you in a bubble the agent cannot
+  see. In a browser tinycomputer launched itself on a throwaway profile, the
+  press grants the location permission for that session in your place. It
+  never does in your own browser (an `endpoint`) or profile (a
+  `user_data_dir`): there the bubble is yours to answer.
+- **New tabs.** A pressed link or form that would open a new tab opens in
+  the agent's tab instead, and so does a page script's new window for an
+  address on the same site, for two seconds after a press. Another site's
+  window (an advert opened on a click) still opens on its own, unread.
 
 ## Permissions on the desktop
 

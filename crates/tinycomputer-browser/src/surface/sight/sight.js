@@ -53,6 +53,13 @@
   // A page that greys a control out by style alone says so only in its class:
   // a calendar's past day is `rdrDay rdrDayDisabled`, pressable but inert.
   const DISABLED_CLASS = /disabled$/i;
+  // And one it shows chosen, the same way: a store's picked size is
+  // `size-buttons-size-button-selected`, with no ARIA state at all, so a
+  // step choosing it never saw it chosen. Never `unselected`.
+  const SELECTED_CLASS = /(?:^|[-_])(?:selected|checked)$/i;
+  const UNSELECTED_CLASS = /(?:^|[-_])(?:un|not[-_]?)(?:selected|checked)$/i;
+  const classChosen = (element) => [...element.classList]
+    .some((name) => SELECTED_CLASS.test(name) && !UNSELECTED_CLASS.test(name));
   const disabled = (element) =>
     element.disabled === true || element.getAttribute('aria-disabled') === 'true'
     || [...element.classList].some((name) => DISABLED_CLASS.test(name));
@@ -98,7 +105,13 @@
   // the window: a page can wire a plain `div` to a click with neither a
   // cursor nor a tab stop. Live, a store's "Add to cart" and "Buy now" read
   // as plain words, and the step to add to the cart had nothing to press.
-  const HANDLERS = ['onClick', 'onPress', 'onMouseDown', 'onPointerDown', 'onPointerUp', 'onTouchEnd'];
+  // Only a press handler: a carousel's track or a select's menu listens for
+  // the mouse going down and is no button to press.
+  const HANDLERS = ['onClick', 'onPress'];
+  // What is a control only by such a handler: it hides nothing pressable
+  // inside it, since a page can wire a whole card to a click around its own
+  // "Add" button.
+  const scriptedOnly = new Set();
   const scripted = (element) => {
     if (!element || element === document.body) return false;
     const key = Object.keys(element).find((name) => name.startsWith('__reactProps$'));
@@ -201,11 +214,12 @@
       && !element.hasAttribute('onclick') && !pointer(element)) return null;
     if (insideControl) return null;
     const tabindex = element.getAttribute('tabindex');
-    const clickable = element.hasAttribute('onclick')
+    const byPage = element.hasAttribute('onclick')
       || (tabindex !== null && tabindex !== '-1')
-      || (pointer(element) && !(element.parentElement && pointer(element.parentElement)))
-      || (scripted(element) && !scripted(element.parentElement));
-    return clickable ? 'button' : null;
+      || (pointer(element) && !(element.parentElement && pointer(element.parentElement)));
+    const byScript = !byPage && scripted(element) && !scripted(element.parentElement);
+    if (byScript) scriptedOnly.add(element);
+    return byPage || byScript ? 'button' : null;
   };
 
   // Text of the elements `ids` (space-separated) names.
@@ -372,7 +386,12 @@
   // parent's, is a picture too, whatever the font is called (live, a
   // store's icon font had no telling name). Digits, currency signs, and
   // the signs a stepper or a close button shows as text are never pictures.
-  const PICTURED = /^[^\p{N}\p{Sc}\s+\-−×✕<>‹›]{1,2}$/u;
+  const PICTURED = /^[^\p{N}\p{Sc}\s+\-−×✕<>‹›]$/u;
+  // A font stack's own family, and the family a weight of it belongs to:
+  // "Gilroy-SemiBold" inside "Gilroy-Regular" is the same text font, and a
+  // fallback named in a stack ("Noto Sans Symbols") says nothing.
+  const firstFamily = (font) => (font.split(',')[0] || '').replace(/["']/g, '').trim();
+  const familyRoot = (font) => firstFamily(font).split(/[-\s_]/)[0].toLowerCase();
   const withoutGlyphs = (element, text) => {
     if (!SHORT_WORD.test(text)) return text;
     const glyphs = new Set();
@@ -381,8 +400,9 @@
       if (!drawn || drawn.length > 2) continue;
       const font = style(part).fontFamily || '';
       const parent = part.parentElement;
-      const own = parent && part !== element && font !== (style(parent).fontFamily || '');
-      if (ICON_FONT.test(font) || (own && PICTURED.test(drawn))) glyphs.add(drawn);
+      const own = parent && part !== element
+        && familyRoot(font) !== familyRoot(style(parent).fontFamily || '');
+      if (ICON_FONT.test(firstFamily(font)) || (own && PICTURED.test(drawn))) glyphs.add(drawn);
     }
     return squash(text.replace(PRIVATE_USE, ' ').split(' ')
       .filter((word) => !glyphs.has(word)).join(' '));
@@ -556,17 +576,16 @@
     const rect = box(element);
     return rect.width <= 1 && rect.height <= 1 && computed.overflow === 'hidden';
   };
-  const inFront = (element) => {
+  // What a hit test at the element's middle lands on.
+  const hitAt = (element) => {
     const rect = box(element);
     const x = Math.min(Math.max((rect.left + rect.right) / 2, 0), width - 1);
     const y = Math.min(Math.max((rect.top + rect.bottom) / 2, 0), height - 1);
-    const hit = document.elementFromPoint(x, y);
-    if (hit === element || (hit && element.contains(hit))) return true;
-    // A hit passes through what takes no pointer events, so landing on what
-    // holds such an element means nothing is drawn over it. Live, a seat
-    // table drew each seat's number and status in `aria-hidden` cells that
-    // take no pointer events, and every row in view lost them.
-    return Boolean(hit && hit.contains(element) && style(element).pointerEvents === 'none');
+    return document.elementFromPoint(x, y);
+  };
+  const inFront = (element) => {
+    const hit = hitAt(element);
+    return hit === element || Boolean(hit && element.contains(hit));
   };
   // Whether a person sees what the page marks `aria-hidden`: pages mark
   // plenty they draw — a custom list's shown label, a pill below the fold,
@@ -578,7 +597,19 @@
     if (rect.width < 1 || rect.height < 1) return true;
     if (rect.right <= 0 || rect.left >= width) return false;
     if (rect.bottom <= 0 || rect.top >= height) return true;
-    return inFront(element);
+    if (inFront(element)) return true;
+    // A hit passes through what takes no pointer events, so landing on what
+    // holds such an element means nothing is drawn over it. Live, a seat
+    // table drew each seat's number and status in `aria-hidden` cells that
+    // take no pointer events, and every row in view lost them. Only an
+    // element that turns pointer events off itself counts, and never a hit
+    // on the page's root: a modal library turns them off for the whole body
+    // while it hides the page behind its dialog.
+    const own = style(element).pointerEvents === 'none'
+      && !(element.parentElement && style(element.parentElement).pointerEvents === 'none');
+    const hit = hitAt(element);
+    return Boolean(own && hit && hit !== document.documentElement && hit !== document.body
+      && hit.contains(element));
   };
   // Blocks labelled as ads, found once up front: the label and the nearest
   // block around it that holds the ad, but never a landmark, a form, a
@@ -778,7 +809,8 @@
     if (aria('expanded') === 'true' || (tag(element) === 'summary' && element.parentElement && element.parentElement.open)) {
       states.push('expanded');
     }
-    if (aria('selected') === 'true' || (aria('current') && aria('current') !== 'false')) states.push('selected');
+    if (aria('selected') === 'true' || (aria('current') && aria('current') !== 'false')
+      || (!states.includes('checked') && classChosen(element))) states.push('selected');
     if (input.required === true || aria('required') === 'true') states.push('required');
     if (offscreen(element)) states.push('offscreen');
     else if (covered(element)) states.push('covered');
@@ -843,8 +875,14 @@
   // table's "Select" buttons sat at their cells' left edge, and six presses
   // at the cells' middles selected nothing.
   const NATIVE_PRESS = 'button, a[href], summary, input[type="button"], input[type="submit"]';
+  // Never a control that says whether it is chosen (a tab, a radio, an
+  // option): what selects it checks that state on the record's element, and
+  // the inner one never carries it, so it would be pressed twice.
+  const CHOOSING_ROLES = ['tab', 'radio', 'option', 'checkbox', 'switch', 'menuitemradio',
+    'menuitemcheckbox', 'treeitem'];
   const pressedInside = (wrapper, element) => wrapper !== element && wrapper.contains(element)
-    && element.matches(NATIVE_PRESS) && !wrapper.matches(`${NATIVE_PRESS}, input, select, textarea, label`);
+    && element.matches(NATIVE_PRESS) && !wrapper.matches(`${NATIVE_PRESS}, input, select, textarea, label`)
+    && !CHOOSING_ROLES.includes(role(wrapper));
   // Points `twin`'s record at `element`, the control inside it, keeping
   // what the wrapper says of itself (selected, checked) beside where the
   // inner control is drawn and whether something covers it.
@@ -862,7 +900,7 @@
   let texts = 0;
   const insideControl = (element) => {
     for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-      if (controls.has(parent)) return true;
+      if (controls.has(parent) && !scriptedOnly.has(parent)) return true;
     }
     return false;
   };

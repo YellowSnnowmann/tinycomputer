@@ -20,12 +20,14 @@ const HOVER_END_MS: u64 = 150;
 
 /// Lets the focused text box go, so the list of suggestions it holds open
 /// closes (live, a store's search dropdown stayed over its basket button,
-/// and Escape left it there), then brings an element to the middle of the
-/// window; `true` when it found the element.
+/// and Escape left it there), unless the element is a row of such a list,
+/// then brings the element to the middle of the window; `true` when it
+/// found the element.
 const CENTRE_JS: &str = r"(element => {
   if (!element) return false;
   const focused = document.activeElement;
-  if (focused && focused !== element && !focused.contains(element)
+  const row = element.closest('[role=option], [role=listbox], [role=menu], [role=menuitem], datalist');
+  if (focused && focused !== element && !focused.contains(element) && !row
       && focused.matches('input, textarea, [contenteditable=true]')) {
     focused.blur();
   }
@@ -38,12 +40,18 @@ const LEAVE_MS: u64 = 400;
 
 /// The address a link the element is, or sits in, leads to, when that is
 /// another page than this one: `null` for an in-page anchor, a script
-/// link, a link whose page is already open, or a short link such as a
-/// menu's "More", which may open a menu where it is rather than a page.
+/// link, a link whose page is already open, a short link such as a menu's
+/// "More", which may open a menu where it is rather than a page, a link
+/// that downloads a file or controls something on the page, a page already
+/// leaving (`__tcLeaving`, set when it began to unload), or while a dialog
+/// is shown in front.
 const AWAY_JS: &str = r"(element => {
   const link = element && element.closest('a[href]');
-  if (!link) return null;
+  if (!link || window.__tcLeaving) return null;
   if ((link.innerText || '').trim().split(/\s+/).length < 4) return null;
+  if (link.hasAttribute('download') || link.matches('[aria-expanded], [aria-haspopup], [aria-controls]')) {
+    return null;
+  }
   const href = link.getAttribute('href') || '';
   if (!href || href.startsWith('#') || /^javascript:/i.test(href)) return null;
   const away = new URL(href, location.href);
@@ -51,7 +59,12 @@ const AWAY_JS: &str = r"(element => {
   away.hash = '';
   here.hash = '';
   if (away.href === here.href || !/^https?:$/.test(away.protocol)) return null;
-  const front = document.querySelector('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]');
+  const shown = (node) => {
+    const box = node.getBoundingClientRect();
+    return box.width > 1 && box.height > 1 && getComputedStyle(node).visibility !== 'hidden';
+  };
+  const front = [...document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]')]
+    .some(shown);
   return front ? null : away.href;
 })";
 
@@ -65,6 +78,7 @@ impl BrowserSurface {
         &self,
         node: Option<&Candidate>,
         reference: Option<&str>,
+        follows: bool,
     ) -> DesktopResponse {
         let Some(reference) = reference else {
             return DesktopResponse::err(
@@ -72,13 +86,13 @@ impl BrowserSurface {
                 DesktopError::new("INVALID_TARGET", "the operation needs a target"),
             );
         };
-        self.keep_in_tab();
+        self.keep_in_tab(reference);
         if node.is_some_and(location::asks_where) {
             self.allow_location();
         }
         let seen = sight::is_seen(reference);
         // Where a link's press starts from, to tell whether it went.
-        let before = (seen && node.is_some_and(|node| node.role == "link"))
+        let before = (follows && seen && node.is_some_and(|node| node.role == "link"))
             .then(|| self.page_url())
             .flatten();
         let reply = self.perform(
@@ -100,9 +114,13 @@ impl BrowserSurface {
         } else {
             reply
         };
+        // A follow that failed leaves the press as it went: the press itself
+        // landed, and reading it as failed would press it again.
         if reply.ok
             && let Some(before) = &before
-            && let Some(followed) = self.follow_if_ignored(reference, before)
+            && let Some(followed) = self
+                .follow_if_ignored(reference, before)
+                .filter(|followed| followed.ok)
         {
             return followed;
         }

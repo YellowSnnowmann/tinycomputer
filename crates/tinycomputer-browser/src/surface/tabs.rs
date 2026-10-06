@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 
-use super::BrowserSurface;
+use super::{BrowserSurface, sight};
 
 /// Where the page is, what it is called, and whether it has drawn words.
 const DRAWN_JS: &str = r"(() => ({
@@ -13,43 +13,71 @@ const DRAWN_JS: &str = r"(() => ({
     && document.body.innerText.trim().length > 0,
 }))()";
 
-/// `url` as host and path, without its scheme, a leading `www.`, its query,
-/// its fragment, or a trailing slash, lower-cased: two addresses of one page.
-fn place(url: &str) -> String {
+/// `url` as host, path, and query, without its scheme, a leading `www.`,
+/// its fragment, or the path's trailing slash, the host and path
+/// lower-cased: two addresses of one page. The query stays: a search for
+/// "boots" on screen is no page of a search for "shoes".
+pub(super) fn place(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-    let rest = rest.split(['?', '#']).next().unwrap_or_default();
-    let rest = rest.trim_end_matches('/').to_ascii_lowercase();
-    rest.strip_prefix("www.")
-        .map_or(rest.clone(), str::to_owned)
+    let rest = rest.split('#').next().unwrap_or_default();
+    let (path, query) = rest
+        .split_once('?')
+        .map_or((rest, ""), |(path, query)| (path, query));
+    let path = path.trim_end_matches('/').to_ascii_lowercase();
+    let path = path
+        .strip_prefix("www.")
+        .map_or(path.clone(), str::to_owned);
+    if query.is_empty() {
+        path
+    } else {
+        format!("{path}?{query}")
+    }
 }
 
-/// Points every link and form that would open a new tab at the page's own
-/// tab, and, for two seconds, sends a script's `window.open(url)` there too.
-/// A result card's link that opens its product in a new tab left the agent
-/// reading the results page live: the new tab never became the session's
-/// page, so the next read found no product. A link aimed at a named frame
-/// is left alone; only `_blank` (and the common misspelling `_new`) opens a
-/// window. An `open` with no address, which a page fills in later, still
-/// opens its window, since there is nothing to go to in place.
-const SAME_TAB_JS: &str = r"(() => {
-  for (const node of document.querySelectorAll('a[target], area[target], form[target], base[target]')) {
-    const aimed = (node.getAttribute('target') || '').toLowerCase();
-    if (aimed === '_blank' || aimed === '_new') node.setAttribute('target', '_self');
+/// Points the pressed element's own link or form, when it would open a new
+/// tab, at the page's own tab, and, for two seconds, sends a script's
+/// `window.open(url)` of an address on the same site there too. A result
+/// card's link that opens its product in a new tab left the agent reading
+/// the results page live: the new tab never became the session's page, so
+/// the next read found no product. Only the pressed element's link or form
+/// changes, never the rest of the page's; an address on another site (an
+/// advert a page opens on the first click) still opens its own window, as
+/// does an `open` with no address, which a page fills in later; a link
+/// aimed at a named frame is left alone; and the patched `open` returns no
+/// window, so a page closing "its" window never closes the agent's tab.
+/// Called as `(element) => true`.
+const SAME_TAB_JS: &str = r"(element => {
+  const blank = (aimed) => aimed === '_blank' || aimed === '_new';
+  const base = (document.querySelector('base[target]')?.getAttribute('target') || '').toLowerCase();
+  const link = element && element.closest('a[href], area[href]');
+  const form = element && (element.form || element.closest('form'));
+  for (const node of [link, form]) {
+    if (!node) continue;
+    const aimed = (node.getAttribute('target') ?? base).toLowerCase();
+    if (blank(aimed)) node.setAttribute('target', '_self');
+  }
+  // A page that begins to leave says so before its address changes, so
+  // a slow link is not followed a second time while it loads.
+  if (!window.__tcWatching) {
+    window.__tcWatching = true;
+    addEventListener('beforeunload', () => { window.__tcLeaving = true; });
   }
   if (window.__tcOpen) return true;
   const open = window.open;
   window.__tcOpen = open;
   window.open = function (url, name) {
     const aimed = String(name || '').toLowerCase();
-    if (url && String(url) !== 'about:blank' && (!aimed || aimed === '_blank' || aimed === '_new')) {
+    let here = false;
+    try { here = new URL(String(url), location.href).origin === location.origin; } catch (error) { here = false; }
+    if (url && String(url) !== 'about:blank' && here && (!aimed || blank(aimed))) {
       location.assign(url);
-      return window;
+      return null;
     }
     return open.apply(window, arguments);
   };
   setTimeout(() => { window.open = open; delete window.__tcOpen; }, 2000);
   return true;
-})()";
+})";
 
 impl BrowserSurface {
     /// The page's address and title when the session shows `url` drawn
@@ -78,15 +106,20 @@ impl BrowserSurface {
         })
     }
 
-    /// Keeps a press about to happen in this tab (`SAME_TAB_JS`). Best
-    /// effort: a page that refuses the script is pressed as it is.
-    pub(super) fn keep_in_tab(&self) {
+    /// Keeps the press of `reference` about to happen in this tab
+    /// (`SAME_TAB_JS`). Best effort: a page that refuses the script, or an
+    /// element it cannot find, is pressed as it is.
+    pub(super) fn keep_in_tab(&self, reference: &str) {
         let Ok(id) = self.ensure_session() else {
             return;
         };
+        let Ok(selector) = serde_json::to_string(&sight::selector(reference)) else {
+            return;
+        };
+        let script = format!("{SAME_TAB_JS}(document.querySelector({selector}))");
         let _kept = self.block(
             self.browser
-                .command(&id, json!({"action": "evaluate", "script": SAME_TAB_JS})),
+                .command(&id, json!({"action": "evaluate", "script": script})),
         );
     }
 }

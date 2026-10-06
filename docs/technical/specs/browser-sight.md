@@ -73,9 +73,9 @@ a caret.
    rule the click-through uses).
 3. **Names are the words a person reads.** A control's own words (without
    those of a list of controls nested in it); for a field, its tied
-   `<label>`, then the page's `aria-label`, then the words inside its box,
-   left of it on its line, or just above it (right of it for a checkbox),
-   then its placeholder; for a word-less control, its `aria-label`, `title`,
+   `<label>`, then the page's `aria-label`, placeholder, or title, then the
+   words inside its box, left of it on its line, or just above it (right of
+   it for a checkbox), never a divider such as "OR"; for a word-less control, its `aria-label`, `title`,
    or pictures' alternative text, then the icon's class, id, or test-id words
    (`close`, `search`, `menu`, …) with the description "an icon", and for a
    link, where it leads ("leads to sightseeing"). A page label that adds to
@@ -247,8 +247,17 @@ The `Screen` does not carry it.
   the flow runtime's `untrusted_accessibility_data` wrapping and masking.
 - Typing still passes the surface's editable check (`takes_text`); sight
   only stops offering `SetValue` for what cannot take it.
-- A ref never silently moves to another element.
-- Nothing is added to the page but the marks.
+- A ref never silently moves to another element; a control a page claims
+  around a native button (a `td role="gridcell"` holding a `<button>`) is
+  marked on that button, which a press must reach, unless the control says
+  whether it is chosen (a tab, a radio, an option).
+- Reading adds nothing to the page but the marks. Pressing adds, best
+  effort, only this: the pressed link or form, when it would open a new
+  tab, is aimed at the page's own; for two seconds a script's
+  `window.open` of an address on the same site opens it in place (another
+  site's still opens its own window, and the patched `open` returns no
+  window); and a flag notes that the page began to unload, so a slow link is
+  not followed twice.
 
 ## Acceptance
 

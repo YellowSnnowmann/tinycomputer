@@ -88,8 +88,11 @@ impl Surface for BrowserSurface {
             return reply;
         }
         match operation {
-            JevOperation::Click | JevOperation::Expand | JevOperation::Collapse => {
-                self.press_element(target.as_ref(), reference.as_deref())
+            JevOperation::Click => self.press_element(target.as_ref(), reference.as_deref(), true),
+            // Opening or closing in place goes nowhere by design: never
+            // followed as a link that ignored its press.
+            JevOperation::Expand | JevOperation::Collapse => {
+                self.press_element(target.as_ref(), reference.as_deref(), false)
             }
             // Without a target the text goes where the focus is, as into an
             // autocomplete's unnamed input once it has been opened — but
