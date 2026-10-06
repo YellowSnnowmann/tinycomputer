@@ -18,6 +18,12 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// step's words. Live, "choose Wednesday 7 October" found nothing to
     /// press for four turns while the dialog offered "2D", and a rescue
     /// was spent pressing it.
+    ///
+    /// Only on a browser task, only among the dialog's own controls when it
+    /// is a dialog, and never a control that commits ("Yes", "Confirm",
+    /// "Pay"): a press here serves no step's words, so it must not be one
+    /// a person would want to approve. On a desktop application a sheet's
+    /// answer ("Don't Save") is the step's to name.
     pub(super) async fn answer_dialog(
         &mut self,
         log: &mut StepLog,
@@ -25,6 +31,9 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         intent: &str,
         banned: &BTreeSet<String>,
     ) -> Result<Option<Grounded>, Halt> {
+        if !self.app.eq_ignore_ascii_case("browser") {
+            return Ok(None);
+        }
         let pool = self
             .pool(screen, "Click", banned, intent)
             .into_iter()
@@ -33,8 +42,15 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     .states
                     .iter()
                     .any(|state| state.eq_ignore_ascii_case("offscreen"))
+                    && !commits(candidate)
             })
             .collect::<Vec<_>>();
+        let inside = pool
+            .iter()
+            .filter(|candidate| in_dialog(candidate))
+            .cloned()
+            .collect::<Vec<_>>();
+        let pool = if inside.is_empty() { pool } else { inside };
         if pool.is_empty() {
             return Ok(None);
         }
@@ -54,4 +70,23 @@ pub(super) fn in_dialog(candidate: &Candidate) -> bool {
             || segment.starts_with("dialog ")
             || segment.starts_with("alertdialog ")
     })
+}
+
+/// Words of a control that commits what a dialog asks, rather than
+/// answering it: what a person approves, never a fallback's press.
+const COMMITS: &[&str] = &[
+    "yes", "ok", "okay", "confirm", "submit", "accept", "agree", "pay", "book", "buy", "order",
+    "checkout", "reserve", "send", "delete", "remove", "proceed", "allow",
+];
+
+/// Whether `candidate` commits what its dialog asks: one of its words is
+/// one of [`COMMITS`].
+fn commits(candidate: &Candidate) -> bool {
+    candidate
+        .name
+        .as_deref()
+        .or(candidate.description.as_deref())
+        .unwrap_or_default()
+        .split(|character: char| !character.is_alphanumeric())
+        .any(|word| COMMITS.contains(&word.to_ascii_lowercase().as_str()))
 }

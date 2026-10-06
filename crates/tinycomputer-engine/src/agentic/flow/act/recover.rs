@@ -16,6 +16,7 @@ use crate::agentic::flow::{
     view::{Candidate, Screen, fingerprint, is_banned, label, signature},
 };
 
+use super::copies;
 use super::{
     BLOCKED, CLEAR_MISTAKE, DoState, Expected, MAX_BRANCHES, MAX_OBSTACLES, MAX_UNDOS, MISTAKE,
     REGRESSION, UNHELPFUL, judge::Judgement,
@@ -103,12 +104,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
         state.undos += 1;
         log.used(FlowLoop::Undo);
-        // The undone press may have been the wrong item's copy: the copies
-        // it struck off are candidates again.
-        for copy in state.copies.drain(..) {
-            state.banned.remove(&copy);
-        }
         if let Some(target) = &target {
+            // The undone press may have been the wrong item's copy: the
+            // copies it struck off are candidates again.
+            copies::lift(state, target);
             state.banned.insert(signature(target));
             self.ledger.tried(format!(
                 "pressed {}: it made things worse ({why})",

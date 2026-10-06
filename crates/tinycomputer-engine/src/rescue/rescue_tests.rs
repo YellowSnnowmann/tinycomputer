@@ -424,3 +424,32 @@ async fn guidance_that_ends_by_running_the_failed_step_again_covers_nothing_afte
         Ok(Guidance::Retry { covers: 0, .. })
     ));
 }
+
+#[tokio::test]
+async fn guidance_that_does_the_later_steps_before_rerunning_the_failed_one_covers_them() {
+    // The plan pressed Continue before filling the form; the rescue fills
+    // the fields the next steps were to fill, then presses Continue again.
+    let flow: Flow = serde_json::from_value(json!({"app": "browser", "steps": [
+        {"browse": "https://shop.test"},
+        "press Continue",
+        {"enter": {"name": "${name}"}},
+        {"enter": {"email": "${email}"}},
+        {"stop_before": "paying"}
+    ]}))
+    .unwrap();
+    let mut briefing = briefing();
+    briefing.flow = flow;
+    briefing.failed = 1;
+    briefing.known = BTreeSet::from(["name".to_owned(), "email".to_owned()]);
+    briefing.secrets.clear();
+    let reorder = r#"{"action": "retry", "reason": "the form comes first",
+      "steps": [{"enter": {"name": "${name}", "email": "${email}"}}, "press Continue"],
+      "covers": 2}"#;
+    let (rescuer, _) = scripted(&[Ok(reorder)]);
+    let Guidance::Retry { steps, covers, .. } = rescuer.guide(&briefing).await.unwrap() else {
+        panic!("expected steps");
+    };
+    assert_eq!(covers, 2, "both later fields are filled first");
+    let flow = resumed(&briefing, steps, covers);
+    assert_eq!(flow.steps.len(), 3, "the guidance, then the stop_before");
+}

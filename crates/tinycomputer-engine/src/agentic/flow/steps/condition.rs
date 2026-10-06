@@ -17,6 +17,8 @@ use super::{EMPTY_CHECKS, STEADY_CHECKS, STEADY_HOLD, WAIT_CHECKS, matching::pla
 
 /// What a page says when a search found nothing, as whole-word phrases in
 /// its title or its visible text: what a `wait_for` waits for will not come.
+/// Never a bare "no products" or "0 products": a header's empty cart says
+/// that on every page.
 const FOUND_NOTHING: &[&str] = &[
     "no results",
     "no result found",
@@ -30,8 +32,6 @@ const FOUND_NOTHING: &[&str] = &[
     "could not find any",
     "couldn t find any",
     "no matching products",
-    "no products",
-    "0 products",
 ];
 
 /// The phrase of [`FOUND_NOTHING`] `screen` shows in its title or visible

@@ -36,6 +36,10 @@ const NOT_ASKED: f64 = 0.35;
 /// they go in, and the step fails for a rescue to read rather than grounding
 /// a picker per detail.
 const BLIND_PICK_MISSES: usize = 1;
+/// Least belief Jev must give that a control named by a slot's word shows
+/// that slot's box before it is pressed for it: the same bar a single
+/// corroboration of a remembered element meets.
+const OPENER_FLOOR: f64 = 0.8;
 
 /// One slot matched to one field.
 #[derive(Debug, Clone)]

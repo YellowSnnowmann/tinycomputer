@@ -133,7 +133,10 @@ belongs to the list `from` describes ("the Air India flights", "the
 results rated 4 stars or more"). The first that does, at 0.5 or more, is
 taken. Live, the cheapest card on a store's page was another brand rated
 3.1 stars. A `by` of "first" with a condition ("first product rated 4
-stars or more") ranks in page order the same way, asking whether each of
+stars or more", "the first one under ₹500", read as a condition only when
+it holds a word such as rated, under, over, with, or available; "First AC"
+is a name, and "first to depart" an order Jev judges) ranks in page order
+the same way, asking whether each of
 the first eight belongs to `from` and meets the condition: judged over the
 whole list at once, live, it took the fifth result, another model. When
 none of the eight belongs, the list is judged as below. When it does not parse ("a morning flight with at most one
@@ -209,6 +212,14 @@ must be at least 0.5 sure which one it is), and:
   stops the run with `StoppedBeforeDestructive`;
 - with `allow_destructive`, clicks it, then asks whether the action has
   actually happened, and fails if that belief is under 0.75.
+
+A `stop_before` that names signing in and nothing else ("signing in",
+"logging in to your account", but not "paying or logging in", nor
+signing up or creating an account, which hand over a person's details)
+gates nothing: signing in is no irreversible action, and a login wall already
+pauses the task for a person on its own. The step is done at once, so a
+header's "Sign in" link on every page never stops a flow that was only
+told not to log in.
 
 The task controller turns a gated `stop_before` into a `needs_approval`
 pause, or into a final checkpoint when the control is a payment. See

@@ -363,9 +363,40 @@ pub(in crate::agentic::flow) fn first_meeting(by: &str) -> Option<String> {
     let lower = by.trim().to_ascii_lowercase();
     let lower = lower.strip_prefix("the ").unwrap_or(&lower);
     let rest = lower.strip_prefix("first ")?.trim();
-    let bare = matches!(rest, "one" | "result" | "item" | "product" | "listed" | "");
-    (!bare).then(|| rest.to_owned())
+    let conditional = rest
+        .split(|character: char| !character.is_alphanumeric())
+        .any(|word| CONDITION_WORDS.contains(&word));
+    conditional.then(|| rest.to_owned())
 }
+
+/// Words that make what follows "first" a condition on the item ("first
+/// product rated 4 stars or more", "the first one under ₹500") rather than
+/// a name the list holds ("First AC", "first class") or an order of its own
+/// ("first to depart"), which Jev judges.
+const CONDITION_WORDS: &[&str] = &[
+    "rated",
+    "rating",
+    "under",
+    "over",
+    "below",
+    "above",
+    "with",
+    "without",
+    "least",
+    "more",
+    "less",
+    "available",
+    "stock",
+    "not",
+    "that",
+    "which",
+    "priced",
+    "costing",
+    "cheaper",
+    "within",
+    "having",
+    "offering",
+];
 
 /// Whether the page shows `control` selected or checked already.
 fn selected(control: &Candidate) -> bool {

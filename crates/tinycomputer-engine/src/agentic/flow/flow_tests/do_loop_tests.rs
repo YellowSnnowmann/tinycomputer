@@ -479,19 +479,37 @@ fn three_cards(sim: &mut Sim) {
     ];
 }
 
-/// Answers that press a card's "Select" until `wanted` cards are pressed,
-/// and only then judge the step done.
+/// Picks the first option offering a "Select" its card does not already
+/// show chosen, as a person choosing seats goes on to the next free one.
+fn pick_unselected(question: &Question) -> Answer {
+    let Question::Choice(choice) = question else {
+        panic!("a choice question");
+    };
+    let key = choice
+        .criteria
+        .iter()
+        .find(|(_, description)| {
+            description.as_ref().is_some_and(|description| {
+                let text = description.to_string();
+                text.contains("Select") && !text.contains("selected")
+            })
+        })
+        .map_or_else(|| "none".to_owned(), |(key, _)| key.clone());
+    pick(question, &key, 0.9)
+}
+
+/// Answers that press a card's "Select" until `wanted` different cards
+/// are pressed, and only then judge the step done.
 fn select_until(wanted: usize) -> impl Fn(&str, &Question, &Sim) -> Option<Answer> {
     move |id, question, sim| match id {
-        "done" => Some(noul(if sim.picked.len() >= wanted {
-            0.95
-        } else {
-            0.05
-        })),
+        "done" => {
+            let distinct = sim.picked.iter().collect::<BTreeSet<_>>().len();
+            Some(noul(if distinct >= wanted { 0.95 } else { 0.05 }))
+        }
         "blocked" => Some(noul(0.05)),
         "move" => Some(pick(question, "activate", 0.9)),
         _ if id == "target" || id == "region" || id.starts_with("group_") => {
-            Some(pick(question, "Select", 0.9))
+            Some(pick_unselected(question))
         }
         _ => None,
     }
@@ -651,5 +669,157 @@ async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_no
         !behind.app.sim().clicks.contains(&"New Message".to_owned()),
         "{:?}",
         behind.app.sim().clicks
+    );
+}
+
+/// A page at `surface`, its `covered` controls drawn under something.
+fn page_at(surface: &str, covered: usize) -> Screen {
+    Screen {
+        app: "browser".to_owned(),
+        window: Some("Flights".to_owned()),
+        surface: surface.to_owned(),
+        candidates: (0..covered + 2)
+            .map(|index| {
+                let mut control = node(
+                    &format!("Control {index}"),
+                    "button",
+                    &["Click"],
+                    &["main"],
+                    f64::from(u32::try_from(index).unwrap()),
+                );
+                if index < covered {
+                    control.states = vec!["covered".to_owned()];
+                }
+                control
+            })
+            .collect(),
+        context: Vec::new(),
+        unexplored: Vec::new(),
+        text_nodes: Vec::new(),
+    }
+}
+
+#[test]
+fn a_dialog_the_task_worked_in_is_in_the_way_of_the_next_step() {
+    // A date field's calendar, left open after its day was chosen, stayed
+    // "the task's own" for every later step, so it was never cleared out of
+    // the way of the class button under it.
+    use crate::agentic::flow::front::Front;
+    let at = Some("https://flights.test/");
+    let (window, sheet) = (page_at("window", 0), page_at("sheet", 3));
+    let mut front = Front::default();
+    front.act("browse https://flights.test/", false);
+    assert!(front.look(&window, at, true).is_none());
+    front.act("click", true);
+    assert!(
+        front.look(&sheet, at, true).is_some(),
+        "the press opened it"
+    );
+    front.next_step();
+    assert!(front.opened_dialog, "the next step answers what it asks");
+    front.act("click", true);
+    front.look(&sheet, at, true);
+    assert!(
+        front.opened_dialog,
+        "still its own within the step that works in it"
+    );
+    front.next_step();
+    assert!(!front.opened_dialog, "a step later, it is in the way");
+    front.look(&sheet, at, true);
+    assert!(
+        !front.opened_dialog,
+        "and it does not become the task's again"
+    );
+
+    // A scroll or the run's own housekeeping opens no dialog of the task's.
+    for action in ["scroll", "click (clear distraction)", "click (dismiss)"] {
+        let mut front = Front::default();
+        front.act("browse https://flights.test/", false);
+        front.look(&window, at, true);
+        front.act(action, true);
+        assert!(front.look(&sheet, at, true).is_none(), "{action}");
+        assert!(!front.opened_dialog, "{action}");
+    }
+
+    // Opening an address leaves what was in front behind.
+    let mut front = Front::default();
+    front.act("browse https://flights.test/", false);
+    front.look(&window, at, true);
+    front.act("click", true);
+    front.look(&sheet, at, true);
+    front.act("browse https://flights.test/next", false);
+    assert!(!front.opened_dialog);
+}
+
+#[tokio::test]
+async fn answering_the_task_dialog_never_presses_what_commits() {
+    // The fallback presses what serves no step's words, so it never
+    // presses what a person would approve: "Confirm 2 tickets? Yes".
+    let run = run_with(
+        App::with(|sim| {
+            sim.obstacle = true;
+            sim.quirks.insert(Quirk::YesOnSheet);
+        }),
+        json!({"app": "browser", "steps": ["choose seat A5"]}),
+        |_| {},
+        |id, question, sim| {
+            let answering = serde_json::to_string(question)
+                .unwrap()
+                .contains("click to answer the dialog");
+            match id {
+                "done" => Some(noul(if sim.obstacle { 0.05 } else { 0.95 })),
+                "blocked" => Some(noul(0.05)),
+                "move" => Some(pick(question, "activate", 0.9)),
+                _ if id == "target" || id == "region" || id.starts_with("group_") => Some(pick(
+                    question,
+                    if answering { "Yes" } else { "no such control" },
+                    0.9,
+                )),
+                _ => None,
+            }
+        },
+    )
+    .await;
+    assert!(
+        !run.app.sim().clicks.contains(&"Yes".to_owned()),
+        "{:?}",
+        run.result.steps
+    );
+}
+
+#[test]
+fn a_pressed_controls_copies_are_only_on_the_other_items_of_its_list() {
+    // Live, the main "Add to cart" was refused and the sticky bar's own
+    // "Add to cart" was struck off with the copies.
+    let select = |list: &str, card: &str| {
+        let mut path = vec!["main".to_owned(), list.to_owned()];
+        if !card.is_empty() {
+            path.push(card.to_owned());
+        }
+        Candidate {
+            ref_id: format!("@s:{list}-{card}"),
+            path,
+            ..node("Add to cart", "button", &["Click"], &[], 10.0)
+        }
+    };
+    let screen = Screen {
+        app: "browser".to_owned(),
+        window: None,
+        surface: "window".to_owned(),
+        candidates: vec![
+            select("list \"Results\"", "listitem #1"),
+            select("list \"Results\"", "listitem #2"),
+            select("list \"Results\"", "listitem #3"),
+            select("region \"Sticky\"", ""),
+        ],
+        context: Vec::new(),
+        unexplored: Vec::new(),
+        text_nodes: Vec::new(),
+    };
+    let copies = act::copies_of(&screen, &screen.candidates[0]);
+    assert_eq!(copies.len(), 2, "{copies:?}");
+    assert!(
+        act::copies_of(&screen, &screen.candidates[3]).is_empty(),
+        "the bar's own has none"
     );
 }

@@ -376,3 +376,53 @@ async fn a_row_that_refused_the_text_is_never_pressed_while_revealing_a_field() 
         "no field that takes text was found for: destination search; 1 element(s) the page offered as fields refused the text"
     );
 }
+
+#[tokio::test]
+async fn a_control_named_by_the_slot_opens_its_box_only_when_jev_agrees() {
+    // A link sharing the slot's word ("Search mail" for "search") shows the
+    // box, but a shared word alone is no reason to press: "Email us"
+    // shares "email", and pressing it left the form.
+    let confirming =
+        |yes: f64| move |id: &str, _: &Question, _: &Sim| (id == "confirm").then(|| noul(yes));
+    let opened = run_with(
+        App::with(|sim| {
+            sim.quirks.insert(Quirk::SearchBehindLink);
+        }),
+        json!({"app": "Mail", "steps": [{"enter": {"search": "invoices"}}]}),
+        |_| {},
+        confirming(0.95),
+    )
+    .await;
+    assert_eq!(
+        opened.app.sim().fields.get("Search").map(String::as_str),
+        Some("invoices"),
+        "{:?}",
+        opened.result.steps
+    );
+    assert!(
+        opened.result.steps[0]
+            .actions
+            .iter()
+            .any(|action| action.action == "click (show the field)"),
+        "{:?}",
+        opened.result.steps[0].actions
+    );
+
+    let refused = run_with(
+        App::with(|sim| {
+            sim.quirks.insert(Quirk::SearchBehindLink);
+        }),
+        json!({"app": "Mail", "steps": [{"enter": {"search": "invoices"}}]}),
+        |_| {},
+        confirming(0.2),
+    )
+    .await;
+    assert!(
+        !refused.result.steps[0]
+            .actions
+            .iter()
+            .any(|action| action.action == "click (show the field)"),
+        "pressed without Jev agreeing: {:?}",
+        refused.result.steps[0].actions
+    );
+}

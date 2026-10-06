@@ -139,20 +139,42 @@ before the text was typed, it picks the one that matches it
   (`SUGGESTION_FLOOR`), since pressing replaces what was typed;
 - a private text, a fact's value, is never offered: picking would show it
   to Jev, so it stays as typed;
-- a search box (a `searchbox`, or a slot or box named for searching) takes
-  only a row that is the same search: the text as typed, or it after words
-  such as "Show all results for". Any other completion is another search
-  (live, "blue light blocking glasses" became another product's name), so
-  the text stays as typed;
-- a place box (a combo box, or a slot named for a place: pickup, drop,
-  from, to, address, city, …) is given two more looks, a wait apart, when
-  no row showed yet (`LATE_LOOKS`), and there a row that was already
-  showing still counts when it matches the text, as does a pressable box
-  sharing at least half the text's words: a ride app lists popular places
-  as soon as its box has the focus, and words its rows its own way ("MG
-  Road / Shivaji Nagar Bengaluru" for "MG Road Metro Station, Bengaluru").
+- a search box (a `searchbox`, or a slot or box named for searching, but
+  not a place box whose own words say "Search for area…") takes only a new
+  row that is the same search: the text as typed, or it after words such as
+  "Show all results for". Any other completion is another search (live,
+  "blue light blocking glasses" became another product's name), so the text
+  stays as typed;
+- a place box (a slot named for a place: pickup, drop, from, to, address,
+  city, …) is given two more looks, a wait apart, when no row showed yet
+  (`LATE_LOOKS`), and there a row that was already showing still counts when
+  it matches the text, as does a pressable box sharing at least half the
+  text's words: a ride app lists popular places as soon as its box has the
+  focus, and words its rows its own way ("MG Road / Shivaji Nagar Bengaluru"
+  for "MG Road Metro Station, Bengaluru"). When no row completes the text,
+  Jev is asked once more for the row naming the same place in other words,
+  or the nearest place listed, at the same floor: a place box keeps nothing
+  until a row is chosen, and no row is ever pressed on shared words alone.
 
 A field that opens no list costs nothing extra: no question is asked.
 
+When no field for a slot is on screen, a link or button whose name holds a
+word of the slot's name (four letters or more, never a word that only says
+"box" or names a kind of control) may show it: a store's search link for the
+slot "search". It is pressed only once Jev agrees it shows that slot's box
+(`OPENER_FLOOR`, 0.8): a shared word alone is no reason, and a link named
+"Email us" shares "email".
+
+A plain `do` step that types ("enter 560001 into the pincode field", "type
+'Maggi' in the search box") runs as this `enter`, read from the step as
+written, before any substitution. A quoted text ends at its quote; otherwise
+the text splits at the first " into ", or the last " in ", " as ", or " for "
+whose field names a box. "Enter" also means going into something ("enter
+Reader mode in Safari"), so with " in " it types only what is quoted, data
+(digits, an address, a `${name}`), or into what names a box; a step that
+does more than type ("… and press Enter") stays a plain step, for a rescue
+to split.
+
 See [`docs/technical/decision-thresholds.md`](../../../technical/decision-thresholds.md)
-for `SLOT_FLOOR`, `FIELD_ERROR`, `NOT_ASKED`, and `BLIND_PICK_MISSES`.
+for `SLOT_FLOOR`, `FIELD_ERROR`, `NOT_ASKED`, `BLIND_PICK_MISSES`, and
+`OPENER_FLOOR`.

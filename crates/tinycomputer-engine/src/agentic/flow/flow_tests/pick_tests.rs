@@ -338,6 +338,11 @@ fn a_first_with_a_condition_walks_the_list_in_order() {
         "first one",
         "first result",
         "lowest price",
+        // A name the list holds, or an order of its own: Jev judges these.
+        "First AC",
+        "first class",
+        "first to depart",
+        "first alphabetically",
     ] {
         assert_eq!(first_meeting(bare), None, "{bare}");
     }

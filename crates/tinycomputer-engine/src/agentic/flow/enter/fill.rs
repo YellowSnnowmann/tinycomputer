@@ -9,12 +9,13 @@ use tinycomputer_core::reformat_date;
 
 use crate::agentic::flow::{
     AgentBackend, FlowRun, Halt, StepLog,
+    ask::{self, Questions, corroborate, probability},
     backend::deliver_text,
     memory::{learn, remember},
     view::{Candidate, Screen, element_kind, is_destructive, label},
 };
 
-use super::{BLIND_PICK_MISSES, REVEAL_TURNS, editable, names};
+use super::{BLIND_PICK_MISSES, OPENER_FLOOR, REVEAL_TURNS, editable, names};
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// Presses the control on `screen` whose label holds a pending slot's
@@ -34,6 +35,25 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         else {
             return Ok(false);
         };
+        // A shared word is a hint, not a reason to press: a link named
+        // "Email us" shares the slot "email", and pressing it left the form.
+        let purpose = format!("click to show the box for: {}", names(slots, pending));
+        let answers = self
+            .ask(
+                log,
+                ask::request(
+                    self.model(),
+                    self.state(screen, &purpose),
+                    Questions::default().with(
+                        "confirm",
+                        corroborate(&purpose, &opener, self.include_values),
+                    ),
+                ),
+            )
+            .await?;
+        if probability(&answers, "confirm").is_none_or(|yes| yes < OPENER_FLOOR) {
+            return Ok(false);
+        }
         let pressed = opener.clone();
         let reply = self
             .act(
@@ -251,9 +271,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     }
 }
 
-/// Words of a slot's name that say only that it is a box.
+/// Words of a slot's name that say only that it is a box, or name a kind
+/// of control rather than what the slot is.
 const BOX_WORDS: &[&str] = &[
-    "field", "box", "input", "bar", "the", "your", "text", "here",
+    "field", "box", "input", "bar", "the", "your", "text", "here", "link", "button", "menu", "icon",
 ];
 
 /// A control on `screen` that is no field itself and whose label holds a
@@ -287,7 +308,7 @@ fn named_opener(screen: &Screen, slots: &[Slot], pending: &BTreeSet<usize>) -> O
                     .any(|state| state.eq_ignore_ascii_case("covered"))
         })
         .find(|candidate| {
-            words(&label(candidate))
+            words(candidate.name.as_deref().unwrap_or_default())
                 .iter()
                 .take(3)
                 .any(|word| wanted.contains(word))

@@ -89,6 +89,30 @@ most two undos per step (`MAX_UNDOS`), shared between the two triggers.
 (`MAX_IDLE_WAITS`), Jev is not let choose `wait` again for the rest of the
 step.
 
+**A dialog the task opened.** When the run's own press or typing puts a
+dialog (or, on the same page, a layer covering `LAYER_COVERS` more
+controls) in front, that dialog is the task's next stage, not an obstacle
+(`front.rs`): attention, obstacle clearing, and undo leave it open, a
+covered control behind it is not offered as a move (one its own bar covers
+inside it is), and its close control is offered only to a step that asks
+to close something. A step that then presses inside it has served it: at
+the next step it is an ordinary overlay again, so a calendar left open
+after its day is cleared out of the way. A scroll or the run's own
+housekeeping (a distraction cleared, a dismissal, an undo) opens no
+dialog of the task's, and opening an address forgets it. On a browser task,
+when nothing serves the step while such a dialog is in front, grounding
+asks once which of the dialog's own controls answers it the way the task
+wants (a format a booking button asks for before its dates), never one
+that commits (yes, OK, confirm, pay, book, buy, send, delete), and presses
+that without remembering it as the step's control.
+
+**Presses.** A control pressed `MAX_REPEAT_PRESSES` times in a step is not
+pressed again in it, nor a key; a scroll is no press. A named control's
+copies on the other items of its list ("Add" on every product card) are
+struck off once the next look shows the press changed the screen, unless
+the step asks for every item or chooses several ("choose 2 adjacent
+seats"); undoing that press lifts them again.
+
 ### 5. Make the move
 
 The available moves describe things every application offers, on purpose,

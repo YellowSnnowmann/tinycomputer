@@ -244,7 +244,7 @@ fn nothing_is_sent_for_a_state_no_person_answers() {
             "{paused:?}"
         );
     }
-    assert!(person.asked().is_empty());
+    assert_eq!(person.asked().len(), 0);
 }
 
 #[test]
@@ -270,7 +270,7 @@ fn what_a_task_read_is_printed_one_variable_a_line() {
             "  read total: Rs. 264"
         ]
     );
-    assert!(read_lines(&BTreeMap::new()).is_empty());
+    assert_eq!(read_lines(&BTreeMap::new()).len(), 0);
 }
 
 #[test]

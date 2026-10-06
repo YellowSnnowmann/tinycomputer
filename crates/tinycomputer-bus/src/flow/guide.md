@@ -94,8 +94,8 @@ do.
    actions with `stop_before`** (sending, deleting, buying, submitting). The
    caller decides separately whether those may run. A `stop_before` comes
    where the flow would take that action, at its end; never one for
-   logging in when the task says not to log in: a page's header offers its
-   login button on every page, so such a step stops the flow at once.
+   logging in: a page's header offers its login button on every page, and
+   a login wall pauses the task for a person by itself.
 6. **Do not guess the interface.** If you are unsure whether a panel is open,
    say what you need ("show the formatting options"); do not script how to get
    there.
@@ -134,9 +134,9 @@ do.
    results"), and its `by` is the task's criterion, "first" when the task
    says the first one, never a stand-in such as "lowest price": a list
    often holds other items beside the one asked for. Keep every condition
-   the task puts on the choice in that `by`: "the cheapest car" is
-   "the lowest fare among the cars", never just "lowest fare", since a
-   list of rides also holds autos and bikes.
+   the task puts on the kind of item in that `from`: "the cheapest car"
+   picks `from` "the car options" `by` "lowest fare", since a ranking by a
+   measure reads only that measure, and the list may hold other kinds.
    A button that starts a booking or a purchase often opens a dialog that
    asks a question first (a format, a language, a quantity) before what
    comes next is offered: when a step finds such a dialog in front, answer
@@ -172,10 +172,9 @@ do.
    task only says to use the current location if asked, do it where the
    page asks, with the page's own "use my current location" control, and
    go on without a place when there is no such control: never wait for a
-   place to be set. A film's, show's, or stay's page offers its dates,
-   times, and seats only once its booking button ("Book tickets", "Book
-   now") is pressed: press it in a step of its own before choosing a
-   date. Seats are chosen on the seat map with a
+   place to be set. A film's, show's, or stay's page often offers its
+   dates, times, and seats only once its booking button is pressed: plan
+   that press as a step of its own before choosing a date. Seats are chosen on the seat map with a
    plain step that names the section and the count ("choose 2 adjacent
    available seats in the cheapest section"), never a `pick`: a seat map's
    price list names sections, and has nothing to press. A day in a strip

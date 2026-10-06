@@ -31,7 +31,8 @@ pub(super) use {
     },
     read::chosen_together,
     read::readable,
-    suggestion::{closest_place, same_search, searches, shares_most_words, suggests},
+    stop::only_signs_in,
+    suggestion::{same_search, searches, shares_most_words, suggests},
     typing::typing,
 };
 
@@ -87,8 +88,12 @@ pub(super) async fn run<B: AgentBackend + Sync>(
     match action {
         FlowAction::Open(app) => run.open(log, app).await,
         FlowAction::Browse(url) => run.browse(log, url).await,
-        // A plain step that types is an `enter`: a `do` cannot type.
-        FlowAction::Do(_) => match typing::typing(text) {
+        // A plain step that types is an `enter`: a `do` cannot type. It is
+        // read from the step as written, never from `text`, which has
+        // already been through substitution: `enter` substitutes once more,
+        // and a value read off a page that says `${card_number}` would
+        // then be typed as the caller's card number.
+        FlowAction::Do(intent) => match typing::typing(intent) {
             Some(slot) => run.enter(log, &[slot]).await,
             None => run.accomplish(log, text, DO_TURNS).await,
         },

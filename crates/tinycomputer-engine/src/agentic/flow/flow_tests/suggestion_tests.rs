@@ -86,18 +86,27 @@ async fn enter_picks_the_suggestion_an_autocomplete_box_lists_for_the_typed_text
 }
 
 #[tokio::test]
-async fn a_place_box_takes_its_closest_row_when_no_suggestion_clearly_fits() {
-    // An unsure pick (0.45) is not pressed as such. A search box's
-    // completions are other searches and stay unpressed (live, "boat
-    // airdopes 141 anc" replaced a search; `same_search` keeps it as typed).
-    // A place box, though, keeps a place only once a row is chosen, so the
-    // row sharing the most of the typed words is taken: live, a ride app
-    // had no row naming the station typed, and its pickup was never set.
+async fn a_place_box_asks_again_for_the_row_naming_its_place_in_other_words() {
+    // An unsure pick (0.45) is not pressed as such. A place box, though,
+    // keeps a place only once a row is chosen, so Jev is asked once more for
+    // the row naming the same place in other words: live, a ride app had no
+    // row naming the station typed, and its pickup was never set. Nothing
+    // is pressed on word overlap alone.
+    let nearest = |sure: f64| {
+        move |id: &str, question: &Question, sim: &Sim| {
+            if matches!(question, Question::Choice(_))
+                && text_of(question, "purpose").contains("nearest place")
+            {
+                return Some(pick(question, "Connaught Place New Delhi", sure));
+            }
+            suggesting(id, question, sim, 0.45)
+        }
+    };
     let run = run_with(
         App::with(|sim| sim.places = Some(Places::default())),
         json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Connaught Place"}}]}),
         |_| {},
-        |id, question, sim| suggesting(id, question, sim, 0.45),
+        nearest(0.8),
     )
     .await;
     assert_eq!(
@@ -106,20 +115,50 @@ async fn a_place_box_takes_its_closest_row_when_no_suggestion_clearly_fits() {
         "{:?}",
         run.result.steps
     );
-    let sim = run.app.sim();
-    assert_ne!(sim.fields["Pickup location"], "Connaught Place");
-    assert!(sim.fields["Pickup location"].starts_with("Connaught Place"));
-    assert!(
-        sim.places
-            .as_ref()
-            .unwrap()
-            .picked
-            .contains("Pickup location")
-    );
-    drop(sim);
+    {
+        let sim = run.app.sim();
+        assert_ne!(sim.fields["Pickup location"], "Connaught Place");
+        assert!(sim.fields["Pickup location"].starts_with("Connaught Place"));
+        assert!(
+            sim.places
+                .as_ref()
+                .unwrap()
+                .picked
+                .contains("Pickup location")
+        );
+    }
     assert!(
         asked_for_a_suggestion(&run),
         "Jev was asked, and was unsure"
+    );
+
+    // Jev unsure of every row, however it is asked: nothing is pressed.
+    let unsure = run_with(
+        App::with(|sim| sim.places = Some(Places::default())),
+        json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Connaught Place"}}]}),
+        |_| {},
+        |id, question, sim| {
+            if id.starts_with("slot_") {
+                return suggesting(id, question, sim, 0.3);
+            }
+            Some(match question {
+                Question::Choice(_) => pick(question, "none", 0.9),
+                _ => noul(0.1),
+            })
+        },
+    )
+    .await;
+    assert!(
+        !unsure
+            .app
+            .sim()
+            .places
+            .as_ref()
+            .unwrap()
+            .picked
+            .contains("Pickup location"),
+        "no row is pressed that Jev did not choose: {:?}",
+        unsure.result.steps
     );
 }
 
@@ -240,7 +279,10 @@ fn a_search_box_takes_only_the_same_search_and_a_place_box_its_reworded_rows() {
 
     assert!(suggests("pickup", &box_named("Enter address..", "textbox")));
     assert!(suggests("where to", &box_named("Destination", "textbox")));
-    assert!(suggests("anything", &box_named("Find", "combobox")));
+    assert!(
+        !suggests("anything", &box_named("Find", "combobox")),
+        "a combo box alone is no place box"
+    );
     assert!(!suggests("first name", &box_named("First name", "textbox")));
 
     let row = |name: &str| node(name, "generic", &["Click"], &[], 0.0);
@@ -252,24 +294,4 @@ fn a_search_box_takes_only_the_same_search_and_a_place_box_its_reworded_rows() {
         &row("Indiranagar Bengaluru"),
         "MG Road Metro Station, Bengaluru"
     ));
-}
-
-#[test]
-fn a_place_no_row_names_exactly_takes_the_row_sharing_most_of_its_words() {
-    use super::steps::closest_place;
-    let row = |name: &str| node(name, "generic", &["Click"], &[], 0.0);
-    let rows = [
-        row("Mahatma Gandhi Road Shivaji Nagar Bengaluru Karnataka India MAP"),
-        row("MG Road Shivaji Nagar Bengaluru Karnataka MAP"),
-        row("MG Road Shanthala Nagar Ashok Nagar Bengaluru Karnataka MAP"),
-        row("Photobooth Church Street Bengaluru Karnataka India MAP"),
-    ];
-    assert_eq!(
-        closest_place(&rows, "MG Road Metro Station, Bengaluru")
-            .and_then(|row| row.name)
-            .as_deref(),
-        Some("MG Road Shivaji Nagar Bengaluru Karnataka MAP"),
-        "the first of the rows sharing the most words"
-    );
-    assert!(closest_place(&rows, "Indiranagar Metro, Bengaluru").is_none());
 }

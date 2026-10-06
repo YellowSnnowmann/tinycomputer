@@ -181,3 +181,41 @@ async fn a_value_read_into_a_declared_variable_is_reported() {
         "a value the flow was given is not a read"
     );
 }
+
+#[tokio::test]
+async fn a_variable_defined_from_a_fact_is_never_reported_as_a_read() {
+    // A flow may define a variable from the caller's values, and the run
+    // expands it when it starts: its value then differs from the flow's own
+    // `${email}`, but it is the caller's input, and when the fact is secret
+    // it must never come back in the records.
+    let (tasks, _) = controller(vec![finished_run(
+        FlowStopReason::Completed,
+        vec![],
+        &[("recipient", "asha@example.com"), ("total", "Rs. 264")],
+        None,
+    )]);
+    let view = tasks
+        .start(&StartTaskRequest {
+            task: Some("read the bag total".to_owned()),
+            flow: Some(flow(json!({
+                "app": "browser",
+                "vars": {"recipient": "${email}", "total": ""},
+                "steps": [
+                    {"enter": {"email": "${recipient}"}},
+                    {"read": {"what": "the bag total", "into": "total"}}
+                ]
+            }))),
+            facts: BTreeMap::from([("email".to_owned(), "asha@example.com".to_owned())]),
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    let TaskStatus::Done { records, .. } = settle(&tasks, &view.id).await.status else {
+        panic!("done");
+    };
+    assert!(
+        !records.contains_key("recipient"),
+        "a variable defined from a fact is the caller's input: {records:?}"
+    );
+    assert!(records.contains_key("total"));
+}

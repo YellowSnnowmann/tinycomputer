@@ -24,7 +24,11 @@
 //! `moves` makes the chosen move, and `recover` undoes a turn that went
 //! wrong. This root holds the thresholds and the state they share.
 
+mod copies;
 mod dialog;
+
+#[cfg(test)]
+pub(in crate::agentic::flow) use copies::copies_of;
 mod judge;
 mod moves;
 mod recover;
@@ -208,8 +212,12 @@ struct DoState {
     /// How often each control was pressed this step, by its press key.
     presses: BTreeMap<String, u32>,
     /// The press keys struck off because a copy of theirs on another item
-    /// was pressed: an undo of that press lifts them again.
-    copies: Vec<String>,
+    /// was pressed, by the press key of the press that struck them: an undo
+    /// of that press lifts them again.
+    copies: BTreeMap<String, Vec<String>>,
+    /// The last press's key, label, and copies, struck off once the next
+    /// look shows the press changed something (`copies.rs`).
+    pending_copies: Option<(String, String, Vec<String>)>,
 }
 
 /// What a move did.

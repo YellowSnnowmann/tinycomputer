@@ -12,6 +12,7 @@ use crate::agentic::flow::{
     view::{Candidate, Screen, change_note, fingerprint, label, press_key, signature},
 };
 
+use super::copies;
 use super::{
     DONE, DoState, Expected, LastAction, MAX_IDLE_SCROLLS, MAX_IDLE_WAITS, MAX_REPEAT_PRESSES,
     Move, STALL_TURNS, asks_for_every, asks_for_several, closed_the_overlay, creates_new,
@@ -201,7 +202,11 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         judged: &Judgement,
         (target, expected): (Option<Box<Candidate>>, Option<Box<Expected>>),
     ) {
-        if let Some(pressed) = target.as_deref() {
+        // A scroll moves through a list and presses nothing: it counts
+        // toward no press's cap, and strikes off no copies.
+        if let Some(pressed) = target.as_deref()
+            && judged.next != "scroll"
+        {
             self.note_press(state, &screen, pressed, intent);
         }
         if judged.next == "shortcut"
@@ -228,7 +233,8 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
 
     /// Counts a press of `pressed` on `screen`, and strikes off what the step
     /// must not press next: the control itself once pressed
-    /// [`MAX_REPEAT_PRESSES`] times, and its copies on other items at once.
+    /// [`MAX_REPEAT_PRESSES`] times, and its copies on the other items of
+    /// its list once the next look shows the press did something.
     ///
     /// A list repeats a named button on every item ("Add" on each product
     /// card), and once one is pressed, another copy acts on a different
@@ -262,21 +268,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         {
             return;
         }
-        let pressed_label = label(pressed);
-        let copies = screen
-            .candidates
-            .iter()
-            .filter(|candidate| label(candidate) == pressed_label && candidate.path != pressed.path)
-            .map(press_key)
-            .filter(|copy| state.banned.insert(copy.clone()))
-            .collect::<Vec<_>>();
-        if copies.is_empty() {
-            return;
+        let copies = copies::copies_of(screen, pressed);
+        if !copies.is_empty() {
+            state.pending_copies = Some((press_key(pressed), label(pressed), copies));
         }
-        self.history.push(format!(
-            "{pressed_label} is repeated on other items; pressing another copy would act on a different item, so only the one pressed counts for this step"
-        ));
-        state.copies.extend(copies);
     }
 
     /// Records what the last action changed, banning an element that changed
@@ -320,6 +315,9 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             }
         }
         self.history.push(format!("after the last action: {note}"));
+        if let Some(struck) = copies::strike_pending(state, changed) {
+            self.history.push(struck);
+        }
         // A step whose work the page did by itself (a search box that lists
         // results as it is typed in) has nothing left to press: the note
         // says so, so a rescue skips it rather than retry it. Live, four

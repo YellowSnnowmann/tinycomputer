@@ -281,7 +281,7 @@ pub(super) fn booking_widget(
 /// The obstacle sheet's controls: two buttons, and a checkbox holding a
 /// value, to check that value-visibility policy is honored when it is
 /// offered as a dismissal option.
-pub(super) fn obstacle_sheet(candidates: &mut Vec<Candidate>) {
+pub(super) fn obstacle_sheet(sim: &Sim, candidates: &mut Vec<Candidate>) {
     candidates.push(node(
         "Delete Draft",
         "button",
@@ -300,6 +300,12 @@ pub(super) fn obstacle_sheet(candidates: &mut Vec<Candidate>) {
         value: Some(json!("unsaved-draft-42")),
         ..node("Remember", "checkbox", &["Click"], &["sheet"], 500.0)
     });
+    if sim.has(Quirk::BarOverSheet) {
+        bar_over_sheet(candidates);
+    }
+    if sim.has(Quirk::YesOnSheet) {
+        candidates.push(node("Yes", "button", &["Click"], &["sheet"], 520.0));
+    }
 }
 
 /// The obstacle sheet as a dialog whose own bar covers "Keep Editing" in
@@ -414,5 +420,39 @@ pub(super) fn overlays(sim: &Sim, root: &str, candidates: &mut Vec<Candidate>) {
         let toast = [root, "region \"Unlimited date changes\""];
         candidates.push(node("Close", "button", &["Click"], &toast, 700.0));
         candidates.push(node("Learn more", "link", &["Click"], &toast, 720.0));
+    }
+}
+
+/// The inbox's search behind its "Search mail" link, beside a "Contact us"
+/// link, under `Quirk::SearchBehindLink`.
+pub(super) fn search_behind_link(sim: &Sim, root: &str, candidates: &mut Vec<Candidate>) {
+    if !sim.has(Quirk::SearchBehindLink) {
+        return;
+    }
+    candidates.push(node(
+        "Contact us",
+        "link",
+        &["Click"],
+        &[root, "banner"],
+        20.0,
+    ));
+    if sim.has(Quirk::SearchOpen) {
+        let mut search = node(
+            "Search",
+            "textfield",
+            &["SetValue"],
+            &[root, "banner"],
+            22.0,
+        );
+        search.value = sim.fields.get("Search").map(|value| json!(value));
+        candidates.push(search);
+    } else {
+        candidates.push(node(
+            "Search mail",
+            "link",
+            &["Click"],
+            &[root, "banner"],
+            22.0,
+        ));
     }
 }

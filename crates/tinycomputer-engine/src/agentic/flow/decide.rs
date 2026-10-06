@@ -60,20 +60,8 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         if votes > 1 {
             log.used(FlowLoop::Vote);
         }
-        let batched = requests.len();
-        let mut asked = Vec::with_capacity(batched);
-        for request in requests {
-            let parts = self.outgoing(log, request);
-            let framings = parts
-                .iter()
-                .map(|part| vote::framings(part, votes))
-                .collect::<Vec<_>>();
-            let handles = framings
-                .iter()
-                .map(|framings| self.spawn(framings))
-                .collect::<Vec<_>>();
-            asked.push((parts, framings, handles));
-        }
+        let asked = self.send(log, requests, room, votes);
+        let batched = asked.len();
         self.rounds = self.rounds.saturating_add(1);
         let asked_at = Instant::now();
         let mut replies = Vec::with_capacity(batched);
@@ -145,6 +133,46 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         Ok(replies)
     }
 
+    /// Sends each of `requests` in its parts, every part in `votes`
+    /// framings at once, within `room` calls. A request asked in parts costs
+    /// a call per part and framing: the budget is charged for every one, and
+    /// a speculative request that would run past it is left out, never the
+    /// first, which asks fewer framings instead.
+    fn send(
+        &self,
+        log: &mut StepLog,
+        requests: Vec<EvaluationRequest>,
+        room: u32,
+        votes: u32,
+    ) -> Vec<Sent> {
+        let mut asked = Vec::with_capacity(requests.len());
+        let mut spent = 0_u32;
+        for (index, request) in requests.into_iter().enumerate() {
+            let parts = self.outgoing(log, request);
+            let count = u32::try_from(parts.len()).unwrap_or(u32::MAX).max(1);
+            let votes = if index == 0 {
+                votes.min((room / count).max(1))
+            } else {
+                votes
+            };
+            let cost = count.saturating_mul(votes);
+            if index > 0 && spent.saturating_add(cost) > room {
+                break;
+            }
+            spent = spent.saturating_add(cost);
+            let framings = parts
+                .iter()
+                .map(|part| vote::framings(part, votes))
+                .collect::<Vec<_>>();
+            let handles = framings
+                .iter()
+                .map(|framings| self.spawn(framings))
+                .collect::<Vec<_>>();
+            asked.push((parts, framings, handles));
+        }
+        asked
+    }
+
     /// `request` as it leaves for Jev: with the page-kind question on a web
     /// page, briefed, masked, and fitted to size, in parts when its
     /// questions outgrow one request ([`split`]).
@@ -210,6 +238,23 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     }
 }
 
+/// One request as sent: its parts, each part's framings, and the tasks
+/// evaluating them.
+type Sent = (
+    Vec<EvaluationRequest>,
+    Vec<Vec<vote::Framing>>,
+    Vec<
+        Vec<
+            tokio::task::JoinHandle<
+                Result<
+                    tinyinference_decisions::EvaluationResult,
+                    tinyinference_decisions::EvaluationFailure,
+                >,
+            >,
+        >,
+    >,
+);
+
 /// The id of the page-kind question a request on a web page carries.
 pub(super) const PAGE_KIND: &str = "page_kind";
 
@@ -233,11 +278,21 @@ pub(in crate::agentic::flow) fn split(
         model,
         questions,
     } = request;
-    let empty = EvaluationRequest {
+    let mut empty = EvaluationRequest {
         state,
         model,
         questions: BTreeMap::new(),
     };
+    // A screen that fills most of a part by itself would leave room for one
+    // question each, and every question would cost its own call: the
+    // screen's longest lists are cut to half the limit first.
+    while bytes(&empty) > limit / 2 {
+        let Some(longest) = longest_list(&mut empty.state) else {
+            break;
+        };
+        let cut = (longest.len() / 4).max(1);
+        longest.truncate(longest.len() - cut);
+    }
     let base = bytes(&empty);
     let mut parts = Vec::new();
     let mut part = empty.clone();

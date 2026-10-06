@@ -68,6 +68,9 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             .map(|candidate| (candidate.role.as_str(), candidate.name.as_deref()))
             .collect::<BTreeSet<_>>();
         let place = suggests(slot, field);
+        // A place box whose own words say "Search for area, street…" still
+        // takes a place, not a search.
+        let searching = searches(slot, field) && !place;
         let mut fresh = fresh_rows(&screen, &shown, field, text, &self.stop_before, place);
         // A box that suggests places lists them once the page has fetched
         // them: live, a ride app's rows came after the first look, and the
@@ -113,7 +116,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         // the same search ("Show all results for …") is pressed, at once.
         // Live, "blue light blocking glasses" became another product's
         // name, picked as a suggestion, and the search changed.
-        let pool = if searches(slot, field) {
+        let pool = if searching {
             let Some(row) = same_search_row(pool, &typed) else {
                 self.history.push(format!(
                     "no suggestion is the same search; the {slot} stays as typed"
@@ -124,28 +127,15 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         } else {
             pool
         };
-        let purpose = format!("pick the suggestion that completes the {slot} as {text:?}");
-        // A place box keeps a place only once a row is chosen: when no row
-        // names it exactly, the closest row is taken rather than none.
-        let closest = closest_place(&pool, text).filter(|_| place && !searches(slot, field));
-        let exact = one_option(&pool)
-            && pool
-                .iter()
-                .all(|candidate| plain(candidate.name.as_deref().unwrap_or_default()) == typed);
-        let grounded = if searches(slot, field) || exact {
-            plainest(pool).map(|candidate| Grounded {
-                candidate,
-                confidence: 1.0,
-            })
-        } else {
-            self.ground(log, &screen, &purpose, &format!("{slot} suggestion"), pool)
-                .await?
+        let row = Row {
+            slot,
+            text,
+            typed: &typed,
+            place,
+            searching,
         };
-        let Some(target) = grounded
-            .filter(|grounded| grounded.confidence >= SUGGESTION_FLOOR)
-            .map(|grounded| grounded.candidate)
-            .or(closest)
-        else {
+        let grounded = self.ground_row(log, &screen, &row, pool).await?;
+        let Some(target) = grounded.map(|grounded| grounded.candidate) else {
             self.history.push(format!(
                 "no suggestion clearly fit the {slot}; it stays as typed"
             ));
@@ -167,6 +157,77 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         });
         Ok(())
     }
+
+    /// The row of `pool` to press for `row`: one that reads as the text
+    /// itself, or the same search, at once; else Jev's pick at
+    /// [`SUGGESTION_FLOOR`] or more. A place box keeps a place only once a
+    /// row is chosen, so when no row completes the text, Jev is asked once
+    /// more for the row naming the same place in other words: live, a ride
+    /// app listed "MG Road Shivaji Nagar Bengaluru" for "MG Road Metro
+    /// Station, Bengaluru", and a pickup left as typed is no pickup.
+    async fn ground_row(
+        &mut self,
+        log: &mut StepLog,
+        screen: &Screen,
+        row: &Row<'_>,
+        pool: Vec<Candidate>,
+    ) -> Result<Option<Grounded>, Halt> {
+        let Row {
+            slot,
+            text,
+            typed,
+            place,
+            searching,
+        } = *row;
+        let exact = one_option(&pool)
+            && pool
+                .iter()
+                .all(|candidate| plain(candidate.name.as_deref().unwrap_or_default()) == typed);
+        if searching || exact {
+            return Ok(plainest(pool).map(|candidate| Grounded {
+                candidate,
+                confidence: 1.0,
+            }));
+        }
+        let purpose = format!("pick the suggestion that completes the {slot} as {text:?}");
+        let grounded = self
+            .ground(
+                log,
+                screen,
+                &purpose,
+                &format!("{slot} suggestion"),
+                pool.clone(),
+            )
+            .await?
+            .filter(|grounded| grounded.confidence >= SUGGESTION_FLOOR);
+        if grounded.is_some() || !place {
+            return Ok(grounded);
+        }
+        let nearest = format!(
+            "pick the suggestion naming the same place as {text:?} in other words, or the nearest place it lists"
+        );
+        Ok(self
+            .ground(
+                log,
+                screen,
+                &nearest,
+                &format!("{slot} nearest place"),
+                pool,
+            )
+            .await?
+            .filter(|grounded| grounded.confidence >= SUGGESTION_FLOOR))
+    }
+}
+
+/// What a typed box's row must be: the slot and text typed, the text in
+/// plain words, and whether the box takes a place or runs a search.
+#[derive(Clone, Copy)]
+struct Row<'a> {
+    slot: &'a str,
+    text: &'a str,
+    typed: &'a str,
+    place: bool,
+    searching: bool,
 }
 
 /// Words a suggestion may set around the typed query and stay the same
@@ -242,13 +303,14 @@ const PLACE_WORDS: &[&str] = &[
     "place",
 ];
 
-/// Whether `field`, filled as `slot`, lists suggestions as it is typed in:
-/// a combo or search box, or a box for a place.
-pub(in crate::agentic::flow) fn suggests(slot: &str, field: &Candidate) -> bool {
-    matches!(field.role.as_str(), "combobox" | "searchbox")
-        || plain(slot)
-            .split(' ')
-            .any(|word| PLACE_WORDS.contains(&word))
+/// Whether `slot` names a place, whose box lists matches as it is typed in
+/// and keeps the text only once one is chosen. Its own role says no more:
+/// a search box is a combo box too, and its rows already on screen (a menu
+/// link that reads as the query) are no suggestions of the text typed.
+pub(in crate::agentic::flow) fn suggests(slot: &str, _field: &Candidate) -> bool {
+    plain(slot)
+        .split(' ')
+        .any(|word| PLACE_WORDS.contains(&word))
 }
 
 /// The pressable rows on `screen` that were not on screen before typing
@@ -287,35 +349,4 @@ fn same_search_row(pool: Vec<Candidate>, typed: &str) -> Option<Candidate> {
             .filter(|candidate| same_search(candidate.name.as_deref().unwrap_or_default(), typed))
             .collect(),
     )
-}
-
-/// The row of `rows` that shares the most of `text`'s words, when it
-/// shares most of them (`shares_most_words`), the first on a tie. Live, a
-/// ride app listed "MG Road Shivaji Nagar Bengaluru" for "MG Road Metro
-/// Station, Bengaluru", no row named the station, and a pickup left as
-/// typed is no pickup: the flow could go no further.
-pub(in crate::agentic::flow) fn closest_place(rows: &[Candidate], text: &str) -> Option<Candidate> {
-    let typed = plain(text);
-    let words = typed
-        .split(' ')
-        .filter(|word| word.chars().count() >= 2)
-        .collect::<Vec<_>>();
-    rows.iter()
-        .filter(|row| shares_most_words(row, text))
-        .map(|row| {
-            let shown = format!(" {} ", plain(&label(row)));
-            let shared = words
-                .iter()
-                .filter(|word| shown.contains(&format!(" {word} ")))
-                .count();
-            (shared, row)
-        })
-        .fold(
-            None::<(usize, &Candidate)>,
-            |best, (shared, row)| match best {
-                Some((most, _)) if most >= shared => best,
-                _ => Some((shared, row)),
-            },
-        )
-        .map(|(_, row)| row.clone())
 }

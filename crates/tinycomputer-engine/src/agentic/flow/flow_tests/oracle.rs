@@ -243,6 +243,8 @@ pub(super) fn needle_for(purpose: &str) -> &'static str {
         "Body"
     } else if purpose.contains("message 7") {
         "Message 7"
+    } else if purpose.contains("search") {
+        "Search"
     } else {
         "Archive"
     }

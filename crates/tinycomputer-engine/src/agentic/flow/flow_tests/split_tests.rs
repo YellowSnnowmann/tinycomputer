@@ -138,3 +138,30 @@ async fn an_oversized_knockout_is_asked_in_parts_and_still_finds_its_target() {
         "the target's group was asked in a part of its own, not the first"
     );
 }
+
+#[test]
+fn a_screen_that_fills_most_of_a_part_is_cut_rather_than_asked_once_per_question() {
+    // A screen of nearly the whole limit left room for one question a part,
+    // and every question of a judge cost its own call.
+    let mut questions = ask::Questions::default();
+    for index in 0..7 {
+        questions = questions.with(
+            &format!("question_{index}"),
+            ask::condition(&format!("condition {index} {}", "words ".repeat(400))),
+        );
+    }
+    let lines = (0..2_000)
+        .map(|line| format!("button \"Result {line} with a long name\""))
+        .collect::<Vec<_>>();
+    let state = json!({"elements": {"untrusted_accessibility_data": lines}});
+    let request = ask::request("jev-latest", state, questions);
+    assert!(size(&request) > MAX_REQUEST_BYTES);
+    let parts = split(request, MAX_REQUEST_BYTES);
+    assert!(parts.len() < 7, "{} parts", parts.len());
+    assert!(parts.iter().all(|part| size(part) <= MAX_REQUEST_BYTES));
+    assert_eq!(
+        parts.iter().map(|part| part.questions.len()).sum::<usize>(),
+        7,
+        "every question is still asked"
+    );
+}

@@ -56,7 +56,23 @@ pub(super) struct Front {
     /// either changed went to another page, and what covers that page is
     /// the page's own, not an answer the press asked for.
     pub(super) looked_at: (Option<String>, Option<String>),
+    /// Whether the run has pressed or typed inside the task's dialog since
+    /// it opened: such a dialog has served the step that worked in it, and
+    /// a later step finds it in the way rather than asking (a calendar left
+    /// open after its day was chosen).
+    pub(super) answered: bool,
 }
+
+/// What the run's own housekeeping does, never a press of the task's: a
+/// distraction cleared, a dismissal, an undo, an uncovering Escape, the
+/// gated press of a `stop_before`.
+const HOUSEKEEPING: &[&str] = &[
+    "(clear distraction)",
+    "(dismiss)",
+    "(undo)",
+    "(uncover)",
+    "(irreversible)",
+];
 
 impl Default for Front {
     fn default() -> Self {
@@ -67,19 +83,53 @@ impl Default for Front {
             fresh: true,
             covered_base: 0,
             looked_at: (None, None),
+            answered: false,
         }
     }
 }
 
 impl Front {
-    /// Notes one action: `targeted` when it pressed or typed into an
-    /// element, `typing` when it typed, `browsing` when it opened an address.
-    pub(super) fn act(&mut self, targeted: bool, typing: bool, browsing: bool) {
-        if targeted || self.acted != Acted::Nothing {
+    /// Notes one action, `action` as the run logs it (`click`, `fill …`,
+    /// `browse …`, `click (dismiss)`), on an element when `targeted`.
+    ///
+    /// Only the task's own presses and typing count: a scroll moves no
+    /// question into view, and the run's housekeeping (a distraction
+    /// cleared, an undo) answers none. Opening an address or an application
+    /// leaves whatever was in front behind.
+    pub(super) fn act(&mut self, action: &str, targeted: bool) {
+        if action.starts_with("browse ") {
+            *self = Self {
+                fresh: false,
+                ..Self::default()
+            };
+            return;
+        }
+        if action.starts_with("launch ") {
+            *self = Self {
+                fresh: self.fresh,
+                ..Self::default()
+            };
+            return;
+        }
+        let housekeeping = HOUSEKEEPING.iter().any(|kind| action.contains(kind));
+        let pressing = targeted && !housekeeping && !action.starts_with("scroll");
+        if pressing || (self.acted != Acted::Nothing && !housekeeping) {
+            let typing = action.starts_with("fill") || action.starts_with("type");
             self.acted = if typing { Acted::Typed } else { Acted::Pressed };
         }
-        if browsing {
-            self.fresh = false;
+        if pressing && self.opened_dialog {
+            self.answered = true;
+        }
+    }
+
+    /// Begins a step: a dialog the task opened and then worked in has
+    /// served the step before, and is no longer the task's own; one the
+    /// last step's last press opened still asks its question (a format
+    /// dialog a booking button raised).
+    pub(super) fn next_step(&mut self) {
+        if self.answered {
+            self.opened_dialog = false;
+            self.answered = false;
         }
     }
 
@@ -100,12 +150,15 @@ impl Front {
         let front = self.front_of(screen, location);
         let note = if front == "window" {
             self.opened_dialog = false;
+            self.answered = false;
             None
         } else if left_open && !self.opened_dialog {
             self.opened_dialog = true;
+            self.answered = false;
             Some(LEFT_OPEN)
         } else if self.acted != Acted::Nothing && self.surface == "window" {
             self.opened_dialog = true;
+            self.answered = false;
             Some(OPENED)
         } else {
             None

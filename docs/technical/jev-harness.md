@@ -94,9 +94,14 @@ framing of every request together: one round trip. In order:
    sees a secret.
 6. **Split and fit.** A request over 48 KB of JSON (`MAX_REQUEST_BYTES`)
    is cut by its questions into parts asked at once, each with the whole
-   state (`decide::split`); their answers merge back by question id. A part
+   state (`decide::split`); their answers merge back by question id. A
+   state that alone takes more than half the limit first loses the tails of
+   its longest lists, so each part still holds several questions. A part
    still too large is shrunk: the brief is kept on one question only, then
-   the longest element and text lists lose their tails. Jev rejects requests
+   the longest element and text lists lose their tails. A decision asked in
+   parts costs a call per part and framing, and the budget is charged for
+   each: a speculative request that would run past it is left out, and the
+   first asks fewer framings instead. Jev rejects requests
    past its token limit outright, and the Tiny Humans gateway's limit is the
    lower one (57 KB passed, 68 KB came back HTTP 502).
 7. **Frame.** `vote::framings` makes `votes` copies (default 7, at most 9):
