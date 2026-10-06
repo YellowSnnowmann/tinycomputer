@@ -64,6 +64,8 @@ pub(super) struct Sim {
     pub(super) extra_buttons: usize,
     /// A booking form with an autocomplete destination and a calendar.
     pub(super) booking: Option<Booking>,
+    /// A ride form whose two boxes keep a place only once it is picked.
+    pub(super) places: Option<Places>,
     /// A fare radio shown already checked, as a fare page preselects one.
     pub(super) checked_fare: Option<&'static str>,
     /// A line of guidance shown on the page, such as a date layout.
@@ -205,6 +207,9 @@ impl App {
         if let Some(booking) = &sim.booking {
             booking_widget(&sim, booking, &root, &mut candidates);
         }
+        if let Some(places) = &sim.places {
+            places_widget(&sim, places, &root, &mut candidates);
+        }
         if let Some(adults) = sim.adults {
             passenger_steppers(adults, &root, &mut candidates);
         }
@@ -344,6 +349,7 @@ impl AgentBackend for App {
                     _ if name.starts_with("Decrease number of Adult") => {
                         sim.adults = sim.adults.map(|adults| adults.saturating_sub(1));
                     }
+                    _ if press_place(&mut sim, &name) => {}
                     _ if sim.booking.is_some() => press_booking(&mut sim, &name),
                     _ => {}
                 }
@@ -367,8 +373,7 @@ impl AgentBackend for App {
                     .insert("Search city".to_owned(), text.unwrap_or_default());
             }
             JevOperation::TypeText if !(name == "Body" && sim.has(Quirk::BodyIgnoresSetValue)) => {
-                sim.focused = Some(name.clone());
-                sim.fields.insert(name, text.unwrap_or_default());
+                type_into(&mut sim, &name, text.unwrap_or_default());
             }
             _ => {}
         }
@@ -386,8 +391,7 @@ impl AgentBackend for App {
         }
         let mut sim = self.sim();
         let name = target.name.clone().unwrap_or_default();
-        sim.focused = Some(name.clone());
-        sim.fields.insert(name, text.to_owned());
+        type_into(&mut sim, &name, text.to_owned());
         DesktopResponse::ok("paste", json!({}))
     }
 
@@ -402,6 +406,7 @@ impl AgentBackend for App {
             "escape" => {
                 sim.obstacle = false;
                 sim.quirks.remove(&Quirk::Drawer);
+                drop_unpicked(&mut sim);
             }
             _ => {}
         }

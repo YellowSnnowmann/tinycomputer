@@ -18,6 +18,7 @@ mod matching;
 mod read;
 mod reveal;
 mod stop;
+mod suggestion;
 
 pub(super) use matching::left_unchosen;
 #[cfg(test)]

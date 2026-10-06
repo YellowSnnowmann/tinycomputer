@@ -11,7 +11,7 @@ use crate::agentic::flow::{
     AgentBackend, FlowRun, Halt, StepLog,
     backend::deliver_text,
     memory::{learn, remember},
-    view::{Candidate, element_kind, label},
+    view::{Candidate, Screen, element_kind, label},
 };
 
 use super::{BLIND_PICK_MISSES, REVEAL_TURNS, editable, names};
@@ -78,7 +78,13 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             for assignment in assignments {
                 let slot = &slots[assignment.slot];
                 let filled = self
-                    .fill(log, slot, &assignment.field, &screen.context)
+                    .fill(
+                        log,
+                        slot,
+                        &assignment.field,
+                        &screen,
+                        private[assignment.slot],
+                    )
                     .await?;
                 if !filled {
                     struck.insert(element_kind(&assignment.field));
@@ -134,21 +140,26 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// Delivers one slot's text and reports whether it verifiably arrived.
     ///
     /// A date is typed in the layout the field or the page around it asks
-    /// for ("DD-MM-YYYY"), so an input mask does not mangle it.
+    /// for ("DD-MM-YYYY"), so an input mask does not mangle it. Text that
+    /// arrived and opened a list of suggestions has the matching one picked
+    /// (`commit_suggestion`), since an autocomplete box keeps it only then; a
+    /// `private` text is never offered there, as Jev would see it.
     async fn fill(
         &mut self,
         log: &mut StepLog,
         slot: &Slot,
         field: &Candidate,
-        context: &[String],
+        before: &Screen,
+        private: bool,
     ) -> Result<bool, Halt> {
         let app = self.app.clone();
         let target = field.clone();
         let hints = [field.name.as_deref(), field.description.as_deref()]
             .into_iter()
             .flatten()
-            .chain(context.iter().map(String::as_str));
+            .chain(before.context.iter().map(String::as_str));
         let text = reformat_date(&slot.text, hints).unwrap_or_else(|| slot.text.clone());
+        let typed = text.clone();
         let reply = self
             .act(
                 log,
@@ -170,6 +181,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             label(field),
             reply.ok
         ));
+        if reply.ok && !private {
+            self.commit_suggestion(log, &slot.slot, &typed, field, before)
+                .await?;
+        }
         Ok(reply.ok)
     }
 }

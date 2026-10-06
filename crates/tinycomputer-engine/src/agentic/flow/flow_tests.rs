@@ -13,6 +13,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod oracle;
+mod places;
 mod screens;
 mod simulator;
 
@@ -31,6 +32,7 @@ mod journal_tests;
 mod pick_tests;
 mod reflection_tests;
 mod step_kinds_tests;
+mod suggestion_tests;
 mod survey_tests;
 mod tree_tests;
 mod validation_tests;
@@ -38,6 +40,7 @@ mod vote_tests;
 mod wide_tests;
 
 use oracle::*;
+use places::*;
 use screens::*;
 use simulator::*;
 

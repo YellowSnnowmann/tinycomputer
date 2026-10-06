@@ -36,6 +36,7 @@ in `enter/` (`assign.rs` matches, `fill.rs` delivers).
    `combobox` role rather than a genuine text input) is struck off for the
    rest of the step, along with every other element of its kind, so no
    later `do` move in this step tries to press one instead.
+6. **Pick the suggestion the text opened**, when it opened one (below).
 
 ## Verified delivery
 
@@ -100,6 +101,27 @@ the same way [`choose`](step-kinds.md#choose) works: the runtime pages a
 calendar forward to the requested day, or types into the field that just
 gained focus and picks the suggestion that appears, retrying up to four
 times.
+
+A box that does take the text can still need a suggestion picked. A
+location, city, or airport box lists matches under itself as you type, and
+keeps the text only once one of them is chosen: move the focus on, or
+press Escape on the list, and the text is dropped. So once a text has
+arrived, `enter` looks again, and if rows appeared that were not on screen
+before the text was typed, it picks the one that matches it
+(`commit_suggestion`, in `steps/suggestion.rs`):
+
+- rows that mention the text come first; a single match, or several that
+  all read the same, is pressed without asking;
+- when none mentions it, only new rows drawn as a list's rows (`option`,
+  `menuitem`, `listitem`, `row`, `gridcell`) are offered, so a differently
+  worded suggestion can still be matched while a button that appeared
+  beside the box is never taken for one;
+- otherwise Jev picks among at most 12 of them, and may answer that none
+  fits, which leaves the text as typed;
+- a private text, a fact's value, is never offered: picking would show it
+  to Jev, so it stays as typed.
+
+A field that opens no list costs nothing extra: no question is asked.
 
 See [`docs/technical/decision-thresholds.md`](../../../technical/decision-thresholds.md)
 for `SLOT_FLOOR`, `FIELD_ERROR`, `NOT_ASKED`, and `BLIND_PICK_MISSES`.

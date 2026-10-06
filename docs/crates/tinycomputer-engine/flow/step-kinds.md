@@ -53,7 +53,9 @@ covered on its own page: [The do loop](the-do-loop.md).
 Takes a map of slot names to text, such as
 `{"recipient": "sam@example.com", "subject": "Friday"}`, matches each slot
 to a field on screen, and types the text in with a read-back check that it
-actually landed. Covered on its own page:
+actually landed. When the text opens a list of suggestions, as a location
+or city box does, the matching suggestion is picked, since such a box keeps
+the text only then. Covered on its own page:
 [Filling in forms](filling-forms.md).
 
 ## `choose`

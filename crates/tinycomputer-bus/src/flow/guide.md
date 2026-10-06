@@ -37,7 +37,7 @@ do.
 | `open` | `{"open": "Mail"}` | Launch the app or bring it forward. |
 | `browse` | `{"browse": "https://www.google.com/travel/flights"}` | Open a web address in the browser; later steps act on the page until an `open` switches back to an app. |
 | `do` | `{"do": "start a new note"}` | Same as a plain string. |
-| `enter` | `{"enter": {"subject": "Hi"}}` | Put each text into the field its key describes. |
+| `enter` | `{"enter": {"subject": "Hi"}}` | Put each text into the field its key describes; a box that suggests matches as you type (a location, a city) has the matching suggestion picked. |
 | `choose` | `{"choose": {"what": "the font list", "option": "Helvetica"}}` | Pick an option in a list, menu, or popup. |
 | `read` | `{"read": {"what": "the newest message's subject", "into": "subject"}}` | Store visible text in a variable. |
 | `extract` | `{"extract": {"what": "the flight results", "into": "flights"}}` | Store every item of a list, as JSON rows of their text, in a variable. |
