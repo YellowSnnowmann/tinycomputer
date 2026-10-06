@@ -42,6 +42,9 @@ pub(super) const REVEAL_TURNS: u32 = 3;
 pub(super) const WINDOW_CHECKS: u32 = 10;
 /// Times a `wait_for` checks its condition, waiting between checks.
 pub(super) const WAIT_CHECKS: u32 = 10;
+/// Checks in a row, a wait apart, on which a page says it found nothing
+/// before a `wait_for` stops waiting for what it searched for.
+pub(super) const EMPTY_CHECKS: u32 = 2;
 /// Most characters of a picked item's text kept in its variable.
 pub(super) const MAX_PICK_SUMMARY: usize = 400;
 /// Least belief a deep run needs that a control is the one a `stop_before`

@@ -116,6 +116,32 @@ async fn control_steps_branch_repeat_read_and_wait() {
 }
 
 #[tokio::test]
+async fn a_wait_for_stops_when_the_page_says_it_found_nothing() {
+    // Live, a store's "No Results Found" page was checked ten times over,
+    // three times in one task, and each rescue was told only that the
+    // condition never held, so it guessed at the search's wording.
+    let flow = json!({"app": "Mail", "steps": [{"wait_for": "search results are listed"}]});
+    let empty = run(
+        App::with(|sim| sim.hint = Some("No results found for \"Amul Taaza\"")),
+        flow.clone(),
+    )
+    .await;
+    assert_eq!(empty.result.stop, FlowStopReason::StepFailed);
+    let note = &empty.result.steps[0].note;
+    assert!(note.contains("\"no results\""), "{note}");
+    let waiting = run(App::default(), flow).await;
+    assert_eq!(waiting.result.stop, FlowStopReason::StepFailed);
+    assert!(
+        waiting.result.steps[0].note.contains("still not true"),
+        "a page that says nothing of the kind is waited on in full"
+    );
+    assert!(
+        asked(&empty.requests, "holds") < asked(&waiting.requests, "holds"),
+        "it stopped waiting early"
+    );
+}
+
+#[tokio::test]
 async fn a_repeat_that_never_holds_and_a_failing_verify_fail_the_flow() {
     let repeat = run(
         App::quirky(Quirk::Frozen),

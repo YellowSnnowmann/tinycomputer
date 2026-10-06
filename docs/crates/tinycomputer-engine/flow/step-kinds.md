@@ -168,7 +168,10 @@ way is averaged as before.
   0.75.
 - `wait_for` checks up to ten times, waiting between checks, which is how a
   flow waits for a page to finish loading without guessing how long that
-  takes.
+  takes. A page that says it found nothing ("No results found", "0
+  results", "No products found") on two checks in a row will not turn up
+  what the step waits for, so the step fails there, naming the phrase, and
+  a rescue learns why instead of only that the condition never held.
 - `if` checks the condition and runs `then` at 0.75 or above, `else`
   otherwise. Its children show up in the step report as `3.1`, `3.2`, and
   so on, nested under the parent.
