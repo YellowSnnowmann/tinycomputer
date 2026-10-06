@@ -38,10 +38,10 @@ do.
 | `browse` | `{"browse": "https://www.google.com/travel/flights"}` | Open a web address in the browser; later steps act on the page until an `open` switches back to an app. |
 | `do` | `{"do": "start a new note"}` | Same as a plain string. |
 | `enter` | `{"enter": {"subject": "Hi"}}` | Put each text into the field its key describes; a box that suggests matches as you type (a location, a city) has the matching suggestion picked. |
-| `choose` | `{"choose": {"what": "the font list", "option": "Helvetica"}}` | Pick an option in a list, menu, or popup. |
+| `choose` | `{"choose": {"what": "the font list", "option": "Helvetica"}}` | Pick an option in a list, menu, or popup, or in a group of option buttons (a size, a colour, a quantity). |
 | `read` | `{"read": {"what": "the newest message's subject", "into": "subject"}}` | Store visible text in a variable. |
 | `extract` | `{"extract": {"what": "the flight results", "into": "flights"}}` | Store every item of a list, as JSON rows of their text, in a variable. |
-| `pick` | `{"pick": {"from": "the flight results", "by": "lowest price", "into": "flight"}}` | Choose the best of a list of results and open it; `into` stores its text. Prices, times, durations, and stops are compared exactly. |
+| `pick` | `{"pick": {"from": "the flight results", "by": "lowest price", "into": "flight"}}` | Choose the best of a list of results (cards or rows, each an item to open) and open it; `into` stores its text. Prices, times, durations, and stops are compared exactly. |
 | `verify` | `{"verify": "the draft shows a recipient"}` | Fail the flow unless this holds. |
 | `wait_for` | `{"wait_for": "the search results are showing"}` | Wait until this holds. |
 | `stop_before` | `{"stop_before": "sending the email"}` | Find an irreversible action and stop in front of it. |
@@ -116,7 +116,10 @@ do.
    the check fails a pick that worked; a pick already fails when nothing
    fits, and validation rejects it. A `choose` option is
    the label the page shows ("Saver"), not a description ("the cheapest
-   fare"); choosing by a criterion is what `pick` is for.
+   fare"); choosing among results by a criterion is what `pick` is for. A
+   size, colour, or quantity is a `choose` of the shortest label the page
+   is likely to show (`"option": "9"` for "UK size 9"), never a `pick`:
+   option buttons are not results, and a `pick` over them fails.
 
 ## A full example
 

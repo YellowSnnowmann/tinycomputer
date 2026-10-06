@@ -111,7 +111,12 @@ the list a step means" below).
 ## `pick`
 
 Also finds the repeated cards, then either ranks them exactly or asks Jev,
-depending on whether its `by` text parses into something exact:
+depending on whether its `by` text parses into something exact. A group of
+option buttons (sizes, colours, quantities) is not a list of cards, and a
+`pick` over it fails; the flow guide tells a planner to `choose` such an
+option by its label instead.
+
+The exact rankings are:
 
 - lowest or highest price,
 - earliest or latest time,
