@@ -23,6 +23,8 @@ Change a constant and its row together.
 | `RANKED_CHECKS` | 8 | `steps/mod.rs` | cards an exact `pick` ranking puts first that are asked about, at once, for the first that belongs to the list picked from |
 | `MAX_LISTS` | 6 | `steps/mod.rs` | lists an `extract` offers Jev when several show; past it, the longest six |
 | `LIST_PREVIEW` | 3 | `steps/mod.rs` | first items of each list an `extract` shows Jev to tell the lists apart |
+| `LIST_LEAN` | 0.30 | `steps/mod.rs` | least probability of the list Jev leaned to when it chose none clearly, for that list to be taken over the longest |
+| `LIST_LEAD` | 3.0 | `steps/mod.rs` | times the next list's probability that list needs |
 | `MAX_COLLECTED` | 12 | `wide/mod.rs` | saved variables every state recalls as `already_collected`, the most recent first kept |
 | `COLLECTED_CHARS` | 120 | `wide/mod.rs` | characters of each saved value `already_collected` recalls |
 | `MIN_FLAT_ITEMS` | 3 | `tinycomputer-core` `surface/groups.rs` | same-role leaf siblings that make a list for `extract` and `pick` on a screen where nothing repeats by ordinal, as on a desktop tree |

@@ -1,10 +1,13 @@
 //! Steps over a list of results: `pick` the best item by a criterion, and
 //! `extract` every item as rows.
 
+use std::collections::BTreeMap;
+
 use serde_json::json;
 use tinycomputer_bus::{FlowLoop, JevOperation, PickStep, ReadStep, StepOutcome};
 use tinycomputer_core::surface::{Group, result_families};
 use tinycomputer_core::{Criterion, Record, rank};
+use tinyinference_decisions::Answer;
 
 use crate::agentic::flow::{
     Ended, FlowRun, Halt, StepLog,
@@ -14,7 +17,9 @@ use crate::agentic::flow::{
     view::{Candidate, is_destructive, label},
 };
 
-use super::{LIST_PREVIEW, LOCATE_FLOOR, MAX_LISTS, MAX_PICK_SUMMARY, RANKED_CHECKS};
+use super::{
+    LIST_LEAD, LIST_LEAN, LIST_PREVIEW, LOCATE_FLOOR, MAX_LISTS, MAX_PICK_SUMMARY, RANKED_CHECKS,
+};
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// Picks the best of a list of results by `pick.by`, stores its text,
@@ -194,8 +199,9 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
 
     /// Asks Jev which of the lists showing is `what`, each shown by its
     /// first [`LIST_PREVIEW`] items, among the first [`MAX_LISTS`]. A list
-    /// not clearly chosen falls back to the longest, the one an `extract`
-    /// took before it asked.
+    /// not clearly chosen falls back to the one Jev leaned to
+    /// ([`leaning`]), else the longest, the one an `extract` took before
+    /// it asked.
     async fn judge_list(
         &mut self,
         log: &mut StepLog,
@@ -238,7 +244,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let Some((choice, confidence)) =
             chosen(&answers, "list").filter(|(_, confidence)| *confidence >= LOCATE_FLOOR)
         else {
-            return Ok(0);
+            return Ok(leaning(&answers, &keys).unwrap_or(0));
         };
         log.confidence = Some(confidence);
         Ok(keys.iter().position(|key| *key == choice).unwrap_or(0))
@@ -367,4 +373,30 @@ fn selected(control: &Candidate) -> bool {
         .states
         .iter()
         .any(|state| state == "selected" || state == "checked")
+}
+
+/// The list Jev leaned to without choosing it clearly: the most likely of
+/// `keys` ("none" aside), when it has [`LIST_LEAN`] or more and
+/// [`LIST_LEAD`] times the next list's probability. Live, a ride app's
+/// option cards drew 0.41 against 0.05 for any other list, and the longest
+/// list, their lines split apart, was taken in their place.
+pub(in crate::agentic::flow) fn leaning(
+    answers: &BTreeMap<String, Answer>,
+    keys: &[String],
+) -> Option<usize> {
+    let Some(Answer::Choice(answer)) = answers.get("list") else {
+        return None;
+    };
+    let mut ranked = keys
+        .iter()
+        .enumerate()
+        .map(|(index, key)| {
+            let probability = answer.probabilities.get(key).copied().unwrap_or_default();
+            (index, probability)
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_by(|left, right| right.1.total_cmp(&left.1));
+    let (index, top) = *ranked.first()?;
+    let next = ranked.get(1).map_or(0.0, |(_, probability)| *probability);
+    (top >= LIST_LEAN && top >= next * LIST_LEAD).then_some(index)
 }

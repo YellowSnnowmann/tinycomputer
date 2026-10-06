@@ -159,9 +159,12 @@ When more than one list shows on screen at once, such as a chat list
 beside the open chat's own messages, `extract` and an unranked `pick` ask
 Jev which one is meant: each of the first six lists (`MAX_LISTS`) is shown
 by its first three items (`LIST_PREVIEW`), and a clear winner at 0.5
-confidence or above is used; anything less clear falls back to the longest
-list, the one that would have been used before the question was asked at
-all. See [`../output.md`](../output.md) for the full detail, including how
+confidence or above is used; anything less clear goes to the list Jev
+leaned to when it leads every other list clearly (0.3 or more, and three
+times the next: `LIST_LEAN`, `LIST_LEAD`), else to the longest list, the
+one that would have been used before the question was asked at all. A
+list of one-line items that are pieces of another list's fewer cards
+(the cards' lines, split apart) is not offered at all. See [`../output.md`](../output.md) for the full detail, including how
 this interacts with the run's own memory of what it has already saved.
 
 ## `verify`, `wait_for`, `if`, `repeat_until`

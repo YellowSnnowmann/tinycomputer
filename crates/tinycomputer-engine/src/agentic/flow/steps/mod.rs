@@ -25,7 +25,7 @@ pub(super) use matching::left_unchosen;
 #[cfg(test)]
 pub(super) use {
     date::{date_words, looks_like_date, shows_date},
-    list::first_meeting,
+    list::{first_meeting, leaning},
     matching::{
         already_chosen, already_holds, closest, in_region, lists_more_than, redacted, search_text,
     },
@@ -69,6 +69,11 @@ pub(super) const LOCATE_FLOOR: f64 = 0.5;
 pub(super) const MAX_LISTS: usize = 6;
 /// How many of a list's first items an `extract` shows Jev to tell it apart.
 pub(super) const LIST_PREVIEW: usize = 3;
+/// Least probability a list not clearly chosen needs to be taken as the one
+/// Jev leaned to, rather than the longest.
+pub(super) const LIST_LEAN: f64 = 0.3;
+/// How many times the next list's probability the list Jev leaned to needs.
+pub(super) const LIST_LEAD: f64 = 3.0;
 
 /// Runs one step.
 pub(super) async fn run<B: AgentBackend + Sync>(

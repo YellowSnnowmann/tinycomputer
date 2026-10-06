@@ -370,3 +370,29 @@ async fn a_pick_the_page_already_has_selected_is_not_pressed_again() {
     );
     assert!(run.result.vars["flight"].starts_with("IndiGo"));
 }
+
+#[test]
+fn a_list_not_clearly_chosen_is_the_one_jev_leaned_to_when_it_leads_clearly() {
+    let keys = ["1", "2", "3"].map(str::to_owned);
+    let answer = |weights: &[(&str, f64)]| {
+        BTreeMap::from([(
+            "list".to_owned(),
+            Answer::Choice(ChoiceAnswer {
+                choice: "none".to_owned(),
+                probabilities: weights
+                    .iter()
+                    .map(|(key, weight)| ((*key).to_owned(), *weight))
+                    .collect(),
+                confidence: 0.4,
+            }),
+        )])
+    };
+    // Live, a ride app's option cards drew 0.41 to the next list's 0.05.
+    let leaned = answer(&[("1", 0.02), ("2", 0.05), ("3", 0.41), ("none", 0.52)]);
+    assert_eq!(steps::leaning(&leaned, &keys), Some(2));
+    let split = answer(&[("1", 0.3), ("2", 0.25), ("3", 0.0), ("none", 0.45)]);
+    assert_eq!(steps::leaning(&split, &keys), None, "no clear lead");
+    let faint = answer(&[("1", 0.2), ("2", 0.01), ("3", 0.01), ("none", 0.78)]);
+    assert_eq!(steps::leaning(&faint, &keys), None, "too faint");
+    assert_eq!(steps::leaning(&BTreeMap::new(), &keys), None);
+}

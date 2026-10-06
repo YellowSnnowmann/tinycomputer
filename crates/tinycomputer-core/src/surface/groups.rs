@@ -81,7 +81,47 @@ pub fn result_families(screen: &Screen) -> Vec<Vec<Group>> {
     let mut families = families;
     families.extend(link_runs(&nodes));
     families.sort_by_key(|groups| std::cmp::Reverse(groups.len()));
+    unsplit(families)
+}
+
+/// `families` without a list that is another's cards split line by line:
+/// one-line items, more of them than the other list's [`MIN_FLAT_ITEMS`]
+/// or more cards, each line inside one of those cards. Live, a ride app's
+/// options read both as five cards and as their nine lines (a description,
+/// then an arrival time), and the lines, the longer list, were taken for
+/// the options, with every name and fare lost.
+pub(super) fn unsplit(families: Vec<Vec<Group>>) -> Vec<Vec<Group>> {
+    let texts = families
+        .iter()
+        .map(|groups| {
+            groups
+                .iter()
+                .map(|group| group.fields.join(" "))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let lines = |groups: &[Group]| groups.iter().all(|group| group.fields.len() == 1);
+    let split = |pieces: &[String], cards: &[String]| {
+        cards.len() >= MIN_FLAT_ITEMS
+            && cards.len() < pieces.len()
+            && pieces.iter().all(|piece| {
+                cards
+                    .iter()
+                    .any(|card| card.len() > piece.len() && card.contains(piece.as_str()))
+            })
+    };
     families
+        .into_iter()
+        .enumerate()
+        .filter(|(index, groups)| {
+            !lines(groups)
+                || !texts
+                    .iter()
+                    .enumerate()
+                    .any(|(other, cards)| other != *index && split(&texts[*index], cards))
+        })
+        .map(|(_, groups)| groups)
+        .collect()
 }
 
 /// Least characters a control must show to be a card of its own.
