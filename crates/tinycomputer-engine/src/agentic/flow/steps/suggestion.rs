@@ -13,7 +13,7 @@ use crate::agentic::flow::{
 };
 
 use super::matching::{
-    clickable, closest, editable, lists_more_than, mentions, one_option, plainest,
+    clickable, closest, editable, lists_more_than, mentions, one_option, plain, plainest,
 };
 
 /// Roles a suggestion list draws its rows with. A row that does not mention
@@ -23,6 +23,13 @@ const SUGGESTION_ROLES: &[&str] = &["option", "menuitem", "listitem", "row", "gr
 
 /// Most new rows one pick is asked over.
 const MOST_SUGGESTIONS: usize = 12;
+
+/// Least probability a suggestion Jev picks needs before it is pressed. A
+/// press replaces what was typed, so a near tie with "none fits" keeps the
+/// text: live, a search box's completions ("... 141 anc" for "... 141") came
+/// at 0.43 against 0.42 for none, and pressing one changed the search, while
+/// the right places on a ride site came at 0.58 and 0.78.
+const SUGGESTION_FLOOR: f64 = 0.5;
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// After `text` went into `field`, picks the suggestion the box listed
@@ -36,8 +43,11 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// never touched and nothing happens when typing opened none. Rows that
     /// mention the text come first; when none does, a differently worded
     /// suggestion ("IGI Airport" for "Indira Gandhi International Airport")
-    /// is matched among the new rows a list draws. Jev may answer that none
-    /// fits, which leaves the text as typed.
+    /// is matched among the new rows a list draws. Only a row that reads as
+    /// the text itself is pressed without asking: one that says more (a
+    /// search box's "... 141 anc" for "... 141") may be another thing, so Jev
+    /// decides, and an answer under [`SUGGESTION_FLOOR`], or that none fits,
+    /// leaves the text as typed.
     ///
     /// A panel whose label strings every row together mentions the text
     /// without being a row, and is never pressed: a press lands wherever its
@@ -92,7 +102,12 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             return Ok(());
         }
         let purpose = format!("pick the suggestion that completes the {slot} as {text:?}");
-        let grounded = if one_option(&pool) {
+        let typed = plain(text);
+        let grounded = if one_option(&pool)
+            && pool
+                .iter()
+                .all(|candidate| plain(candidate.name.as_deref().unwrap_or_default()) == typed)
+        {
             plainest(pool).map(|candidate| Grounded {
                 candidate,
                 confidence: 1.0,
@@ -101,9 +116,11 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             self.ground(log, &screen, &purpose, &format!("{slot} suggestion"), pool)
                 .await?
         };
-        let Some(grounded) = grounded else {
-            self.history
-                .push(format!("no suggestion fit the {slot}; it stays as typed"));
+        let Some(grounded) = grounded.filter(|grounded| grounded.confidence >= SUGGESTION_FLOOR)
+        else {
+            self.history.push(format!(
+                "no suggestion clearly fit the {slot}; it stays as typed"
+            ));
             return Ok(());
         };
         let target = grounded.candidate;

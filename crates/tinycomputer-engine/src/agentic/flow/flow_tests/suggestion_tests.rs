@@ -6,8 +6,14 @@
 use super::*;
 
 /// Answers the ride form's questions: each slot goes to the box it names,
-/// and a pick between suggestions takes the place in New Delhi.
-fn ride(id: &str, question: &Question, _: &Sim) -> Option<Answer> {
+/// and a pick between suggestions takes the airport or the place in New
+/// Delhi, sure of it.
+fn ride(id: &str, question: &Question, sim: &Sim) -> Option<Answer> {
+    suggesting(id, question, sim, 0.9)
+}
+
+/// [`ride`], picking a suggestion with `probability`.
+fn suggesting(id: &str, question: &Question, _: &Sim, probability: f64) -> Option<Answer> {
     if !matches!(question, Question::Choice(_)) {
         return None;
     }
@@ -20,9 +26,14 @@ fn ride(id: &str, question: &Question, _: &Sim) -> Option<Answer> {
         };
         return Some(pick(question, field, 0.9));
     }
-    purpose
-        .contains("suggestion")
-        .then(|| pick(question, "Connaught Place New Delhi", 0.9))
+    purpose.contains("suggestion").then(|| {
+        let place = if purpose.to_lowercase().contains("indira") {
+            "Indira Gandhi International Airport"
+        } else {
+            "Connaught Place New Delhi"
+        };
+        pick(question, place, probability)
+    })
 }
 
 fn asked_for_a_suggestion(run: &Run) -> bool {
@@ -61,7 +72,8 @@ async fn enter_picks_the_suggestion_an_autocomplete_box_lists_for_the_typed_text
         sim.fields["Pickup location"],
         "Connaught Place New Delhi, Delhi, India"
     );
-    // The airport's name lists one place, picked without asking.
+    // The airport's name lists one place, which says more than was typed,
+    // so it is picked on Jev's answer too.
     assert_eq!(
         sim.fields["Dropoff location"],
         "Indira Gandhi International Airport New Delhi, Delhi, India"
@@ -71,6 +83,40 @@ async fn enter_picks_the_suggestion_an_autocomplete_box_lists_for_the_typed_text
     assert!(places.picked.contains("Dropoff location"));
     drop(sim);
     assert!(asked_for_a_suggestion(&run));
+}
+
+#[tokio::test]
+async fn enter_keeps_the_typed_text_when_no_suggestion_clearly_fits() {
+    // Live, a search box listed completions of the typed search ("boat
+    // airdopes 141 anc"), and a pick at 0.43, a near tie with "none fits",
+    // replaced the search with one of them. An unsure pick is not pressed.
+    let run = run_with(
+        App::with(|sim| sim.places = Some(Places::default())),
+        json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Connaught Place"}}]}),
+        |_| {},
+        |id, question, sim| suggesting(id, question, sim, 0.45),
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    let sim = run.app.sim();
+    assert_eq!(sim.fields["Pickup location"], "Connaught Place");
+    assert!(
+        !sim.places
+            .as_ref()
+            .unwrap()
+            .picked
+            .contains("Pickup location")
+    );
+    drop(sim);
+    assert!(
+        asked_for_a_suggestion(&run),
+        "Jev was asked, and was unsure"
+    );
 }
 
 #[tokio::test]

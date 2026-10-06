@@ -39,6 +39,7 @@ Change a constant and its row together.
 | `NOT_ASKED` | 0.35 | `enter/mod.rs` | "the form asks for it" probability under which a slot with no field is taken as not asked for |
 | `BLIND_PICK_MISSES` | 1 | `enter/mod.rs` | details no picker offered, on a screen with no editable field, after which the rest are not looked for one by one and the step fails |
 | `EMPTY_CHECKS` | 2 | `steps/mod.rs` | checks in a row, a wait apart, on which a page says it found nothing (`FOUND_NOTHING` in `steps/condition.rs`) before a `wait_for` fails |
+| `SUGGESTION_FLOOR` | 0.5 | `steps/suggestion.rs` | least probability a suggestion Jev picks after typing needs before it is pressed; under it the text stays as typed |
 | `MOST_SUGGESTIONS` | 12 | `steps/suggestion.rs` | most new rows one pick of an autocomplete's suggestion is asked over |
 | `OPTION_EXTRA_WORDS` | 12 | `steps/matching.rs` | words beyond an option's own that a label may carry and still be the option; a label longer than that lists more than the option (a panel naming every row) and is not pressed for it |
 

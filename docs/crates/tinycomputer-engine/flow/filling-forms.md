@@ -110,8 +110,10 @@ arrived, `enter` looks again, and if rows appeared that were not on screen
 before the text was typed, it picks the one that matches it
 (`commit_suggestion`, in `steps/suggestion.rs`):
 
-- rows that mention the text come first; a single match, or several that
-  all read the same, is pressed without asking;
+- rows that mention the text come first; one that reads exactly as typed
+  is pressed without asking, and any other is Jev's to pick, even alone: a
+  search box's "boat airdopes 141 anc" for "boAt Airdopes 141" is another
+  search;
 - a panel whose label strings its rows together (a popover the page draws
   as one button) mentions the text without being a row, and is never
   pressed: a press lands on whatever row sits at its middle;
@@ -120,7 +122,8 @@ before the text was typed, it picks the one that matches it
   worded suggestion can still be matched while a button that appeared
   beside the box is never taken for one;
 - otherwise Jev picks among at most 12 of them, and may answer that none
-  fits, which leaves the text as typed;
+  fits, which leaves the text as typed; so does a pick under 0.5
+  (`SUGGESTION_FLOOR`), since pressing replaces what was typed;
 - a private text, a fact's value, is never offered: picking would show it
   to Jev, so it stays as typed.
 
