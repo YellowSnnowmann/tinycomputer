@@ -14,8 +14,8 @@ use crate::agentic::flow::{
 
 use super::{
     DONE, DoState, Expected, LastAction, MAX_IDLE_SCROLLS, MAX_IDLE_WAITS, MAX_REPEAT_PRESSES,
-    Move, STALL_TURNS, asks_for_every, closed_the_overlay, creates_new, finish_floor, finished,
-    judge::Judgement,
+    Move, STALL_TURNS, asks_for_every, asks_for_several, closed_the_overlay, creates_new,
+    finish_floor, finished, judge::Judgement,
 };
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
@@ -233,8 +233,9 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// A list repeats a named button on every item ("Add" on each product
     /// card), and once one is pressed, another copy acts on a different
     /// item: live, a step adding two packets of one milk pressed "Add" on six
-    /// products. Unless the step asks for every item, the copies are left
-    /// alone; a stepper or the pressed control itself still raises a count.
+    /// products. Unless the step asks for every item or chooses several
+    /// (two seats), the copies are left alone; a stepper or the pressed
+    /// control itself still raises a count.
     fn note_press(
         &mut self,
         state: &mut DoState,
@@ -255,7 +256,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 label(pressed)
             ));
         }
-        if (pressed.name.is_none() && pressed.description.is_none()) || asks_for_every(intent) {
+        if (pressed.name.is_none() && pressed.description.is_none())
+            || asks_for_every(intent)
+            || asks_for_several(intent)
+        {
             return;
         }
         let pressed_label = label(pressed);

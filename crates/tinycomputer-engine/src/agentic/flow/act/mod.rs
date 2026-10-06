@@ -247,6 +247,43 @@ pub(super) fn asks_for_every(intent: &str) -> bool {
         .any(|word| matches!(word.as_str(), "all" | "every" | "each" | "both"))
 }
 
+/// Verbs of a step that picks items out of a list.
+const CHOOSING: &[&str] = &["choose", "select", "pick", "tick", "check", "mark"];
+
+/// Words that count more than one.
+const SEVERAL: &[&str] = &[
+    "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "several", "multiple",
+    "pair", "couple",
+];
+
+/// Whether `intent` chooses several items of a list ("choose 2 adjacent
+/// seats", "select three files"), each through its own copy of the list's
+/// control: a choosing verb leads it, and a count above one comes within
+/// three words before a plural. Live, a seat table's "Select" was pressed
+/// once, and the second seat's copy was struck off. A count of one item
+/// ("add 2 packets of milk") leads with no choosing verb: its copies are
+/// other products.
+pub(super) fn asks_for_several(intent: &str) -> bool {
+    let words = words(intent);
+    let choosing = words
+        .iter()
+        .take(2)
+        .any(|word| CHOOSING.contains(&word.as_str()));
+    choosing
+        && words.iter().enumerate().any(|(at, word)| {
+            let counts = SEVERAL.contains(&word.as_str())
+                || word
+                    .parse::<u32>()
+                    .is_ok_and(|count| (2..=20).contains(&count));
+            counts && words.iter().skip(at + 1).take(3).any(|next| plural(next))
+        })
+}
+
+/// Whether `word` reads as an English plural ("seats", "files").
+fn plural(word: &str) -> bool {
+    word.chars().count() > 3 && word.ends_with('s') && !word.ends_with("ss")
+}
+
 /// Words of a step that ask for an overlay to go away.
 const DISMISS_VERBS: &[&str] = &["dismiss", "close", "accept", "decline", "reject", "skip"];
 

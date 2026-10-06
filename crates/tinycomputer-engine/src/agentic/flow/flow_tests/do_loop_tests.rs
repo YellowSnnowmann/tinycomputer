@@ -469,3 +469,87 @@ async fn after_acting_a_finished_move_stands_unless_the_judge_leans_undone() {
         "no click after the step was done"
     );
 }
+
+/// Three result cards, each with its own "Select".
+fn three_cards(sim: &mut Sim) {
+    sim.results = vec![
+        ("Row A seat 03", "Available", "₹200"),
+        ("Row A seat 04", "Available", "₹200"),
+        ("Row A seat 05", "Available", "₹200"),
+    ];
+}
+
+/// Answers that press a card's "Select" until `wanted` cards are pressed,
+/// and only then judge the step done.
+fn select_until(wanted: usize) -> impl Fn(&str, &Question, &Sim) -> Option<Answer> {
+    move |id, question, sim| match id {
+        "done" => Some(noul(if sim.picked.len() >= wanted {
+            0.95
+        } else {
+            0.05
+        })),
+        "blocked" => Some(noul(0.05)),
+        "move" => Some(pick(question, "activate", 0.9)),
+        _ if id == "target" || id == "region" || id.starts_with("group_") => {
+            Some(pick(question, "Select", 0.9))
+        }
+        _ => None,
+    }
+}
+
+#[tokio::test]
+async fn a_step_choosing_several_items_presses_each_ones_own_copy() {
+    // Live, a seat table's "Select" was pressed for one seat, and the
+    // second seat's "Select" was struck off as another item's copy.
+    let run = run_with(
+        App::with(three_cards),
+        json!({"app": "Mail", "steps": ["choose 2 adjacent available seats"]}),
+        |_| {},
+        select_until(2),
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{}",
+        run.result.steps[0].note
+    );
+    assert_eq!(run.app.sim().picked, ["@s:select-1", "@s:select-2"]);
+}
+
+#[tokio::test]
+async fn a_step_adding_one_item_leaves_the_other_items_copies_alone() {
+    // A count of one item ("2 packets of milk") is raised on that item:
+    // another card's copy of its button adds a different product.
+    let run = run_with(
+        App::with(three_cards),
+        json!({"app": "Mail", "steps": ["add 2 packets of the milk"]}),
+        |_| {},
+        select_until(2),
+    )
+    .await;
+    assert_eq!(run.result.stop, FlowStopReason::StepFailed);
+    assert_eq!(run.app.sim().picked, ["@s:select-1"]);
+}
+
+#[test]
+fn several_items_are_asked_for_by_a_choosing_verb_and_a_counted_plural() {
+    for several in [
+        "choose 2 adjacent available seats in the cheapest section",
+        "select three files",
+        "pick two seats together",
+        "please choose 4 tickets",
+    ] {
+        assert!(act::asks_for_several(several), "{several}");
+    }
+    for one in [
+        "add 2 packets of Amul Taaza milk to the cart",
+        "choose Wednesday 7 October 2026 in the date selector",
+        "choose 2D",
+        "select the 1 kg pack",
+        "choose 2 in the quantity box",
+        "open the first movie",
+    ] {
+        assert!(!act::asks_for_several(one), "{one}");
+    }
+}
