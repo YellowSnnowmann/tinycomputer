@@ -104,7 +104,7 @@ they control.
 | Variable | For |
 |---|---|
 | `OPENROUTER_API_KEY` | Jev and the planner |
-| `TINYHUMANS_TOKEN` | in place of `OPENROUTER_API_KEY`: a Tiny Humans bearer (a session token, or an API key with the `inference` scope) that sends Jev and the planner through Tiny Humans' routes; the gateway's `agentic-v1` plans, rescues, and shapes unless a model variable below names another |
+| `TINYHUMANS_TOKEN` | in place of `OPENROUTER_API_KEY`: a Tiny Humans bearer (a session token, or an API key with the `inference` scope) that sends Jev and the planner through Tiny Humans' routes; `openrouter/deepseek/deepseek-v4-flash` plans, rescues, and shapes unless a model variable below names another |
 | `TINYCOMPUTER_MODULE` | the attested module; `scripts/build-module` prints it (`tasks/run` sets it) |
 | `TASK_FILE` | the task, in plain language |
 | `FACTS_FILE` | the JSON facts file described above |
@@ -119,8 +119,8 @@ they control.
 | `TINYCOMPUTER_FLOW_DELIBERATION` | `deep` | `deep`, `standard`, or `off` |
 | `TASK_MAX_MINUTES` | `20` | the task is cancelled after this long |
 | `TASK_RESCUES` | `5` | how many failed steps a reasoning model may rescue (`0` turns rescues off); see [rescue](../../rescue.md) |
-| `TINYCOMPUTER_RESCUE_MODEL` | `openai/gpt-6-luna` (`agentic-v1` with `TINYHUMANS_TOKEN`) | the model that performs a rescue |
-| `TINYCOMPUTER_PLANNER_MODEL` | the engine's default (`agentic-v1` with `TINYHUMANS_TOKEN`) | the model asked to plan the flow |
+| `TINYCOMPUTER_RESCUE_MODEL` | `openai/gpt-6-luna` (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model that performs a rescue |
+| `TINYCOMPUTER_PLANNER_MODEL` | the engine's default (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model asked to plan the flow |
 
 **Optional, the browser:**
 
