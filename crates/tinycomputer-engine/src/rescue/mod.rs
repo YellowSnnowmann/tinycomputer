@@ -62,7 +62,9 @@ delivers lists nothing, or finds nothing, until its delivery place is set, so se
 location button) and search again, with fewer words when the query was long. Write short, \
 concrete steps, one action each. Name what a step chooses with all the task's own words for \
 it, its size and variant included (the 1 litre pack the task asks for, not any pack of the \
-same name). Every step must change something on the screen: to leave \
+same name). A store item whose add button became a minus, count, plus stepper is in the cart \
+with that count: never add it again, nor another size of it. Every step must change something \
+on the screen: to leave \
 an offer, an add-on, or a field as it is, write no step for it and move on to the control \
 that continues. To pass an optional page without choosing anything on it, press its \
 Skip or No thanks control: its Next often waits for a choice. Refer to the person's details only as ${name} variables \

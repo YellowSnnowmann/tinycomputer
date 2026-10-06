@@ -18,9 +18,17 @@ use super::sight;
 /// How long a hover effect is given to end once the pointer has left it.
 const HOVER_END_MS: u64 = 150;
 
-/// Brings an element to the middle of the window; `true` when it found it.
+/// Lets the focused text box go, so the list of suggestions it holds open
+/// closes (live, a store's search dropdown stayed over its basket button,
+/// and Escape left it there), then brings an element to the middle of the
+/// window; `true` when it found the element.
 const CENTRE_JS: &str = r"(element => {
   if (!element) return false;
+  const focused = document.activeElement;
+  if (focused && focused !== element && !focused.contains(element)
+      && focused.matches('input, textarea, [contenteditable=true]')) {
+    focused.blur();
+  }
   element.scrollIntoView({ block: 'center', inline: 'center' });
   return true;
 })";
