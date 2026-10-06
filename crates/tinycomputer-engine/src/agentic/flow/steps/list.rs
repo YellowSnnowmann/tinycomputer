@@ -11,7 +11,7 @@ use crate::agentic::flow::{
     ask::{self, Questions, chosen, numbered, probability},
     backend::AgentBackend,
     validate::substitute_safe,
-    view::{is_destructive, label},
+    view::{Candidate, is_destructive, label},
 };
 
 use super::{LIST_PREVIEW, LOCATE_FLOOR, MAX_LISTS, MAX_PICK_SUMMARY, RANKED_CHECKS};
@@ -104,6 +104,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 label(&primary)
             )));
         }
+        if selected(&primary) {
+            let picked = format!("{summary} ({how} by {by}");
+            return Ok(self.picked_as_selected(&picked, &from, &by, &summary, groups.len()));
+        }
         let reply = self
             .press_uncovering(log, "click", &primary, JevOperation::Click)
             .await?;
@@ -123,6 +127,29 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             StepOutcome::Done,
             format!("picked {summary} ({how} by {by}, out of {})", groups.len()),
         ))
+    }
+
+    /// Ends a pick whose item the page already has selected, without
+    /// pressing it: pressing a selected option again can open its details
+    /// instead. Live, a ride app's cheapest car was selected by default,
+    /// and the press opened a fare breakdown over the button that requests
+    /// it. `picked` reads "<summary> (<how> by <by>".
+    fn picked_as_selected(
+        &mut self,
+        picked: &str,
+        from: &str,
+        by: &str,
+        summary: &str,
+        out_of: usize,
+    ) -> Ended {
+        self.history.push(format!(
+            "picked {picked}); it was already selected, so it was not pressed again"
+        ));
+        self.remember_choice(&format!("picked from {from} by {by}: {summary}"));
+        Ended::new(
+            StepOutcome::Done,
+            format!("picked {picked}, out of {out_of}; already selected)"),
+        )
     }
 
     /// Stores every item of the list showing as JSON rows of their text.
@@ -332,4 +359,12 @@ pub(in crate::agentic::flow) fn first_meeting(by: &str) -> Option<String> {
     let rest = lower.strip_prefix("first ")?.trim();
     let bare = matches!(rest, "one" | "result" | "item" | "product" | "listed" | "");
     (!bare).then(|| rest.to_owned())
+}
+
+/// Whether the page shows `control` selected or checked already.
+fn selected(control: &Candidate) -> bool {
+    control
+        .states
+        .iter()
+        .any(|state| state == "selected" || state == "checked")
 }

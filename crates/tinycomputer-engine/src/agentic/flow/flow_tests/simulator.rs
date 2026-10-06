@@ -59,6 +59,8 @@ pub(super) struct Sim {
     pub(super) results: Vec<(&'static str, &'static str, &'static str)>,
     /// Refs of the result cards' "Select" buttons clicked, in order.
     pub(super) picked: Vec<String>,
+    /// The result card, by index, whose "Select" the page shows selected.
+    pub(super) selected_result: Option<usize>,
     /// Days in a date strip above the results, a longer list than they are.
     pub(super) date_strip: usize,
     pub(super) extra_buttons: usize,

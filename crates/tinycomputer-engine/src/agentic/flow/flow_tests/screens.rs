@@ -350,6 +350,11 @@ pub(super) fn result_cards(
             role: "button".to_owned(),
             name: Some("Select".to_owned()),
             available_actions: vec!["Click".to_owned()],
+            states: if sim.selected_result == Some(index) {
+                vec!["selected".to_owned()]
+            } else {
+                Vec::new()
+            },
             path,
             order: order + 5,
             ..Candidate::default()

@@ -342,3 +342,31 @@ fn a_first_with_a_condition_walks_the_list_in_order() {
         assert_eq!(first_meeting(bare), None, "{bare}");
     }
 }
+
+#[tokio::test]
+async fn a_pick_the_page_already_has_selected_is_not_pressed_again() {
+    // Live, a ride app's cheapest car was selected by default, and pressing
+    // it again opened a fare breakdown over the button that requests it.
+    let run = run(
+        App::with(|sim| {
+            sim.results = vec![
+                ("IndiGo 6E-2135", "₹6,840", "6:45 PM"),
+                ("Vistara UK-707", "₹7,210", "09:10"),
+            ];
+            sim.selected_result = Some(0);
+        }),
+        json!({"app": "Mail", "steps": [
+            {"pick": {"from": "the flight results", "by": "lowest price", "into": "flight"}}
+        ]}),
+    )
+    .await;
+    let step = &run.result.steps[0];
+    assert_eq!(step.outcome, StepOutcome::Done, "{}", step.note);
+    assert!(step.note.contains("already selected"), "{}", step.note);
+    assert!(
+        run.app.sim().picked.is_empty(),
+        "{:?}",
+        run.app.sim().picked
+    );
+    assert!(run.result.vars["flight"].starts_with("IndiGo"));
+}
