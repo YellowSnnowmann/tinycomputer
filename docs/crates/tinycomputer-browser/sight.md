@@ -132,7 +132,9 @@ ARIA roles), named sections and groups, and the cards of a result list. Cards
 get an ordinal among their same-role siblings, `listitem #3`, `row #2`, in
 the same label format the accessibility tree fallback uses, so grouping and
 the shared "digest" logic downstream work the same whichever perception
-produced the screen.
+produced the screen. A table row with no label of its own is named by what
+its cells without a control say, `row "01 Handicapped" #2`, so a row's
+button reads with what the row is about.
 
 The screen's `surface` field becomes `sheet` when a dialog covers the middle
 of the viewport, or `alert` for an `alertdialog`, the same signal a flow

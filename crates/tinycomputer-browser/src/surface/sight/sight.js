@@ -561,7 +561,12 @@
     const x = Math.min(Math.max((rect.left + rect.right) / 2, 0), width - 1);
     const y = Math.min(Math.max((rect.top + rect.bottom) / 2, 0), height - 1);
     const hit = document.elementFromPoint(x, y);
-    return hit === element || (hit && element.contains(hit));
+    if (hit === element || (hit && element.contains(hit))) return true;
+    // A hit passes through what takes no pointer events, so landing on what
+    // holds such an element means nothing is drawn over it. Live, a seat
+    // table drew each seat's number and status in `aria-hidden` cells that
+    // take no pointer events, and every row in view lost them.
+    return Boolean(hit && hit.contains(element) && style(element).pointerEvents === 'none');
   };
   // Whether a person sees what the page marks `aria-hidden`: pages mark
   // plenty they draw — a custom list's shown label, a pill below the fold,
@@ -675,6 +680,15 @@
     return ordinal;
   };
 
+  // A table row's own words: what its cells holding no control say, as a
+  // person reads across a row to its button. Live, a seat table's rows
+  // read `row #1`, and the "Select" of a seat whose status cell said
+  // "Handicapped" was pressed for an available one.
+  const rowWords = (element) => clip([...element.children]
+    .filter((cell) => !cell.matches(NESTED) && !cell.querySelector(NESTED))
+    .map((cell) => cell.textContent)
+    .join(' '), 60);
+
   const containers = new Map();
   const unnamed = new Map();
   // The container label a person would see `element` as, or null.
@@ -696,7 +710,7 @@
         for (let sibling = element.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
           if (sibling.tagName === element.tagName && role(sibling) === claimed) ordinal += 1;
         }
-        const named = labelOf(element);
+        const named = labelOf(element) || (card === 'row' ? rowWords(element) : '');
         label = named ? `${card} ${JSON.stringify(named)} #${ordinal}` : `${card} #${ordinal}`;
         if (!parent) label = null;
       } else if (!claimed && !LANDMARKS[name] && !['ul', 'ol'].includes(name)
@@ -822,6 +836,27 @@
     if (other.element.contains(element)
       && squash(other.element.innerText) === squash(element.innerText)) return true;
     return other.record.role === what && home(element) !== null && home(element) === home(other.element);
+  };
+  // A native button or link inside a control a page only claims (a table
+  // cell with `role="gridcell"`, a row a script makes pressable) is what a
+  // press must reach: the wrapper's middle can be bare cell. Live, a seat
+  // table's "Select" buttons sat at their cells' left edge, and six presses
+  // at the cells' middles selected nothing.
+  const NATIVE_PRESS = 'button, a[href], summary, input[type="button"], input[type="submit"]';
+  const pressedInside = (wrapper, element) => wrapper !== element && wrapper.contains(element)
+    && element.matches(NATIVE_PRESS) && !wrapper.matches(`${NATIVE_PRESS}, input, select, textarea, label`);
+  // Points `twin`'s record at `element`, the control inside it, keeping
+  // what the wrapper says of itself (selected, checked) beside where the
+  // inner control is drawn and whether something covers it.
+  const aimAt = (twin, element) => {
+    const placed = ['offscreen', 'covered'];
+    const own = twin.record.states.filter((state) => !placed.includes(state));
+    const inner = statesOf(element, twin.record.role);
+    twin.record.states = [...new Set([...own, ...inner])];
+    twin.record.id = mark(element);
+    twin.record.box = [box(element).x, box(element).y, box(element).width, box(element).height]
+      .map(Math.round);
+    twin.element = element;
   };
   let unreachable = 0;
   let texts = 0;
@@ -983,6 +1018,7 @@
           twin.record.description = description;
         }
         else if (!twin.record.description && name && name !== twin.record.name) twin.record.description = name;
+        if (pressedInside(twin.element, element)) aimAt(twin, element);
         controls.add(element);
         continue;
       }
