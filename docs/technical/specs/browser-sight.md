@@ -58,9 +58,10 @@ a caret.
    hidden checkbox or radio is that checkbox or radio. Disabled controls are
    left out, as in the tree. A region a page marks as holding controls (a
    menu, list, listbox, grid, tab panel, toolbar, dialog, or a landmark) is
-   never a control itself, whatever tab stop or cursor it takes, and a
-   button or link that holds a box to type in is a panel (a popover with its
-   own search box). The rows inside either are read as controls of their
+   not a control for its tab stop alone, which only moves the focus inside
+   it (one with a pointer cursor or a click handler, such as a carousel's
+   slide, still is), and a button or link that holds a box to type in is a
+   panel (a popover with its own search box). The rows inside either are read as controls of their
    own; read as one button, a panel's name strings every row together and a
    press lands on whatever row sits at its middle.
 2. **Only what is drawn.** Zero-size, `display: none`, invisible, and

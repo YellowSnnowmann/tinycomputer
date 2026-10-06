@@ -180,8 +180,11 @@
     if (calendarDays.has(element)) return 'gridcell';
     // A region that holds controls (a menu, a list, a tab panel, a dialog)
     // takes a tab stop to move the focus inside it, not to be pressed: read
-    // as one button, it would hide every row inside it.
-    if (GROUP_ROLES.includes(claimed) || claimed === 'dialog' || claimed === 'alertdialog') return null;
+    // as one button, it would hide every row inside it. One a page makes
+    // pressable itself, by its cursor or a click handler (a carousel's slide),
+    // is still a button.
+    if ((GROUP_ROLES.includes(claimed) || claimed === 'dialog' || claimed === 'alertdialog')
+      && !element.hasAttribute('onclick') && !pointer(element)) return null;
     if (insideControl) return null;
     const tabindex = element.getAttribute('tabindex');
     const clickable = element.hasAttribute('onclick')

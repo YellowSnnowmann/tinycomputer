@@ -211,6 +211,7 @@ async fn live_panels_and_regions_leave_their_rows_to_be_read() {
             <div style="cursor: pointer">Economy</div>
             <div style="cursor: pointer">Business</div>
           </div>
+          <div role="group" style="cursor: pointer; width: 300px">Weekend deals</div>
         </main>"#,
     )
     .await
@@ -231,9 +232,11 @@ async fn live_panels_and_regions_leave_their_rows_to_be_read() {
             "560001, Bengaluru, Karnataka",
             "MG Road, Bengaluru 560001",
             "Economy",
-            "Business"
+            "Business",
+            "Weekend deals"
         ],
-        "each row is its own control, and no panel strings them together"
+        "each row is its own control, no panel strings them together, and a \
+         region the page makes pressable itself (a carousel's slide) stays one"
     );
     assert_eq!(named("textbox").len(), 1, "the panel's search box is read");
 }
