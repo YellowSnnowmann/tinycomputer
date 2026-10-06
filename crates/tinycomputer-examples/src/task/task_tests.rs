@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use tinycomputer_bus::agent::TaskStatus;
 
-use super::{AWAIT_SLICE, Person, inputs_for, loggable, next_wait, passed, reply, state};
+use super::{
+    AWAIT_SLICE, Person, inputs_for, loggable, next_wait, passed, read_lines, reply, state,
+};
 use tinycomputer_bus::agent::{InputField, InputKind, TaskId};
 
 const LIMIT: Duration = Duration::from_secs(20 * 60);
@@ -243,4 +245,30 @@ fn nothing_is_sent_for_a_state_no_person_answers() {
         );
     }
     assert!(person.asked().is_empty());
+}
+
+#[test]
+fn what_a_task_read_is_printed_one_variable_a_line() {
+    let value = |text: &str| BTreeMap::from([("value".to_owned(), text.to_owned())]);
+    let records = BTreeMap::from([
+        ("total".to_owned(), vec![value("Rs. 264")]),
+        (
+            "flights".to_owned(),
+            vec![
+                BTreeMap::from([
+                    ("field 1".to_owned(), "IndiGo".to_owned()),
+                    ("field 2".to_owned(), "₹5,000".to_owned()),
+                ]),
+                BTreeMap::from([("field 1".to_owned(), "Vistara".to_owned())]),
+            ],
+        ),
+    ]);
+    assert_eq!(
+        read_lines(&records),
+        [
+            "  read flights: IndiGo, ₹5,000 | Vistara",
+            "  read total: Rs. 264"
+        ]
+    );
+    assert!(read_lines(&BTreeMap::new()).is_empty());
 }

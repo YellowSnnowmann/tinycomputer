@@ -152,8 +152,10 @@ the running binary or at `TINYCOMPUTER_CURSOR_OVERLAY`.
 
 Under `TASK_OUT` (`target/task-live/<name>` when run through `tasks/run`),
 you get `plan.json` (the flow the planner wrote, if you didn't supply
-`FLOW_FILE`), `report.json` (every step, its outcome, and its note), and
-`final.png` (a screenshot of wherever the browser ended up). `task_live`
+`FLOW_FILE`), `report.json` (every step, its outcome, and its note),
+`records.json` (what the task read, wherever it stopped, also printed as
+`read <name>: <value>` lines), and `final.png` (a screenshot of wherever
+the browser ended up). `task_live`
 prints the task's status as it runs and treats stopping at a checkpoint
 whose reason mentions payment as success (`PASS stopped at payment`);
 anything else, including finishing without ever reaching that checkpoint,

@@ -167,8 +167,9 @@ pub fn passed(status: &TaskStatus) -> bool {
 /// report (`TaskReport`); when the task managed to take one as it stopped,
 /// `final.png` (`BrowserReadOutput` on the report's last artifact, which
 /// `read_output` releases); otherwise an `open-<n>.png` of each browser
-/// session still open; every open session is then closed; and, for a
-/// finished task, its records and any shaped result.
+/// session still open; every open session is then closed; what the task
+/// read, printed and in `records.json`, wherever it stopped; and, for a
+/// finished task, any shaped result.
 ///
 /// Only the task's own sessions are touched: those not in `before`, the
 /// sessions [`browser_sessions`](Host::browser_sessions) listed before
@@ -198,6 +199,13 @@ pub async fn conclude(
             rescue.step, rescue.outcome, rescue.reason
         );
     }
+    for line in read_lines(&report.records) {
+        println!("{line}");
+    }
+    std::fs::write(
+        out.join("records.json"),
+        serde_json::to_string_pretty(&report.records)?,
+    )?;
     std::fs::write(
         out.join("report.json"),
         serde_json::to_string_pretty(&report)?,
@@ -258,22 +266,34 @@ pub async fn conclude(
         println!("no screenshot: the task's surface could not take one");
     }
     if let TaskStatus::Done {
-        records, result, ..
+        result: Some(result),
+        ..
     } = &view.status
     {
         std::fs::write(
-            out.join("records.json"),
-            serde_json::to_string_pretty(records)?,
+            out.join("result.json"),
+            serde_json::to_string_pretty(result)?,
         )?;
-        if let Some(result) = result {
-            std::fs::write(
-                out.join("result.json"),
-                serde_json::to_string_pretty(result)?,
-            )?;
-        }
     }
     println!("final: [{}] {}", state(&view.status), view.summary);
     Ok(())
+}
+
+/// One line per variable the task read, as [`conclude`] prints them: a read
+/// value as it is, and an `extract`'s or a `pick`'s rows joined by `|`.
+#[must_use]
+pub fn read_lines(records: &BTreeMap<String, Vec<BTreeMap<String, String>>>) -> Vec<String> {
+    records
+        .iter()
+        .map(|(name, rows)| {
+            let rows = rows
+                .iter()
+                .map(|row| row.values().cloned().collect::<Vec<_>>().join(", "))
+                .collect::<Vec<_>>()
+                .join(" | ");
+            format!("  read {name}: {rows}")
+        })
+        .collect()
 }
 
 /// The status's wire name, such as `needs_input`.
