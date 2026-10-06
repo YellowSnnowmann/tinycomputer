@@ -5,7 +5,14 @@ use super::{has_phrase, normalize};
 /// What only a person can get past, by the words a page shows for it.
 const HUMAN_GATES: &[(&str, &str)] = &[
     ("captcha", "solve the captcha"),
-    ("recaptcha", "solve the captcha"),
+    // reCAPTCHA by its challenge, never by its name alone: an invisible
+    // reCAPTCHA puts a frame titled "reCAPTCHA" (and "protected by
+    // reCAPTCHA") on every form it guards, asking nothing of anyone.
+    ("complete the recaptcha", "solve the captcha"),
+    ("recaptcha challenge", "solve the captcha"),
+    ("select all images", "solve the captcha"),
+    ("select all squares", "solve the captcha"),
+    ("i am human", "prove you are human"),
     ("verify you are human", "prove you are human"),
     ("verify you re human", "prove you are human"),
     ("i m not a robot", "prove you are human"),

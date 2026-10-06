@@ -297,6 +297,28 @@ fn walls_only_a_person_can_pass_are_named() {
     ] {
         assert_eq!(needs(wall).as_deref(), Some("sign in"), "{wall}");
     }
+    // The invisible reCAPTCHA badge asks nothing, by its frame's title or its
+    // notice; a challenge beside it does.
+    let badge = "This site is protected by reCAPTCHA and the Google Privacy Policy and \
+                 Terms of Service apply.";
+    assert_eq!(needs("reCAPTCHA"), None);
+    assert_eq!(needs(badge), None);
+    assert_eq!(
+        human_needed(&[badge.to_owned(), "I'm not a robot".to_owned()]).as_deref(),
+        Some("prove you are human")
+    );
+    for challenge in [
+        "recaptcha challenge expires in two minutes",
+        "Select all images with traffic lights",
+        "Select all squares with motorcycles",
+    ] {
+        assert_eq!(
+            needs(challenge).as_deref(),
+            Some("solve the captcha"),
+            "{challenge}"
+        );
+    }
+    assert_eq!(needs("I am human").as_deref(), Some("prove you are human"));
     // A header's account links are no wall.
     for links in ["Log in | Sign up", "Login / Signup", "Log in", "Sign up"] {
         assert_eq!(needs(links), None, "{links}");
