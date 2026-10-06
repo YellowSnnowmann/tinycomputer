@@ -125,30 +125,31 @@ pub(super) fn drop_unpicked(sim: &mut Sim) {
     }
 }
 
-/// Presses `name` on the ride form; whether it was a suggestion row, which
-/// fills the open box with that place and keeps it. A press on a panel of
-/// rows lands on the row drawn at its middle, whichever that is.
+/// Presses `name` on the ride form; whether it was a suggestion row on show
+/// for the open box's text, which fills the box with that place and keeps
+/// it. A press on a panel of rows lands on the row drawn at its middle,
+/// whichever that is; a press anywhere else but the box moves the focus on,
+/// so the list closes and drops the box's unpicked text, as a page does.
 pub(super) fn press_place(sim: &mut Sim, name: &str) -> bool {
-    let Some(places) = sim.places.as_mut() else {
+    let Some(open) = sim.places.as_ref().and_then(|places| places.open.clone()) else {
         return false;
     };
-    let Some(open) = places.open.clone() else {
-        return false;
-    };
+    let rows = suggested(&sim.fields.get(&open).cloned().unwrap_or_default());
     let place = if name.starts_with(PANEL_HEADING) {
-        let typed = sim.fields.get(&open).cloned().unwrap_or_default();
-        let rows = suggested(&typed);
-        match rows.get(rows.len() / 2) {
-            Some(middle) => *middle,
-            None => return false,
-        }
-    } else if PLACES.contains(&name) {
-        name
+        rows.get(rows.len() / 2).copied()
     } else {
+        rows.into_iter().find(|row| *row == name)
+    };
+    let Some(place) = place else {
+        if name != open {
+            drop_unpicked(sim);
+        }
         return false;
     };
-    places.picked.insert(open.clone());
-    places.open = None;
+    if let Some(places) = sim.places.as_mut() {
+        places.picked.insert(open.clone());
+        places.open = None;
+    }
     sim.fields.insert(open, place.to_owned());
     true
 }

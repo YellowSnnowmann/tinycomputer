@@ -32,7 +32,7 @@ pub(super) use {
     read::chosen_together,
     read::readable,
     stop::only_signs_in,
-    suggestion::{same_search, searches, shares_most_words, suggests},
+    suggestion::{fresh_rows, same_search, searches, shares_most_words, suggests},
     typing::typing,
 };
 

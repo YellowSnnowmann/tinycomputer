@@ -12,9 +12,7 @@ use crate::agentic::flow::{
     view::{Candidate, Screen, is_destructive, label},
 };
 
-use super::matching::{
-    clickable, closest, editable, lists_more_than, mentions, one_option, plain, plainest,
-};
+use super::matching::{clickable, closest, lists_more_than, mentions, one_option, plain, plainest};
 
 /// Roles a suggestion list draws its rows with. A row that does not mention
 /// the typed text is only offered when it carries one of these, so a button
@@ -314,12 +312,13 @@ pub(in crate::agentic::flow) fn suggests(slot: &str, _field: &Candidate) -> bool
 }
 
 /// The pressable rows on `screen` that were not on screen before typing
-/// (`shown`), are not `field` or another box, do not string a list's rows
-/// together, and are safe to press. For a `place` box, a row that was
-/// already showing counts too when it matches the text: a ride app lists
-/// popular places as soon as its box has the focus, and live, the place
-/// typed was among them, so nothing new appeared and nothing was picked.
-fn fresh_rows(
+/// (`shown`), are not `field` or another box (one text is set into, or one
+/// typed into), do not string a list's rows together, and are safe to
+/// press. For a `place` box, a row that was already showing counts too when
+/// it matches the text: a ride app lists popular places as soon as its box
+/// has the focus, and live, the place typed was among them, so nothing new
+/// appeared and nothing was picked.
+pub(in crate::agentic::flow) fn fresh_rows(
     screen: &Screen,
     shown: &BTreeSet<(&str, Option<&str>)>,
     field: &Candidate,
@@ -333,8 +332,12 @@ fn fresh_rows(
             let new = !shown.contains(&(candidate.role.as_str(), candidate.name.as_deref()));
             let matches =
                 place && (mentions(candidate, text) || shares_most_words(candidate, text));
+            let a_box = candidate
+                .available_actions
+                .iter()
+                .any(|action| action == "SetValue" || action == "TypeText");
             candidate.ref_id != field.ref_id
-                && !editable(candidate)
+                && !a_box
                 && (new || matches)
                 && !lists_more_than(candidate, text)
                 && !is_destructive(candidate, screen, stop_before)

@@ -295,3 +295,59 @@ fn a_search_box_takes_only_the_same_search_and_a_place_box_its_reworded_rows() {
         "MG Road Metro Station, Bengaluru"
     ));
 }
+
+#[test]
+fn a_box_that_appears_beside_the_suggestions_is_never_taken_for_one() {
+    // A box takes text whether it is set or typed into: one drawn with the
+    // list, whose label mentions the text, is no row to press.
+    use super::steps::fresh_rows;
+    let pickup = node(
+        "Pickup location",
+        "textbox",
+        &["Click", "SetValue"],
+        &[],
+        0.0,
+    );
+    let row = "Connaught Place New Delhi, Delhi, India";
+    let screen = Screen {
+        app: "browser".to_owned(),
+        window: None,
+        surface: "window".to_owned(),
+        candidates: vec![
+            pickup.clone(),
+            node(row, "option", &["Click"], &[], 1.0),
+            node(
+                "Connaught Place note",
+                "textbox",
+                &["Click", "TypeText"],
+                &[],
+                2.0,
+            ),
+            node(
+                "Connaught Place landmark",
+                "textbox",
+                &["Click", "SetValue"],
+                &[],
+                3.0,
+            ),
+        ],
+        context: Vec::new(),
+        unexplored: Vec::new(),
+        text_nodes: Vec::new(),
+    };
+    let fresh = fresh_rows(
+        &screen,
+        &BTreeSet::new(),
+        &pickup,
+        "Connaught Place",
+        &[],
+        true,
+    );
+    assert_eq!(
+        fresh
+            .iter()
+            .filter_map(|candidate| candidate.name.as_deref())
+            .collect::<Vec<_>>(),
+        [row]
+    );
+}
