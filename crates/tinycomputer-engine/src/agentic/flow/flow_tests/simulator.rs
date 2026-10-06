@@ -43,6 +43,8 @@ pub(super) enum Quirk {
     /// The opened booking widget leaves the focus outside any text field:
     /// text with no target is refused, as the browser surface refuses it.
     NoFocus,
+    /// The obstacle sheet is a dialog whose own bar covers "Keep Editing".
+    BarOverSheet,
 }
 
 #[derive(Debug, Default)]
@@ -227,6 +229,9 @@ impl App {
         if sim.obstacle {
             surface = "sheet".to_owned();
             obstacle_sheet(&mut candidates);
+            if sim.has(Quirk::BarOverSheet) {
+                bar_over_sheet(&mut candidates);
+            }
         }
         Screen {
             app: "Mail".to_owned(),

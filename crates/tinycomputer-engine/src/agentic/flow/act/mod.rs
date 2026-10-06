@@ -24,6 +24,7 @@
 //! `moves` makes the chosen move, and `recover` undoes a turn that went
 //! wrong. This root holds the thresholds and the state they share.
 
+mod dialog;
 mod judge;
 mod moves;
 mod recover;

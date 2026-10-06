@@ -15,7 +15,8 @@ use crate::agentic::flow::{
 };
 
 use super::{
-    Expected, MAX_REPEAT_PRESSES, Move, activate_purpose, covered, creates_new, judge::Judgement,
+    Expected, MAX_REPEAT_PRESSES, Move, activate_purpose, covered, creates_new, dialog::in_dialog,
+    judge::Judgement,
 };
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
@@ -145,7 +146,11 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let covered = candidate
             .states
             .iter()
-            .any(|state| state.eq_ignore_ascii_case("covered"));
+            .any(|state| state.eq_ignore_ascii_case("covered"))
+            // What the dialog's own bar covers in its list is the dialog's:
+            // a press scrolls it out from under the bar (live, a seat table's
+            // lower rows sat under its "Pay" bar).
+            && !in_dialog(candidate);
         if covered && self.front.surface != "window" {
             return false;
         }
@@ -192,6 +197,15 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 self.ground(log, screen, &purpose, intent, pool).await?
             }
         };
+        // Nothing serving the step itself while the task's own dialog is in
+        // front: the dialog asks something first, and what answers it is
+        // pressed instead, though not remembered as the step's control.
+        let (grounded, answers_dialog) = match grounded {
+            None if operation == "activate" && self.front.opened_dialog => {
+                (self.answer_dialog(log, screen, intent, banned).await?, true)
+            }
+            grounded => (grounded, false),
+        };
         let Some(grounded) = grounded else {
             self.history.push(format!(
                 "no element clearly serves {verb} for this step; consider a shortcut or another move"
@@ -218,7 +232,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             .await?;
         self.history
             .push(format!("{verb} {} ok={}", label(&target), reply.ok));
-        if reply.ok {
+        if reply.ok && !answers_dialog {
             learn(&mut self.learned, remember(&self.app, intent, &target));
         }
         Ok(Some((target, expected)))

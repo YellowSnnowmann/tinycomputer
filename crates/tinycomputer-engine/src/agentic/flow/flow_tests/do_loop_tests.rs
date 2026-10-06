@@ -553,3 +553,103 @@ fn several_items_are_asked_for_by_a_choosing_verb_and_a_counted_plural() {
         assert!(!act::asks_for_several(one), "{one}");
     }
 }
+
+#[tokio::test]
+async fn a_step_finding_nothing_to_press_answers_the_dialog_the_task_opened() {
+    // Live, a date step found nothing to press for four turns while the
+    // format dialog a booking button had opened offered "2D", and a rescue
+    // was spent pressing it.
+    let run = run_with(
+        App::with(|sim| sim.obstacle = true),
+        json!({"app": "browser", "steps": ["choose Wednesday 7 October 2026 in the date picker"]}),
+        |_| {},
+        |id, question, sim| {
+            let answering = serde_json::to_string(question)
+                .unwrap()
+                .contains("click to answer the dialog");
+            match id {
+                "done" => Some(noul(if sim.obstacle { 0.05 } else { 0.95 })),
+                "blocked" => Some(noul(0.05)),
+                "move" => Some(pick(question, "activate", 0.9)),
+                _ if id == "target" || id == "region" || id.starts_with("group_") => Some(pick(
+                    question,
+                    if answering {
+                        "Keep Editing"
+                    } else {
+                        "no such control"
+                    },
+                    0.9,
+                )),
+                _ => None,
+            }
+        },
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{}",
+        run.result.steps[0].note
+    );
+    assert_eq!(run.app.sim().clicks, ["Keep Editing"]);
+}
+
+#[tokio::test]
+async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_not() {
+    // Live, a seat table's lower rows sat under its "Pay" bar and were never
+    // offered; a press scrolls such a control out from under the bar. A
+    // browser run takes a dialog at its first look as the task's own.
+    let pressing = |wanted: &'static str| {
+        move |id: &str, question: &Question, sim: &Sim| match id {
+            "done" => Some(noul(if sim.obstacle { 0.05 } else { 0.95 })),
+            "blocked" => Some(noul(0.05)),
+            "move" => Some(pick(question, "activate", 0.9)),
+            _ if id == "target" || id == "region" || id.starts_with("group_") => {
+                Some(pick(question, wanted, 0.9))
+            }
+            _ => None,
+        }
+    };
+    let in_the_dialog = run_with(
+        App::with(|sim| {
+            sim.obstacle = true;
+            sim.quirks.insert(Quirk::BarOverSheet);
+        }),
+        json!({"app": "browser", "steps": ["keep editing the draft"]}),
+        |_| {},
+        pressing("Keep Editing"),
+    )
+    .await;
+    let asked = in_the_dialog
+        .requests
+        .iter()
+        .flat_map(|request| request.questions.keys().cloned())
+        .collect::<Vec<_>>();
+    let (clicks, presses) = {
+        let sim = in_the_dialog.app.sim();
+        (sim.clicks.clone(), sim.presses.clone())
+    };
+    assert_eq!(
+        clicks,
+        ["Keep Editing"],
+        "{} {asked:?} {presses:?}",
+        in_the_dialog.result.steps[0].note
+    );
+
+    // What the dialog itself covers on the page behind it stays out.
+    let behind = run_with(
+        App::with(|sim| {
+            sim.obstacle = true;
+            sim.quirks.insert(Quirk::Covered);
+        }),
+        json!({"app": "browser", "steps": ["start a new email message"]}),
+        |_| {},
+        pressing("New Message"),
+    )
+    .await;
+    assert!(
+        !behind.app.sim().clicks.contains(&"New Message".to_owned()),
+        "{:?}",
+        behind.app.sim().clicks
+    );
+}

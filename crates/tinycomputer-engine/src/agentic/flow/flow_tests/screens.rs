@@ -302,6 +302,20 @@ pub(super) fn obstacle_sheet(candidates: &mut Vec<Candidate>) {
     });
 }
 
+/// The obstacle sheet as a dialog whose own bar covers "Keep Editing" in
+/// its list, as a seat table's "Pay" bar covers its lower rows.
+pub(super) fn bar_over_sheet(candidates: &mut [Candidate]) {
+    for candidate in candidates
+        .iter_mut()
+        .filter(|candidate| candidate.path == ["sheet"])
+    {
+        candidate.path = vec!["dialog \"Unsaved draft\"".to_owned()];
+        if candidate.name.as_deref() == Some("Keep Editing") {
+            candidate.states = vec!["covered".to_owned()];
+        }
+    }
+}
+
 /// A city list whose unnamed rows each hold their city as a value and take
 /// no text, above the one real search field.
 pub(super) fn city_rows(root: &str, candidates: &mut Vec<Candidate>) {
