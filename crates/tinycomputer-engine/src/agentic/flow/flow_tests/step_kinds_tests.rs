@@ -313,3 +313,56 @@ fn a_plain_step_that_types_is_read_as_the_enter_it_means() {
         assert_eq!(slot(plain), None, "{plain}");
     }
 }
+
+#[test]
+fn the_items_chosen_together_in_one_list_read_as_one_source() {
+    // Live, a seat table marked two seats "Selected", and a read of "the
+    // selected seats" could take only one piece of text, naming neither.
+    let seat = |number: u32, status: &str, chosen: bool| Candidate {
+        ref_id: format!("seen:{number}"),
+        role: "gridcell".to_owned(),
+        name: Some(if chosen { "Selected" } else { "Select" }.to_owned()),
+        states: if chosen {
+            vec!["checked".to_owned()]
+        } else {
+            Vec::new()
+        },
+        path: vec![
+            "dialog \"Seats\"".to_owned(),
+            "grid \"Row A\"".to_owned(),
+            format!("row \"{number:02} {status}\" #{number}"),
+        ],
+        ..Candidate::default()
+    };
+    let mut screen = Screen {
+        app: "browser".to_owned(),
+        window: None,
+        surface: "sheet".to_owned(),
+        candidates: vec![
+            seat(1, "Handicapped", false),
+            seat(2, "Companion", true),
+            seat(3, "Available", true),
+        ],
+        context: Vec::new(),
+        unexplored: Vec::new(),
+        text_nodes: Vec::new(),
+    };
+    let sources = steps::chosen_together(&screen, true);
+    assert_eq!(sources.len(), 1, "{sources:?}");
+    assert_eq!(sources[0].2, "02 Companion; 03 Available");
+    assert!(
+        sources[0]
+            .1
+            .to_string()
+            .contains("02 Companion; 03 Available")
+    );
+    let masked = steps::chosen_together(&screen, false);
+    assert!(
+        masked[0].1.to_string().contains("26 characters"),
+        "{masked:?}"
+    );
+
+    // One chosen item is already a source of its own.
+    screen.candidates.truncate(2);
+    assert!(steps::chosen_together(&screen, true).is_empty());
+}

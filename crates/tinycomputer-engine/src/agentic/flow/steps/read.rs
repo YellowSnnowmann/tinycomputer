@@ -8,7 +8,7 @@ use crate::agentic::flow::{
     ask::{self, Questions, chosen, numbered},
     backend::AgentBackend,
     validate::substitute_safe,
-    view::{Candidate, label},
+    view::{Candidate, Screen, label},
 };
 
 use super::LOCATE_FLOOR;
@@ -76,6 +76,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 });
                 name.into_iter().chain(value)
             })
+            .chain(chosen_together(screen, self.include_values))
             .chain(screen.context.iter().map(|line| {
                 (
                     line.clone(),
@@ -175,4 +176,72 @@ pub(in crate::agentic::flow) fn readable(candidate: &Candidate) -> Option<String
         (None, Some(name)) if !name.trim().is_empty() => Some(name.to_owned()),
         _ => None,
     }
+}
+
+/// The items chosen together in one list, as one source each list: what
+/// the cards or rows of its checked or selected controls say, when two or
+/// more are. Live, a seat table marked two seats "Selected", and a read of
+/// "the selected seats" could take only one piece of text, none of which
+/// named both. With `include_values` off, Jev is shown only its length.
+pub(in crate::agentic::flow) fn chosen_together(
+    screen: &Screen,
+    include_values: bool,
+) -> Vec<(String, Value, String)> {
+    let mut lists: Vec<(&[String], Vec<String>)> = Vec::new();
+    for candidate in &screen.candidates {
+        let chosen = candidate
+            .states
+            .iter()
+            .any(|state| state == "checked" || state == "selected");
+        let Some((card, list)) = candidate.path.split_last() else {
+            continue;
+        };
+        let Some(words) = card_words(card).filter(|_| chosen) else {
+            continue;
+        };
+        match lists.iter_mut().find(|(seen, _)| *seen == list) {
+            Some((_, items)) => items.push(words),
+            None => lists.push((list, vec![words])),
+        }
+    }
+    lists
+        .into_iter()
+        .filter(|(_, items)| items.len() >= 2)
+        .map(|(list, items)| {
+            let joined = items.join("; ");
+            let place = list.last().cloned().unwrap_or_default();
+            let shows = if include_values {
+                json!(joined)
+            } else {
+                json!(format!("{} characters", joined.chars().count()))
+            };
+            // Said in the shape of an element's source, and plainly: a row
+            // keeps saying what it said before (a seat's status stayed
+            // "Available"), and live, a source naming its list only as
+            // where the items were chosen drew 0.02.
+            let element = format!(
+                "the {} items marked checked or selected in {place}",
+                items.len()
+            );
+            (
+                element.clone(),
+                json!({"untrusted_accessibility_data": {
+                    "element": element,
+                    "part": "what their rows say",
+                    "shows": shows,
+                    "state": "checked",
+                }}),
+                joined,
+            )
+        })
+        .collect()
+}
+
+/// What a numbered card or row says of itself (`03 Available` for
+/// `row "03 Available" #3`), or `None` for any other container.
+fn card_words(segment: &str) -> Option<String> {
+    let (head, number) = segment.rsplit_once(" #")?;
+    number.parse::<u32>().ok()?;
+    let (_, quoted) = head.split_once(' ')?;
+    serde_json::from_str::<String>(quoted).ok()
 }

@@ -97,7 +97,10 @@ whichever list has that measure and never asks which list is meant.
 A `read` of an element whose name and value differ, such as a chat button
 named for the chat but holding its last message as a separate value,
 offers both the name and the value to Jev as separate sources rather than
-picking one for it.
+picking one for it. Where two or more controls in one list show checked or
+selected (two seats marked "Selected" in a seat table), the read also
+offers what their cards or rows say, together, as one source
+(`02 Companion; 03 Available`): no single piece of text names them all.
 
 ## Shaping the answer
 
