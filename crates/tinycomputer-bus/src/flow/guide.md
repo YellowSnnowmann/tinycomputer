@@ -110,7 +110,10 @@ do.
    that reads a variable writes `${cheapest_flight}`, never `cheapest_flight`,
    so its value is shown; a bare identifier fails validation. A `verify` or
    `wait_for` must be checkable on the current screen alone — never "matches
-   what the other site showed": `pick` already ranks. Never name a `pick`
+   what the other site showed": `pick` already ranks. Nor a change: "the grid
+   has updated after sorting" cannot be seen on one screen, and is judged
+   false over it; name what shows once it has happened, such as "the sort
+   shows Price: Low to High". Never name a `pick`
    variable in a `verify`, `wait_for`, `repeat_until`, or `if` condition: it
    holds the whole item's text, which the opened item seldom shows again, so
    the check fails a pick that worked; a pick already fails when nothing
