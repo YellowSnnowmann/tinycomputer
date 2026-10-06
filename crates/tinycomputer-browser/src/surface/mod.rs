@@ -15,10 +15,13 @@ mod card;
 mod cursor;
 mod envelope;
 mod fields;
+mod location;
 mod native_select;
 mod operations;
 mod sight;
+mod tabs;
 mod tree;
+mod uncover;
 
 pub use sight::Denoised;
 
@@ -47,6 +50,12 @@ const SETTLE_MS: u64 = 400;
 /// The longest a settle waits for the page's network to go quiet; a page
 /// that polls forever is never idle, so this is a cap, not an expectation.
 const NETWORK_IDLE_MS: u64 = 2_000;
+
+/// The longest one reading of the page may take, by sight or as a tree. A
+/// reading sent while a page was being replaced waited out the browser's
+/// own deadline live, 30 s for sight and again for the tree, so one look
+/// took a minute; a reading this late is retried on the next look instead.
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How a [`BrowserSurface`] reads a page.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -185,11 +194,14 @@ impl BrowserSurface {
     fn see(&self, root: Option<&str>) -> Option<Screen> {
         self.keep_denoised(Denoised::default());
         let id = self.ensure_session().ok()?;
+        // The timer is made inside the runtime `block` enters, not before.
+        let reading = self.browser.command(
+            &id,
+            json!({"action": "evaluate", "script": sight::script(root)}),
+        );
         let reply = self
-            .block(self.browser.command(
-                &id,
-                json!({"action": "evaluate", "script": sight::script(root)}),
-            ))
+            .block(async { tokio::time::timeout(READ_TIMEOUT, reading).await })
+            .ok()?
             .ok()?;
         let result = reply.get("result")?;
         let screen = sight::screen(result)?;

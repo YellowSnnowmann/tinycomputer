@@ -64,7 +64,7 @@ fn a_click_covered_by_anything_else_stays_refused() {
     let reply = surface.execute(JevOperation::Click, Some(select), None);
     assert!(!reply.ok);
     assert!(reply.error.unwrap().message.contains("is covered by"));
-    assert!(!fake.actions().iter().any(|action| action == "mouse"));
+    assert!(!fake.pressed_by_position());
 
     let Harness { fake, surface, .. } = harness("covered-unnamed", covered_fake(true));
     assert!(
@@ -72,7 +72,7 @@ fn a_click_covered_by_anything_else_stays_refused() {
             .execute(JevOperation::Click, Some(node("e5", &["Click"])), None)
             .ok
     );
-    assert!(!fake.actions().iter().any(|action| action == "evaluate"));
+    assert!(!fake.evaluated_besides_keeping_the_tab());
 }
 
 /// A page that takes every click, and says through `evaluate` whether the
@@ -114,7 +114,7 @@ fn a_tab_click_the_page_ignored_is_pressed_again_through_the_dom() {
         };
         assert!(surface.execute(JevOperation::Click, Some(node), None).ok);
         assert!(
-            !fake.actions().iter().any(|action| action == "evaluate"),
+            !fake.evaluated_besides_keeping_the_tab(),
             "{reference} {role}"
         );
     }

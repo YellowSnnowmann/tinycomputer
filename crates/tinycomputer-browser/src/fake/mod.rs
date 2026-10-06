@@ -48,6 +48,31 @@ impl Fake {
             .collect()
     }
 
+    /// Every command sent, in order.
+    pub(crate) fn sent(&self) -> Vec<Value> {
+        self.sent.lock().unwrap().clone()
+    }
+
+    /// Whether a page script ran besides the one that keeps a press in the
+    /// tab, which runs before every click.
+    pub(crate) fn evaluated_besides_keeping_the_tab(&self) -> bool {
+        self.sent().iter().any(|command| {
+            command["action"] == "evaluate"
+                && !command["script"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("__tcOpen")
+        })
+    }
+
+    /// Whether the pointer pressed anywhere by position, rather than only
+    /// moving.
+    pub(crate) fn pressed_by_position(&self) -> bool {
+        self.sent()
+            .iter()
+            .any(|command| command["action"] == "mouse" && command["eventType"] != "mouseMoved")
+    }
+
     pub(crate) fn last(&self, action: &str) -> Value {
         self.sent
             .lock()
