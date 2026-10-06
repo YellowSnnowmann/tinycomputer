@@ -25,7 +25,7 @@
 //! deliberating decision may later be asked in further framings (`widen`),
 //! whose answers join the same ballot.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 use tinyinference_decisions::{Answer, ChoiceAnswer, EvaluationRequest, NoulAnswer, Question};
@@ -163,17 +163,17 @@ fn keys_for(count: usize, index: usize) -> Vec<String> {
 }
 
 /// Every framing's answer to each question, under the original keys, in
-/// framing order: the question's ballot.
+/// framing order: the question's ballot. The framings may ask different
+/// questions, as the parts of a request split by its questions do, so every
+/// question any of them asked has a ballot.
 pub(super) fn ballots(
     answered: &[(Framing, BTreeMap<String, Answer>)],
 ) -> BTreeMap<String, Vec<Answer>> {
-    let Some((first, _)) = answered.first() else {
-        return BTreeMap::new();
-    };
-    first
-        .request
-        .questions
-        .keys()
+    answered
+        .iter()
+        .flat_map(|(framing, _)| framing.request.questions.keys())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .map(|id| {
             let answers = answered
                 .iter()

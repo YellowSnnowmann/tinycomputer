@@ -273,3 +273,29 @@ fn merged_answers_average_under_the_original_keys() {
     assert!((split.confidence - 0.5).abs() < 1e-9, "one of two agreed");
     assert!(vote::tally(&vote::ballots(&[])).is_empty());
 }
+
+#[test]
+fn every_part_of_a_split_request_gets_a_ballot() {
+    // Parts of a request split by its questions are asked, and answered,
+    // side by side; the ballots once took their questions from the first
+    // answer alone, dropping every other part's.
+    let part = |id: &str| {
+        ask::request(
+            "jev-latest",
+            json!({}),
+            ask::Questions::default().with(id, ask::completion("x")),
+        )
+    };
+    let answered = vote::framings(&part("done"), 2)
+        .into_iter()
+        .map(|framing| (framing, BTreeMap::from([("done".to_owned(), noul(0.9))])))
+        .chain(
+            vote::framings(&part("holds"), 2)
+                .into_iter()
+                .map(|framing| (framing, BTreeMap::from([("holds".to_owned(), noul(0.2))]))),
+        )
+        .collect::<Vec<_>>();
+    let ballots = vote::ballots(&answered);
+    assert_eq!(ballots.keys().collect::<Vec<_>>(), ["done", "holds"]);
+    assert_eq!(ballots["holds"].len(), 2);
+}

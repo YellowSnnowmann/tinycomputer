@@ -84,27 +84,30 @@ fn a_request_that_fits_or_holds_one_question_stays_whole() {
 #[tokio::test]
 async fn an_oversized_knockout_is_asked_in_parts_and_still_finds_its_target() {
     // Live, a long results page made a 16-group knockout of 79 KB, which the
-    // gateway refused with HTTP 502 every time, ending the task.
+    // gateway refused with HTTP 502 every time, ending the task. Then, split,
+    // the answers of every part but the first were dropped, so a search's
+    // "Go" button, asked in the second part, was never pressed.
     let run = run_with(
         App::with(|sim| {
             sim.extra_buttons = 400;
             sim.quirks.insert(Quirk::OneRegion);
         }),
-        json!({"app": "Mail", "steps": ["open message 357"]}),
+        json!({"app": "Mail", "steps": ["open message 190"]}),
         |_| {},
         |id, question, sim| match id {
             "move" => Some(pick(question, "activate", 0.9)),
             "region" => Some(pick(question, "Messages", 0.9)),
             "done" => Some(noul(if sim.clicks.is_empty() { 0.05 } else { 0.9 })),
-            // The one row named so: no other label holds "Message 357".
-            "target" => Some(pick(question, "Message 357", 0.9)),
-            _ if id.starts_with("group_") => Some(pick(question, "Message 357", 0.9)),
+            // The one row named so: no other label holds "Message 190". It is
+            // in group 9, the last group by key, so in the request's last part.
+            "target" => Some(pick(question, "Message 190", 0.9)),
+            _ if id.starts_with("group_") => Some(pick(question, "Message 190", 0.9)),
             _ => None,
         },
     )
     .await;
     assert_eq!(run.result.stop, FlowStopReason::Completed);
-    assert_eq!(run.app.sim().clicks, ["Message 357"]);
+    assert_eq!(run.app.sim().clicks, ["Message 190"]);
     assert!(
         run.requests
             .iter()
@@ -127,5 +130,11 @@ async fn an_oversized_knockout_is_asked_in_parts_and_still_finds_its_target() {
     assert!(
         knockout.len() > 1,
         "the knockout's groups went out in parts: {knockout:?}"
+    );
+    assert!(
+        run.requests.iter().any(|request| {
+            request.questions.contains_key("group_9") && !request.questions.contains_key("group_0")
+        }),
+        "the target's group was asked in a part of its own, not the first"
     );
 }
