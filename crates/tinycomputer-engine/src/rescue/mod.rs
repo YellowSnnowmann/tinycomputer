@@ -63,7 +63,8 @@ delivers lists nothing, or finds nothing, until its delivery place is set, so se
 location button) and search again, with fewer words when the query was long. Write short, \
 concrete steps, one action each. Name what a step chooses with all the task's own words for \
 it, its size and variant included (the 1 litre pack the task asks for, not any pack of the \
-same name). A store item whose add button became a minus, count, plus stepper is in the cart \
+same name), and every condition the task puts on a choice (the cheapest car is the \
+cheapest of the cars, never an auto or a bike). A store item whose add button became a minus, count, plus stepper is in the cart \
 with that count: never add it again, nor another size of it. A strip of dates opens on today: \
 the day the task asks for is chosen only when the strip shows it selected, so choose it again \
 after a dialog or a new page, and never skip that step because the day is on screen. To press \

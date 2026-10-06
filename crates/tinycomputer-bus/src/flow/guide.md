@@ -133,7 +133,10 @@ do.
    task asks for ("the results for <the item named>", not just "the search
    results"), and its `by` is the task's criterion, "first" when the task
    says the first one, never a stand-in such as "lowest price": a list
-   often holds other items beside the one asked for.
+   often holds other items beside the one asked for. Keep every condition
+   the task puts on the choice in that `by`: "the cheapest car" is
+   "the lowest fare among the cars", never just "lowest fare", since a
+   list of rides also holds autos and bikes.
    A button that starts a booking or a purchase often opens a dialog that
    asks a question first (a format, a language, a quantity) before what
    comes next is offered: when a step finds such a dialog in front, answer
@@ -169,7 +172,10 @@ do.
    task only says to use the current location if asked, do it where the
    page asks, with the page's own "use my current location" control, and
    go on without a place when there is no such control: never wait for a
-   place to be set. Seats are chosen on the seat map with a
+   place to be set. A film's, show's, or stay's page offers its dates,
+   times, and seats only once its booking button ("Book tickets", "Book
+   now") is pressed: press it in a step of its own before choosing a
+   date. Seats are chosen on the seat map with a
    plain step that names the section and the count ("choose 2 adjacent
    available seats in the cheapest section"), never a `pick`: a seat map's
    price list names sections, and has nothing to press. A day in a strip
