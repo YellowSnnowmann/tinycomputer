@@ -60,13 +60,92 @@ pub fn result_families(screen: &Screen) -> Vec<Vec<Group>> {
     let families: Vec<Vec<Group>> = list_levels(&nodes)
         .into_iter()
         .map(|(depth, parent)| cards(&nodes, depth, &parent, true))
-        .filter(|groups| !groups.is_empty())
+        .filter(|groups| !groups.is_empty() && !bare(groups))
         .collect();
     if families.is_empty() {
-        flat_lists(&nodes)
-    } else {
-        families
+        let flat = flat_lists(&nodes)
+            .into_iter()
+            .filter(|groups| !bare(groups))
+            .collect::<Vec<_>>();
+        return if flat.is_empty() {
+            link_runs(&nodes)
+        } else {
+            flat
+        };
     }
+    // A grid whose every card is one control (a link holding its picture,
+    // name, and price; a ride option holding its fare) repeats no
+    // container, so its cards are a run of controls beside the lists that
+    // do (live, a store's results never showed as a list, and a ride app's
+    // options lost to its four tabs).
+    let mut families = families;
+    families.extend(link_runs(&nodes));
+    families.sort_by_key(|groups| std::cmp::Reverse(groups.len()));
+    families
+}
+
+/// Least characters a control must show to be a card of its own.
+const CARD_LINK_CHARS: usize = 20;
+
+/// Roles of a control that can be a whole card.
+const CARD_CONTROL_ROLES: &[&str] = &["link", "option", "radio", "button"];
+
+/// The runs of `MIN_FLAT_ITEMS` or more same-role controls under one
+/// parent, each showing [`CARD_LINK_CHARS`] or more characters with a word
+/// in them, longest first: cards that are one control, whatever they hold.
+fn link_runs(nodes: &[(&Candidate, bool)]) -> Vec<Vec<Group>> {
+    let mut runs: Vec<(RunKey<'_>, Vec<Group>)> = Vec::new();
+    for (node, actionable) in nodes {
+        if !*actionable || !CARD_CONTROL_ROLES.contains(&node.role.as_str()) {
+            continue;
+        }
+        let Some(text) = text_of(node, true, true) else {
+            continue;
+        };
+        let letters = text
+            .chars()
+            .filter(|character| character.is_alphabetic())
+            .count();
+        if text.chars().count() < CARD_LINK_CHARS || letters < 3 {
+            continue;
+        }
+        let key = (node.path.as_slice(), node.role.as_str());
+        let index = if let Some(index) = runs.iter().position(|(seen, _)| *seen == key) {
+            index
+        } else {
+            runs.push((key, Vec::new()));
+            runs.len() - 1
+        };
+        let groups = &mut runs[index].1;
+        groups.push(Group {
+            label: format!("{} #{}", node.role, groups.len() + 1),
+            fields: vec![text],
+            primary: Some((*node).clone()),
+        });
+    }
+    runs.retain(|(_, groups)| groups.len() >= MIN_FLAT_ITEMS);
+    runs.sort_by_key(|(_, groups)| std::cmp::Reverse(groups.len()));
+    runs.into_iter().map(|(_, groups)| groups).collect()
+}
+
+/// Most letters and digits a card may show and still be a bare marker.
+const BARE_CHARS: usize = 3;
+
+/// Whether every card of `groups` shows only bare markers, numbers or a
+/// letter or two each: carousel dots, size chips, page numbers. No task
+/// means those by its results, and live, a pick took a row of a card's
+/// image dots ("1", "2", "3"), and another time a card of 22 of them, for
+/// the list of products.
+fn bare(groups: &[Group]) -> bool {
+    groups.iter().all(|group| {
+        group.fields.iter().all(|field| {
+            field
+                .chars()
+                .filter(|character| character.is_alphanumeric())
+                .count()
+                <= BARE_CHARS
+        })
+    })
 }
 
 /// A run of leaf siblings: their parent's path and their role.
@@ -265,14 +344,19 @@ fn text_of(node: &Candidate, actionable: bool, include_values: bool) -> Option<S
     (!text.is_empty()).then_some(text)
 }
 
-/// Whether `node` is a better "open this card" control than `current`.
+/// Whether `node` is a better "open this card" control than `current`: a
+/// control whose name says it opens or selects the card first, then a
+/// named link, then the first control. Live, a store's card began with
+/// its pack-size dropdown, and a pick opened that instead of the product
+/// its title links to.
 fn prefers(node: &Candidate, current: Option<&Candidate>) -> bool {
-    let opens = |candidate: &Candidate| {
+    let rank = |candidate: &Candidate| {
         let name = candidate.name.as_deref().unwrap_or_default().to_lowercase();
-        OPENERS.iter().any(|word| name.contains(word))
+        if OPENERS.iter().any(|word| name.contains(word)) {
+            2
+        } else {
+            u8::from(candidate.role == "link" && !name.is_empty())
+        }
     };
-    match current {
-        None => true,
-        Some(current) => opens(node) && !opens(current),
-    }
+    current.is_none_or(|current| rank(node) > rank(current))
 }
