@@ -134,7 +134,11 @@ pub(super) async fn drive(cell: Arc<Cell>, runner: Arc<dyn FlowRunner>, runs: Ve
                 state.exchanges.extend(result.trace);
                 state.learned.extend(result.learned);
                 for (name, value) in result.vars {
-                    if state.facts.get(&name).is_none() && !run.flow.vars.contains_key(&name) {
+                    // A variable the flow was given is the caller's input,
+                    // not a read, unless the run changed it: a planner
+                    // declares each read's variable up front, empty.
+                    if state.facts.get(&name).is_none() && run.flow.vars.get(&name) != Some(&value)
+                    {
                         state.reads.insert(name, value);
                     }
                 }
