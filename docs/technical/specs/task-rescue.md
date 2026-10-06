@@ -40,7 +40,10 @@ fails the task.
     also do. Those steps are dropped rather than run twice, as when one
     rescue fills fields the plan filled in three steps. A covered step may
     never hold a `stop_before`, at any depth, and `covers` may not run past
-    the end of the flow; either answer goes back as invalid.
+    the end of the flow; either answer goes back as invalid. Guidance whose
+    last step runs the failed step again (the same action, or the same
+    `do` intent in other case or spacing) does none of the steps after it,
+    so its `covers` is taken as 0 whatever it says.
   - When the failed step is itself a `stop_before` (the control it guards
     was not found), the guidance must hold a `stop_before` too, so a rescue
     can move the guard to where the page puts it but never remove it.

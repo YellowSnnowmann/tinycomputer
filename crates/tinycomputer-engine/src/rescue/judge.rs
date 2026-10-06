@@ -50,6 +50,14 @@ pub(super) fn judge(reply: &str, briefing: &Briefing) -> Result<Guidance, String
         );
     }
     let covers = covered(&value, briefing)?;
+    // Guidance that ends by running the failed step again does nothing
+    // after it, whatever `covers` says: live, a rescue that pressed "Book
+    // tickets" and chose the date again counted the next step as done too,
+    // and the show time that step was to pick never was.
+    let covers = match (steps.last(), briefing.flow.steps.get(briefing.failed)) {
+        (Some(last), Some(failed)) if reruns(last, failed) => 0,
+        _ => covers,
+    };
     let flow = resumed(briefing, steps.clone(), covers);
     if flow.steps.is_empty() {
         return Err(
@@ -98,6 +106,21 @@ fn covered(value: &Value, briefing: &Briefing) -> Result<usize, String> {
         ));
     }
     Ok(covers)
+}
+
+/// Whether `step` runs `failed` again: the same action, or the same `do`
+/// intent in other letter case or spacing.
+fn reruns(step: &FlowStep, failed: &FlowStep) -> bool {
+    let squashed = |intent: &str| {
+        intent
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect::<Vec<_>>()
+    };
+    match (step.action(), failed.action()) {
+        (FlowAction::Do(step), FlowAction::Do(failed)) => squashed(&step) == squashed(&failed),
+        (step, failed) => step == failed,
+    }
 }
 
 /// Whether `step` holds a `stop_before`, at any depth. Used only to refuse
