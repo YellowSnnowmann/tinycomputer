@@ -208,7 +208,8 @@ Slot names go to Jev. Slot values never do.
 | Id | Type | Given | Answer used as |
 |---|---|---|---|
 | `source` | Choice | readable text on screen, 60 per page | for `read`, stored at 0.5 or above |
-| `record` | Choice | up to 60 result cards, each as its fields | for `pick`, when the criterion did not parse; used at 0.5 |
+| `record` | Choice | up to 60 result cards, each as its fields | for `pick`, when the criterion did not parse, or when no ranked card belongs to the list; used at 0.5 |
+| `belongs_<i>` | Noul | the list `from` describes, one ranked card's fields | for `pick` after an exact ranking, one per card among the first eight; the first at 0.5 is taken |
 | `list` | Choice | up to 6 lists showing, each as its length and first 3 items | for `extract`, and a `pick` whose criterion did not parse, when more than one list shows; used at 0.5, else the longest |
 
 `extract` asks nothing when one list shows, and `pick` asks nothing when its

@@ -47,6 +47,9 @@ pub(super) const WAIT_CHECKS: u32 = 10;
 pub(super) const EMPTY_CHECKS: u32 = 2;
 /// Most characters of a picked item's text kept in its variable.
 pub(super) const MAX_PICK_SUMMARY: usize = 400;
+/// Items an exact ranking puts first that a `pick` asks Jev about, at once,
+/// for the first that belongs to the list it picks from.
+pub(super) const RANKED_CHECKS: usize = 8;
 /// Least belief a deep run needs that a control is the one a `stop_before`
 /// names before it presses it irreversibly.
 pub(in crate::agentic::flow) const IRREVERSIBLE_FLOOR: f64 = 0.85;

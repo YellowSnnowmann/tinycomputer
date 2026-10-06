@@ -32,6 +32,72 @@ async fn pick_ranks_a_measurable_criterion_exactly_and_opens_the_winner() {
     }
 }
 
+/// Says an item belongs to the list picked from only when it shows `brand`.
+fn belongs_when(brand: &'static str) -> impl Fn(&str, &Question, &Sim) -> Option<Answer> {
+    move |id, question, _| {
+        id.starts_with("belongs_").then(|| {
+            noul(if text_of(question, "item").contains(brand) {
+                0.9
+            } else {
+                0.1
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn an_exact_ranking_takes_the_first_item_that_belongs_to_the_list() {
+    // Live, "the results rated 4 stars or more" ranked by lowest price took
+    // the cheapest result on the page, a 3.1-star item of another brand:
+    // the ranking reads only the price.
+    let run = run_with(
+        flights(),
+        json!({"app": "Mail", "steps": [
+            {"pick": {"from": "the Air India flights", "by": "lowest price", "into": "flight"}}
+        ]}),
+        |_| {},
+        belongs_when("air india"),
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert!(
+        run.result.vars["flight"].starts_with("Air India"),
+        "{}",
+        run.result.vars["flight"]
+    );
+    assert_eq!(run.app.sim().picked, ["@s:select-3"]);
+    assert!(run.result.steps[0].note.contains("ranked"));
+}
+
+#[tokio::test]
+async fn a_ranking_none_of_whose_leaders_belongs_is_judged_instead() {
+    let run = run_with(
+        flights(),
+        json!({"app": "Mail", "steps": [
+            {"pick": {"from": "the Emirates flights", "by": "lowest price", "into": "flight"}}
+        ]}),
+        |_| {},
+        belongs_when("emirates"),
+    )
+    .await;
+    assert!(
+        run.requests
+            .iter()
+            .any(|request| request.questions.contains_key("record")),
+        "Jev judges the list when no ranked item belongs to it"
+    );
+    assert_ne!(
+        run.app.sim().picked,
+        ["@s:select-1"],
+        "not the cheapest card"
+    );
+}
+
 #[tokio::test]
 async fn pick_ranks_the_list_that_has_prices_not_the_longest_one() {
     let app = flights();

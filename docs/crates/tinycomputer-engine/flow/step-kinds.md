@@ -123,12 +123,16 @@ The exact rankings are:
 - fewest stops,
 - shortest duration.
 
-When it parses ("lowest price"), the ranking costs nothing: the parsers in
+When it parses ("lowest price"), the parsers in
 `tinycomputer-core/src/records/` read prices with currency symbols, clock
 times, durations like `2h 35m`, and stop counts like `non-stop` or `1
-stop`, and the winner is picked exactly from whichever list on screen
-actually has that measure; no separate question about which list is meant
-is needed. When it does not parse ("a morning flight with at most one
+stop`, and the cards are ranked exactly on whichever list on screen
+actually has that measure. The ranking reads only the measure, so one
+question then asks, for the first eight ranked cards at once, whether each
+belongs to the list `from` describes ("the Air India flights", "the
+results rated 4 stars or more"). The first that does, at 0.5 or more, is
+taken. Live, the cheapest card on a store's page was another brand rated
+3.1 stars. When none of the eight belongs, the list is judged as below. When it does not parse ("a morning flight with at most one
 stop"), and more than one list shows, one Choice first asks which list
 `from` names, then Jev gets one Choice over that list's cards. Either way,
 the winner's text goes into the named variable, capped at 400 characters,

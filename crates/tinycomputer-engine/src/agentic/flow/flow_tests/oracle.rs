@@ -292,6 +292,8 @@ pub(super) fn default_answer(id: &str, question: &Question, sim: &Sim) -> Answer
         _ if id.starts_with("distraction_") => noul(0.05),
         _ if id.starts_with("error_") || id == "strays" => noul(0.05),
         _ if id.starts_with("asks_") => noul(0.9),
+        // Every ranked item belongs to the list picked from, unless a test says.
+        _ if id.starts_with("belongs_") => noul(0.9),
         "dismiss" => pick(question, "Keep Editing", 0.9),
         "region" => pick(question, "Region 1", 0.9),
         _ if id.starts_with("slot_") => {

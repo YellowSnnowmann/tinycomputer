@@ -19,7 +19,8 @@ Change a constant and its row together.
 | `CORROBORATED` | 0.80 | `ground/mod.rs` | corroboration that accepts a target alone |
 | `AGREED` | 0.50 | `ground/mod.rs` | corroboration that accepts a target the re-ask agreed on |
 | `SLOT_FLOOR` | 0.40 | `enter/mod.rs` | least probability for a slot assignment |
-| `LOCATE_FLOOR` | 0.50 | `steps/mod.rs` | least probability for a `read`, `pick`, or `stop_before` target, or an `extract`'s list |
+| `LOCATE_FLOOR` | 0.50 | `steps/mod.rs` | least probability for a `read`, `pick`, or `stop_before` target, an `extract`'s list, or a ranked card belonging to the list a `pick` picks from |
+| `RANKED_CHECKS` | 8 | `steps/mod.rs` | cards an exact `pick` ranking puts first that are asked about, at once, for the first that belongs to the list picked from |
 | `MAX_LISTS` | 6 | `steps/mod.rs` | lists an `extract` offers Jev when several show; past it, the longest six |
 | `LIST_PREVIEW` | 3 | `steps/mod.rs` | first items of each list an `extract` shows Jev to tell the lists apart |
 | `MAX_COLLECTED` | 12 | `wide/mod.rs` | saved variables every state recalls as `already_collected`, the most recent first kept |
