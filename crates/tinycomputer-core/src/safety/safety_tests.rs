@@ -287,6 +287,20 @@ fn walls_only_a_person_can_pass_are_named() {
         None,
         "a sign-in link on an ordinary page is no wall"
     );
+    // A dialog that names what it hides, and asks to log in or sign up.
+    for wall in [
+        "Log in to see ride options",
+        "Please take a moment to quickly log in or sign up so we can show you your ride options",
+        "Sign in to view your basket",
+        "You must be logged in to view this page",
+        "Login required",
+    ] {
+        assert_eq!(needs(wall).as_deref(), Some("sign in"), "{wall}");
+    }
+    // A header's account links are no wall.
+    for links in ["Log in | Sign up", "Login / Signup", "Log in", "Sign up"] {
+        assert_eq!(needs(links), None, "{links}");
+    }
     assert_eq!(needs("Verification complete"), None);
     assert_eq!(human_needed(&[]), None);
 }

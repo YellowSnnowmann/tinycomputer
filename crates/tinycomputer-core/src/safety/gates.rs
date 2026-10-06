@@ -20,6 +20,24 @@ const HUMAN_GATES: &[(&str, &str)] = &[
     ("log in to continue", "sign in"),
     ("login to continue", "sign in"),
     ("please sign in", "sign in"),
+    ("please log in", "sign in"),
+    ("please login", "sign in"),
+    // A wall that names what it hides: "Log in to see ride options".
+    ("log in to see", "sign in"),
+    ("login to see", "sign in"),
+    ("sign in to see", "sign in"),
+    ("log in to view", "sign in"),
+    ("login to view", "sign in"),
+    ("sign in to view", "sign in"),
+    // The call to action a wall's dialog makes; a header's "Log in | Sign
+    // up" links lack the "or" and are no wall.
+    ("log in or sign up", "sign in"),
+    ("login or sign up", "sign in"),
+    ("sign in or sign up", "sign in"),
+    ("you must be logged in", "sign in"),
+    ("you need to be logged in", "sign in"),
+    ("login required", "sign in"),
+    ("sign in required", "sign in"),
 ];
 
 /// What a person must do before a task can go on, when the visible text

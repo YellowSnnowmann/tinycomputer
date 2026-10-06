@@ -133,7 +133,9 @@ share that workspace, so a resumed task picks up on the page the last run left.
 - **A step failed.** The task fails, marked recoverable, and remembers the
   failed step and everything after it. Then `human_wall` reads the surface's
   visible text. If it shows a captcha, "verify you are human", a one-time code,
-  two-factor authentication, or "sign in to continue", the status becomes
+  two-factor authentication, or a login wall ("sign in to continue", "log in to
+  see …", "log in or sign up", "login required"; a header's bare "Log in" and
+  "Sign up" links are not one), the status becomes
   `needs_human` and `ContinueTask` reruns the failed step and the rest once
   the person has got past it. If not, and a rescuer is configured, the failure
   is rescued (below). Otherwise it stays `failed`.
