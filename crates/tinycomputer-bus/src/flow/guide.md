@@ -122,7 +122,10 @@ do.
    fare"); choosing among results by a criterion is what `pick` is for. A
    size, colour, or quantity is a `choose` of the shortest label the page
    is likely to show (`"option": "9"` for "UK size 9"), never a `pick`:
-   option buttons are not results, and a `pick` over them fails.
+   option buttons are not results, and a `pick` over them fails. A filter
+   on which result to take ("skip Sponsored items", "rated 4 stars or
+   more") belongs in that `pick`'s `from` or `by`, never in a step of its
+   own: there is nothing on screen to do for it, so such a step fails.
 
 ## A full example
 
