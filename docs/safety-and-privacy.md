@@ -13,8 +13,8 @@ Controls are sorted by what their words say:
 
 | Kind | Examples | What happens |
 |---|---|---|
-| **Payment** | Pay, Pay now, Place order, Checkout, Buy now, Confirm and pay | the task stops at a checkpoint |
-| **Irreversible** | Send, Delete, Publish, Confirm booking, Sign out, Submit | needs your approval |
+| **Payment** | Pay, Pay now, Place order, Place your order, Confirm order, Checkout, Buy now, Confirm and pay | the task stops at a checkpoint |
+| **Irreversible** | Send, Delete, Publish, Confirm booking, Confirm ride, Sign out, Submit | needs your approval |
 | **Reversible** | Book, Select, Continue | allowed, because they lead to more forms |
 
 An ordinary step refuses to click a control when:
