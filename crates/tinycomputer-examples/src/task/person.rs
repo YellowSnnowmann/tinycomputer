@@ -104,7 +104,8 @@ impl Person for Terminal {
 
     fn handled(&self, reason: &str) -> bool {
         Self::ask(&format!(
-            "  {reason}. Do it in the browser window, then press Enter (or type stop): "
+            "  {} Do it in the browser window, then press Enter (or type stop): ",
+            sentence(reason)
         ))
         .is_some_and(|answer| !answer.eq_ignore_ascii_case("stop"))
     }
@@ -120,7 +121,14 @@ impl Person for Terminal {
 
     fn finish(&self, reason: &str) {
         let _ = Self::ask(&format!(
-            "  {reason} The page stays open for you; press Enter when you are done: "
+            "  {} The page stays open for you; press Enter when you are done: ",
+            sentence(reason)
         ));
     }
+}
+
+/// `reason` as a sentence for a prompt to go on from: trimmed, and ending in
+/// one full stop whether or not the task's reason had one.
+pub(super) fn sentence(reason: &str) -> String {
+    format!("{}.", reason.trim().trim_end_matches('.'))
 }

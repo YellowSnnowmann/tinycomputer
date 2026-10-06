@@ -272,3 +272,16 @@ fn what_a_task_read_is_printed_one_variable_a_line() {
     );
     assert!(read_lines(&BTreeMap::new()).is_empty());
 }
+
+#[test]
+fn a_pause_reads_as_one_sentence_before_the_prompt() {
+    use super::person::sentence;
+    assert_eq!(
+        sentence("reached the payment step (PLACE ORDER); paying is left to you"),
+        "reached the payment step (PLACE ORDER); paying is left to you."
+    );
+    assert_eq!(
+        sentence("sign in, then continue the task. "),
+        "sign in, then continue the task."
+    );
+}
