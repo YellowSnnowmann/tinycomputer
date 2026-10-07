@@ -52,8 +52,9 @@
 //! fails rather than reaching whatever took its place.
 //!
 //! Sight gives way to the tree when it cannot reach what it sees: a control
-//! inside a shadow root, or a large frame in front, which a CSS selector from
-//! the page cannot address.
+//! inside a shadow root (shown, even when its host draws no box of its own),
+//! or a large frame in front, which a CSS selector from the page cannot
+//! address.
 
 use serde_json::{Value, json};
 use tinycomputer_core::surface::{Candidate, Screen};

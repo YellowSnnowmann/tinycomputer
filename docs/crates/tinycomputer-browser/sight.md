@@ -248,7 +248,9 @@ Sight gives way to the accessibility tree (`tree.rs`, see below) when the
 reading fails outright, or when it sees a control inside a shadow root, or
 behind a frame that covers a large share of the viewport, both cases where
 a plain CSS selector from the top-level page cannot address the element
-sight found. Reading through the tree in those cases is deliberately
+sight found. A shadow root's host need not draw a box of its own: one laid
+out as `display: contents` has none, and a consent banner's host was one,
+so a shadow root counts once its host or any of its controls shows. Reading through the tree in those cases is deliberately
 unglamorous: it is the same fallback the crate always had, just demoted from
 "the only way" to "the way out when sight cannot help."
 

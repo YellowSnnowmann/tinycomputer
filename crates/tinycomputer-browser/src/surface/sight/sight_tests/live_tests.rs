@@ -18,11 +18,15 @@ async fn live_reading(html: &str) -> Option<serde_json::Value> {
         .map(|mut results| results.remove(0))
 }
 
-/// Writes `html` into a blank tab of a real browser, as [`live_reading`]
-/// does, and runs each of `scripts` on it in turn: their results, or `None`
-/// unless `TINYCOMPUTER_LIVE_BROWSER=1`.
+/// A blank tab of a real browser with `html` written into it: `None`
+/// unless `TINYCOMPUTER_LIVE_BROWSER=1`, since CI has no browser to launch.
 #[cfg(feature = "agent-browser")]
-async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::Value>> {
+async fn live_page(
+    html: &str,
+) -> Option<(
+    crate::sessions::Browser,
+    tinycomputer_bus::browser::SessionInfo,
+)> {
     use std::sync::Arc;
 
     use tinycomputer_bus::browser::SessionOptions;
@@ -47,6 +51,15 @@ async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::
         .command(&info.id, json!({"action": "evaluate", "script": write}))
         .await
         .expect("the fixture is written");
+    Some((browser, info))
+}
+
+/// Writes `html` into a blank tab of a real browser, as [`live_reading`]
+/// does, and runs each of `scripts` on it in turn: their results, or `None`
+/// unless `TINYCOMPUTER_LIVE_BROWSER=1`.
+#[cfg(feature = "agent-browser")]
+async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::Value>> {
+    let (browser, info) = live_page(html).await?;
     let mut replies = Vec::new();
     for script in scripts {
         replies.push(
@@ -62,6 +75,23 @@ async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::
             .map(|reply| reply.expect("the script runs on the fixture")["result"].clone())
             .collect(),
     )
+}
+
+/// The accessibility tree of `html` written into a blank tab of a real
+/// browser, as the surface reads a page sight gives way on: `None` unless
+/// `TINYCOMPUTER_LIVE_BROWSER=1`.
+#[cfg(feature = "agent-browser")]
+async fn live_tree(html: &str) -> Option<String> {
+    let (browser, info) = live_page(html).await?;
+    let snapshot = browser
+        .snapshot(
+            &info.id,
+            tinycomputer_bus::browser::SnapshotRequest::default(),
+        )
+        .await
+        .expect("the fixture's tree is read");
+    browser.close_session(&info.id).await.unwrap();
+    Some(snapshot.tree)
 }
 
 /// The names of the controls and the words of the text a reading returned.
@@ -274,6 +304,45 @@ async fn live_consent_banners_are_kept() {
         "We and our advertising partners use cookies",
     ] {
         assert!(names.iter().any(|name| name == kept), "{kept} in {names:?}");
+    }
+}
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_a_shadow_roots_shown_controls_give_way_to_the_tree_whatever_its_host_draws() {
+    // Live, a consent banner's host was drawn as `display: contents`, with
+    // no box of its own, and its buttons went unread while the banner lay
+    // over the page. A block host whose banner is fixed draws no box either.
+    let page = |host: &str, banner: &str| {
+        format!(
+            r#"<main><button>Add To Cart</button></main>
+            <div id="host" style="{host}"></div>
+            <script>
+              document.getElementById('host').attachShadow({{ mode: 'open' }}).innerHTML =
+                '<div style="position: fixed; right: 0; bottom: 0; width: 400px; height: 200px; {banner}">'
+                + '<p>We value your privacy</p><button>Allow Selection</button><button>Allow all</button></div>';
+            </script>"#
+        )
+    };
+    for (host, banner, unreachable) in [
+        ("display: contents", "", 1),
+        ("display: block", "", 1),
+        ("display: contents", "display: none", 0),
+    ] {
+        let Some(reading) = live_reading(&page(host, banner)).await else {
+            return;
+        };
+        assert_eq!(
+            reading["unreachable"], unreachable,
+            "host {host:?}, banner {banner:?}: {reading}"
+        );
+    }
+    // The tree the surface reads instead offers the banner's buttons.
+    let tree = live_tree(&page("display: contents", ""))
+        .await
+        .expect("a live run reads the tree too");
+    for button in ["Allow Selection", "Allow all", "Add To Cart"] {
+        assert!(tree.contains(button), "{button} in {tree}");
     }
 }
 

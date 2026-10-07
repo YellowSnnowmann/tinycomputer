@@ -897,6 +897,15 @@
     twin.element = element;
   };
   let unreachable = 0;
+  // Whether a shadow root's host shows controls, which a selector from the
+  // page cannot address. A host drawn as `display: contents` has no box of
+  // its own: live, a consent banner's host had none, and its buttons went
+  // unread while the banner lay over the add-to-cart button. Its controls'
+  // own boxes then say whether it shows.
+  const showsShadowControls = (host) => {
+    const controls = host.shadowRoot.querySelectorAll('a[href], button, input, select, textarea, [role], [tabindex]');
+    return controls.length > 0 && (shown(host) || [...controls].some(shown));
+  };
   let texts = 0;
   const insideControl = (element) => {
     for (let parent = element.parentElement; parent; parent = parent.parentElement) {
@@ -990,8 +999,7 @@
       && element.getClientRects().length > 0 && noiseKinds.get(element) === 'ads') {
       tally(element);
     }
-    if (element.shadowRoot && shown(element)
-      && element.shadowRoot.querySelector('a[href], button, input, select, textarea, [role], [tabindex]')) {
+    if (element.shadowRoot && showsShadowControls(element)) {
       if (dropped) tally(dropped);
       else unreachable += 1;
     }
