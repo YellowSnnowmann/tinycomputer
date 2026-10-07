@@ -27,6 +27,7 @@ mod do_loop_tests;
 mod end_to_end_tests;
 mod enter_tests;
 mod grounding_tests;
+mod hedge_tests;
 mod helpers_tests;
 mod journal_tests;
 mod pick_tests;

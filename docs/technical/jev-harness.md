@@ -155,7 +155,7 @@ round trip's *slowest* framing, plus the action, plus settling. The levers:
 | Lever | Effect on latency | Effect on accuracy |
 |---|---|---|
 | `strategy` | `wide` asks one request per `do` turn instead of two to seven in sequence | the digest, survey, and memory show more of what matters; measure with the lab's `--strategy` |
-| `votes` | a decision waits for its slowest framing: more framings, longer tail | more framings average out position and phrasing bias |
+| `votes` | a decision waits for its slowest framing: more framings, longer tail; a framing slower than 2.5 s (3.5 s at 32 KB or more) gets a copy, and the first answer counts | more framings average out position and phrasing bias |
 | request size | Jev's latency grows with input tokens; a big element list is the usual cause | trimming can drop the element that was needed |
 | grounding memory | a remembered element is confirmed with one Noul instead of narrowing | none when the hint is right |
 | `disabled_loops` | each loop off removes a question or a whole decision | measure it before shipping it off |

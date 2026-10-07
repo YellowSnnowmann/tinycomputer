@@ -29,6 +29,11 @@ pub(super) const RETRY: RetryPolicy = RetryPolicy {
     max_backoff: Duration::from_secs(8),
 };
 
+/// How long one Jev attempt may take when the configuration does not say.
+/// Live, the slowest answer took 8.6 s, and a request nothing came back for
+/// waited the client's own 30 s before its retry answered in under 1 s.
+pub(super) const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Configured Jev transport and non-secret policy metadata.
 #[derive(Clone)]
 pub struct JevRuntime {
@@ -285,8 +290,9 @@ pub(super) fn trusted_endpoint(provider: JevProvider, endpoint: &str) -> bool {
 }
 
 /// The HTTP client configuration for a Jev `request`: its provider's
-/// route, endpoint, timeout, and attribution, retrying as [`RETRY`] unless
-/// the request sets its own number of retries.
+/// route, endpoint, timeout ([`ATTEMPT_TIMEOUT`] unless the request sets
+/// one), and attribution, retrying as [`RETRY`] unless the request sets its
+/// own number of retries.
 pub(super) fn client_config(request: &JevConfig) -> ClientConfig {
     let mut config = match request.provider {
         JevProvider::TypeSafe => ClientConfig::new(request.api_key()),
@@ -298,9 +304,9 @@ pub(super) fn client_config(request: &JevConfig) -> ClientConfig {
     if let Some(endpoint) = &request.endpoint_url {
         config = config.with_endpoint_url(endpoint);
     }
-    if let Some(timeout_ms) = request.timeout_ms {
-        config.timeout = Duration::from_millis(timeout_ms);
-    }
+    config.timeout = request
+        .timeout_ms
+        .map_or(ATTEMPT_TIMEOUT, Duration::from_millis);
     config.retry = RETRY;
     if let Some(max_retries) = request.max_retries {
         config.retry.max_retries = max_retries;

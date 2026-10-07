@@ -54,7 +54,7 @@ controls the *browser's* visibility for that one task.
     "provider": "open_router",
     "model": "jev-latest",
     "endpoint_url": null,
-    "timeout_ms": 30000,
+    "timeout_ms": 10000,
     "max_retries": 2,
     "sdk_name": "my-host"
   }
@@ -79,8 +79,12 @@ OpenJEV and Sage have no Tiny Humans proxy route, so a host that wants its
 decisions to go through Tiny Humans uses `tiny_humans_open_router`.
 `sdk_name` is sent only to the Tiny Humans proxy.
 
-A provider's server error (HTTP 5xx) or rate limit (429) is retried, waiting
-1, 2, 4, then 8 seconds between attempts, or as long as the provider asks.
+Each attempt may take `timeout_ms`, 10 seconds unless set: live, the slowest
+answer took 8.6 s. A framing that has not answered after 2.5 s (3.5 s for a
+request of 32 KB or more) is also sent once more, and whichever copy answers
+first counts. A provider's server error (HTTP 5xx) or rate limit (429) is
+retried, waiting 1, 2, 4, then 8 seconds between attempts, or as long as the
+provider asks.
 `max_retries` sets how many retries follow the first attempt; it defaults to
 four, about 15 seconds in all, so a gateway's brief outage does not end a
 run.

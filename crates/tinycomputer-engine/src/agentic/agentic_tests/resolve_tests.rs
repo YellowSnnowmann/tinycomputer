@@ -46,6 +46,23 @@ fn jev_calls_ride_out_a_provider_outage_unless_told_otherwise() {
 }
 
 #[test]
+fn a_jev_attempt_gives_up_after_ten_seconds_unless_told_otherwise() {
+    // Live, a request nothing came back for waited the client's own 30 s
+    // before its retry answered in under a second.
+    let mut request = JevConfig::new("key");
+    assert_eq!(
+        client_config(&request).timeout,
+        std::time::Duration::from_secs(10)
+    );
+    request.timeout_ms = Some(30_000);
+    assert_eq!(
+        client_config(&request).timeout,
+        std::time::Duration::from_secs(30),
+        "a configured timeout wins"
+    );
+}
+
+#[test]
 fn each_provider_selects_its_decision_model() {
     let configured = |value: serde_json::Value| {
         let request: JevConfig = serde_json::from_value(value).expect("the configuration decodes");
