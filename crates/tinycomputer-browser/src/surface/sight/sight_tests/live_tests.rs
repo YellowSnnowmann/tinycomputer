@@ -296,13 +296,17 @@ async fn live_a_shadow_root_that_shows_controls_is_handed_to_the_tree_under_its_
     // Live, a consent banner's host was drawn as `display: contents`, with
     // no box of its own, and its buttons went unread while the banner lay
     // over the page. A block host whose banner is fixed draws no box either.
+    // Its shadow root holds a stylesheet beside the banner, as live: the tree
+    // read under the host then finds the banner only through the shadow
+    // root.
     let page = |host: &str, banner: &str| {
         format!(
             r#"<main><button>Add To Cart</button></main>
             <div id="host" style="{host}"></div>
             <script>
               document.getElementById('host').attachShadow({{ mode: 'open' }}).innerHTML =
-                '<div style="position: fixed; right: 0; bottom: 0; width: 400px; height: 200px; {banner}">'
+                '<style>p {{ margin: 0 }}</style>'
+                + '<div style="position: fixed; right: 0; bottom: 0; width: 400px; height: 200px; {banner}">'
                 + '<p>We value your privacy</p><button>Allow Selection</button><button>Allow all</button></div>';
             </script>"#
         )
