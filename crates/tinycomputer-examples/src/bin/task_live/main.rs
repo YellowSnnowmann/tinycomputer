@@ -69,6 +69,11 @@
 //!   approve or decline an irreversible action, get past a login or captcha
 //!   in the browser window and press Enter, type a detail the task lacks,
 //!   and finish on a payment page before the browser closes.
+//! - `TASK_MEMORY` — optional: a JSON file of grounding hints. The task
+//!   starts with the elements earlier runs learned there (`StartTask`'s
+//!   `memory`), so a remembered one is confirmed with a yes or no instead of
+//!   searched for, and what this run learns is saved back, newer hints
+//!   replacing older ones for the same element.
 //! - `TASK_HEADED` — optional: `1` shows the browser the task launches
 //!   instead of running it headless. A headed browser needs a display, so
 //!   such a run is on the host.
@@ -86,10 +91,10 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use tinycomputer_bus::Flow;
 use tinycomputer_bus::agent::{
     PlanTaskRequest, StartTaskRequest, SurfaceKind, TaskBudget, TaskConstraints, TaskOutput,
 };
+use tinycomputer_bus::{Flow, GroundingHint};
 use tinycomputer_examples::host::{Host, LabError, jev_config, module_path};
 use tinycomputer_examples::task::{Person, Terminal, conclude, follow, passed};
 
@@ -119,6 +124,11 @@ async fn main() -> Result<(), LabError> {
     // Sessions open before the task are not its own, and `conclude` leaves
     // them alone.
     let before = host.browser_sessions().await?;
+    let memory_file = std::env::var("TASK_MEMORY").ok().map(PathBuf::from);
+    let memory = match &memory_file {
+        Some(path) => read_memory(path)?,
+        None => Vec::new(),
+    };
     let view = host
         .start_task(&StartTaskRequest {
             task: Some(task.clone()),
@@ -143,7 +153,7 @@ async fn main() -> Result<(), LabError> {
             },
             trace: true,
             output,
-            ..StartTaskRequest::default()
+            memory,
         })
         .await?;
     let limit = Duration::from_secs(
@@ -160,6 +170,9 @@ async fn main() -> Result<(), LabError> {
     conclude(&host, &view, &before, &out).await?;
     if in_task {
         record_plan(&out)?;
+    }
+    if let Some(path) = &memory_file {
+        remember(&out, path)?;
     }
     host.shutdown();
     if passed(&view.status) {
@@ -371,6 +384,44 @@ fn record_plan(out: &std::path::Path) -> Result<(), LabError> {
         println!("plan (drafted inside the task):\n{text}");
         std::fs::write(out.join("plan.json"), text)?;
     }
+    Ok(())
+}
+
+/// The grounding hints saved at `path`: none when it does not exist yet.
+fn read_memory(path: &std::path::Path) -> Result<Vec<GroundingHint>, LabError> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(serde_json::from_str(&text)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// `kept` with what a run `learned`: a hint for the same element (the same
+/// application and key) gives way to the newer one, and the rest keep their
+/// order.
+fn merge_memory(kept: Vec<GroundingHint>, learned: Vec<GroundingHint>) -> Vec<GroundingHint> {
+    let mut merged = kept
+        .into_iter()
+        .filter(|hint| {
+            !learned
+                .iter()
+                .any(|new| new.app == hint.app && new.key == hint.key)
+        })
+        .collect::<Vec<_>>();
+    merged.extend(learned);
+    merged
+}
+
+/// Saves what the task's report learned into the memory at `path`, beside
+/// what it already held.
+fn remember(out: &std::path::Path, path: &std::path::Path) -> Result<(), LabError> {
+    let report: Value = serde_json::from_str(&std::fs::read_to_string(out.join("report.json"))?)?;
+    let learned: Vec<GroundingHint> = match report.get("learned") {
+        Some(learned) => serde_json::from_value(learned.clone())?,
+        None => Vec::new(),
+    };
+    let merged = merge_memory(read_memory(path)?, learned);
+    std::fs::write(path, serde_json::to_string_pretty(&merged)?)?;
     Ok(())
 }
 
