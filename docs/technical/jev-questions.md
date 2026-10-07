@@ -195,7 +195,7 @@ request is also re-asked in more framings, which changes no id.
 
 Slot names go to Jev. Slot values never do.
 
-### Conditions (`steps/condition.rs::holds`, for `verify`, `wait_for`, `if`, `repeat_until`, and `stop_before`'s after-check)
+### Conditions (`steps/condition.rs::holds`, for `verify`, `wait_for`, `if`, `repeat_until`, `stop_before`'s after-check, and a stalled `do` step's already-done check)
 
 | Id | Type | Given | Answer used as |
 |---|---|---|---|

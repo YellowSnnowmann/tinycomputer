@@ -4,7 +4,7 @@
 use std::time::Instant;
 
 use serde_json::json;
-use tinycomputer_bus::StepOutcome;
+use tinycomputer_bus::{FlowLoop, StepOutcome};
 
 use crate::agentic::flow::{
     Ended, FlowRun, Halt, StepLog,
@@ -334,7 +334,8 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     }
 
     /// Ends a step whose last [`STALL_TURNS`] actions changed nothing: done,
-    /// when the screen already shows what the step was for, else failed.
+    /// when the screen already shows what the step was for (asked only when
+    /// the completion loop is on), else failed.
     ///
     /// A step whose work the page did by itself (a search box that lists
     /// results as it is typed in) has nothing left to press. Live, rescues
@@ -346,7 +347,9 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let condition = format!(
             "the screen already shows the result that the step {intent:?} is meant to bring about"
         );
-        if self.holds(log, &condition).await? >= DONE {
+        // Whether a step is done is the completion loop's question: a run
+        // that turned it off fails a stalled step outright, as before.
+        if self.enabled(FlowLoop::Completion) && self.holds(log, &condition).await? >= DONE {
             return Ok(Ended::new(
                 StepOutcome::AlreadyDone,
                 "the last three actions changed nothing, and the screen already shows what this step was for",

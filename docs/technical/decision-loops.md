@@ -186,9 +186,10 @@ The runtime compares a fingerprint of the screen before and after the last
 action. The fingerprint leaves refs out on purpose: every snapshot mints new
 refs, so a fingerprint that included them would see a change on every turn and
 stall detection would never fire. If nothing changed, the element that was
-pressed is banned for the rest of the step. Three turns in a row with no change
-(`STALL_TURNS`) fail the step with "the last three actions changed nothing on
-screen".
+pressed is banned for the rest of the step. After three turns in a row with no
+change (`STALL_TURNS`), Jev is asked whether the screen already shows what the
+step was for (`holds`; not with the completion loop off): at `DONE` the step is
+`AlreadyDone`, else it fails: "the last three actions changed nothing on screen".
 
 ### 2. Judge
 
