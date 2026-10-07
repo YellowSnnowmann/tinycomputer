@@ -85,14 +85,15 @@ pub enum Perception {
 pub enum Settle {
     /// Wait for the network to go idle — 500 ms with nothing in flight,
     /// counted only after a first quiet receive window, so at least about
-    /// 1.1 s — then pause [`SETTLE_MS`] more.
+    /// 1.1 s, and at most 2 s (`NETWORK_IDLE_MS`) — then pause 400 ms
+    /// (`SETTLE_MS`) more.
     Steady,
     /// Wait for the network to go quiet, counting the 500 ms from the start
     /// and only the requests that can change the page (its document,
-    /// scripts, stylesheets, fetched data), at most [`QUIET_MS`]; then only
-    /// until the page stops changing: no DOM change for [`STILL_MS`] and no
-    /// finite CSS animation running, over at least two drawn frames, at most
-    /// [`SETTLE_MS`].
+    /// scripts, stylesheets, fetched data), those the action sent included,
+    /// at most 1 s (`QUIET_MS`); then only until the page stops changing:
+    /// no DOM change for 120 ms (`STILL_MS`) and no finite CSS animation
+    /// running, over at least two drawn frames, at most 400 ms (`SETTLE_MS`).
     /// An idle page is read again after about 0.6 s instead of 1.6 s; a busy
     /// one still waits for its requests. The default: over 44 live runs it
     /// cost no run its outcome.
