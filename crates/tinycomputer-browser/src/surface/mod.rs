@@ -22,6 +22,7 @@ mod sight;
 mod tabs;
 mod tree;
 mod uncover;
+mod watch;
 
 pub use sight::Denoised;
 

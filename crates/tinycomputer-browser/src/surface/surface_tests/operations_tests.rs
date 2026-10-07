@@ -574,6 +574,14 @@ fn a_prompt_settle_counts_quiet_from_the_start_and_waits_only_while_the_page_cha
         "waits out CSS animations: {script}"
     );
     assert!(
+        script.contains("if (finished) return"),
+        "stops looking at frames once settled: {script}"
+    );
+    assert!(
+        script.contains("element.shadowRoot"),
+        "watches shadow roots too: {script}"
+    );
+    assert!(
         !fake.actions().iter().any(|action| action == "wait"),
         "no fixed pause: {:?}",
         fake.actions()
@@ -583,10 +591,15 @@ fn a_prompt_settle_counts_quiet_from_the_start_and_waits_only_while_the_page_cha
 #[test]
 fn a_wait_for_a_change_ends_at_the_pages_first_change_or_its_time() {
     let Harness { fake, surface, .. } = harness("await-change", page_fake());
+    assert!(surface.open());
     assert!(surface.await_change(1_000), "the page changed");
     let watch = fake.last("evaluate");
     let script = watch["script"].as_str().unwrap();
     assert!(script.contains("MutationObserver"), "{script}");
+    assert!(
+        script.contains("element.shadowRoot"),
+        "watches shadow roots too: {script}"
+    );
     assert!(
         script.contains("done(false), 1000"),
         "still once the time given passes: {script}"
@@ -607,22 +620,66 @@ fn a_wait_for_a_change_ends_at_the_pages_first_change_or_its_time() {
             (command["action"] == "evaluate").then(|| ok(&json!({"result": false})))
         }),
     );
+    assert!(still.surface.open());
     assert!(!still.surface.await_change(1_000), "the page stayed still");
 
     // A watch that cannot run says the page may have changed, so a caller
     // looks again as it would after a pause.
     let unwatched = harness("await-unwatched", Fake::new());
+    assert!(unwatched.surface.open());
     assert!(
         unwatched.surface.await_change(1_000),
         "no answer of its own"
     );
-    let closed = harness(
-        "await-closed",
-        Fake::scripted(|command| {
-            (command["action"] == "launch").then(|| failure("Chrome not found"))
-        }),
-    );
+    // With no page open, there is nothing to watch and nothing is opened.
+    let closed = harness("await-closed", Fake::new());
     assert!(closed.surface.await_change(1_000), "no session to watch");
+    assert!(
+        closed.fake.actions().is_empty(),
+        "{:?}",
+        closed.fake.actions()
+    );
+}
+
+#[test]
+fn a_watch_or_wait_the_page_never_answers_is_given_up_on() {
+    // Live, an evaluate sent while a page was being replaced waited out the
+    // browser's 30 s deadline. The harness is kept whole: its runtime runs
+    // the deadlines.
+    let watched = harness(
+        "watch-stalled",
+        page_fake().stalling(|command| command["action"] == "evaluate"),
+    );
+    assert!(watched.surface.open());
+    let started = std::time::Instant::now();
+    assert!(
+        watched.surface.await_change(10),
+        "a watch given up on may have seen a change"
+    );
+    watched.surface.settle();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+
+    let waited = harness(
+        "quiet-stalled",
+        page_fake().stalling(|command| command["action"] == "waitforloadstate"),
+    );
+    assert!(waited.surface.open());
+    let started = std::time::Instant::now();
+    waited.surface.settle();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    let still = waited.fake.last("evaluate");
+    assert!(
+        still["script"].as_str().unwrap().contains("getAnimations"),
+        "the page is still watched once the wait is given up on"
+    );
 }
 
 #[test]

@@ -176,14 +176,17 @@ waits for the engine's `networkquiet`, which counts its 500 ms of quiet
 from the start and counts only requests that can change what the page
 shows: the page's own document, scripts, stylesheets, and fetched data, not
 analytics pings, pictures, fonts, media, or other frames' documents (some of
-which never report finishing at all). Live on Amazon, every action that
-opened a page sent 100+ requests for over 2 s, while what the task needed
-showed after 0.7–1.2 s. It then resolves once no DOM change has happened for
+which never report finishing at all). Those the action itself sent before
+the wait began, up to 3 s earlier, are waited for too. Live on Amazon, every
+action that opened a page sent 100+ requests for over 2 s, while what the
+task needed showed after 0.7–1.2 s. It then resolves once no DOM change has happened for
 `STILL_MS` = 120 milliseconds and no finite CSS animation or transition is
 running (a menu fading out changes no DOM node), over at least two drawn
 frames, and after `SETTLE_MS` = 400 milliseconds at most. An endless spinner
 is not waited for, and a busy page still waits for its requests: an idle
-page is read again after about 0.6 s.
+page is read again after about 0.6 s. The page and its open shadow roots are
+watched alike, and each call has a deadline 500 ms past its own cap, so one
+sent while a page is replaced cannot wait out the browser's 30 s.
 
 `Settle::Steady`, the earlier default, waits for `networkidle` instead,
 which starts counting its 500 ms of quiet only after a first 600 ms
@@ -197,7 +200,8 @@ of its own (an element or words added, removed, or rewritten, or an
 element's look changed, never a `data-tc-` mark sight leaves), or `false`
 once `ms` pass with none. A flow waiting for a place box's late suggestions
 settles and looks again as soon as the page changes, and stops waiting once
-it stays still; a watch that cannot run says the page may have changed.
+it stays still; a watch that cannot run, or with no page open, says the page
+may have changed.
 
 ## Going back
 

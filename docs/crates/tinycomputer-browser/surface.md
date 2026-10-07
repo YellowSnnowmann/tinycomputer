@@ -129,8 +129,10 @@ of unopened submenus the way a desktop tree does).
 `Surface::navigate` sends `NavigateRequest::new(url)` through
 `Browser::navigate`, defaulting to `WaitUntil::Load`. `Surface::settle`,
 called before a flow reads the page again after an action, waits, bounded,
-for the network to go quiet, then pauses a further beat regardless, as
-described in [interacting.md](interacting.md#scrolling-and-waiting).
+for the requests that change the page to end, then only while the page is
+still changing (`Settle::Prompt`; `Settle::Steady` waits for the network to
+go idle, then pauses a further beat regardless), as described in
+[interacting.md](interacting.md#scrolling-and-waiting).
 
 ## Cross-links
 

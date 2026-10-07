@@ -12,11 +12,9 @@ use tinycomputer_core::{Key, Platform};
 use crate::error::Error;
 
 use super::envelope::{failure, not_a_text_field, reply};
-use super::sight;
 use super::{BrowserSurface, Perception};
-use super::{
-    NETWORK_IDLE_MS, QUIET_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, STILL_MS, Settle, tree,
-};
+use super::{NETWORK_IDLE_MS, QUIET_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, Settle, tree};
+use super::{sight, watch};
 
 impl Surface for BrowserSurface {
     fn observe(
@@ -240,14 +238,20 @@ impl Surface for BrowserSurface {
     fn settle(&self) {
         if self.settle == Settle::Prompt {
             if let Ok(id) = self.ensure_session() {
-                let _quiet = self.block(self.browser.command(
+                // Each within a deadline: a call sent while a page is being
+                // replaced can wait out the browser's own 30 s.
+                let quiet = self.browser.command(
                     &id,
                     json!({"action": "waitforloadstate", "state": "networkquiet", "timeout": QUIET_MS}),
-                ));
-                let _still = self.block(
-                    self.browser
-                        .command(&id, json!({"action": "evaluate", "script": still_script()})),
                 );
+                let _quiet = self
+                    .block(async { tokio::time::timeout(watch::deadline(QUIET_MS), quiet).await });
+                let still = self.browser.command(
+                    &id,
+                    json!({"action": "evaluate", "script": watch::still_script()}),
+                );
+                let _still = self
+                    .block(async { tokio::time::timeout(watch::deadline(SETTLE_MS), still).await });
             }
             return;
         }
@@ -261,16 +265,19 @@ impl Surface for BrowserSurface {
     }
 
     fn await_change(&self, ms: u64) -> bool {
-        let Ok(id) = self.ensure_session() else {
+        // With no page open there is nothing to watch, and nothing to open.
+        let Some(id) = self.session() else {
             return true;
         };
-        self.block(self.browser.command(
+        let watching = self.browser.command(
             &id,
-            json!({"action": "evaluate", "script": change_script(ms)}),
-        ))
-        .ok()
-        .and_then(|data| data.get("result").and_then(Value::as_bool))
-        .unwrap_or(true)
+            json!({"action": "evaluate", "script": watch::change_script(ms)}),
+        );
+        self.block(async { tokio::time::timeout(watch::deadline(ms), watching).await })
+            .ok()
+            .and_then(Result::ok)
+            .and_then(|data| data.get("result").and_then(Value::as_bool))
+            .unwrap_or(true)
     }
 
     fn navigate(&self, url: &str) -> DesktopResponse {
@@ -355,48 +362,4 @@ pub(crate) fn browser_key(combo: &str, platform: Platform) -> String {
         })
         .collect::<Vec<_>>()
         .join("+")
-}
-
-/// A promise that resolves `true` at the page's first change of its own —
-/// an element or words added, removed, or rewritten, or an element's look
-/// changed, but never a `data-tc-` mark sight leaves — or `false` once `ms`
-/// pass with none: a list a box fetches for the text typed shows as soon as
-/// it is drawn, and a still page costs `ms` once.
-fn change_script(ms: u64) -> String {
-    format!(
-        r"new Promise(resolve => {{
-  const pages = record => record.type !== 'attributes' || !String(record.attributeName).startsWith('data-tc-');
-  const watcher = new MutationObserver(records => {{ if (records.some(pages)) done(true); }});
-  const done = changed => {{ watcher.disconnect(); clearTimeout(cap); resolve(changed); }};
-  const cap = setTimeout(() => done(false), {ms});
-  watcher.observe(document, {{ subtree: true, childList: true, attributes: true, characterData: true }});
-}})"
-    )
-}
-
-/// A promise that resolves once the page has gone [`STILL_MS`] without a DOM
-/// change, has no finite CSS animation or transition running, and has drawn
-/// at least two frames, or after [`SETTLE_MS`] at most: a banner or menu
-/// fading out (which changes no DOM node) has time to finish, an unchanging
-/// page costs about two frames, and an endless spinner is not waited for.
-fn still_script() -> String {
-    format!(
-        r"new Promise(resolve => {{
-  let last = performance.now();
-  let frames = 0;
-  const watcher = new MutationObserver(() => {{ last = performance.now(); }});
-  const done = () => {{ watcher.disconnect(); clearTimeout(cap); resolve(true); }};
-  const cap = setTimeout(done, {SETTLE_MS});
-  watcher.observe(document, {{ subtree: true, childList: true, attributes: true, characterData: true }});
-  const moving = () => typeof document.getAnimations === 'function'
-    && document.getAnimations().some(animation => animation.playState === 'running'
-      && Number.isFinite(animation.effect?.getComputedTiming?.().endTime ?? Infinity));
-  const frame = () => {{
-    frames += 1;
-    if (frames >= 2 && performance.now() - last >= {STILL_MS} && !moving()) done();
-    else requestAnimationFrame(frame);
-  }};
-  requestAnimationFrame(frame);
-}})"
-    )
 }
