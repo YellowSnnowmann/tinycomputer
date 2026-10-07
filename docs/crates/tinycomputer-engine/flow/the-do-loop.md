@@ -28,9 +28,13 @@ refs, the ids each snapshot mints fresh: a fingerprint that included them
 would look different on every single turn, and stall detection would never
 fire. If nothing changed, the element that was just pressed is banned for
 the rest of the step, so the loop does not click the same dead button
-twice. Three turns in a row with no change (`STALL_TURNS`) fail the step
-outright, with the note "the last three actions changed nothing on
-screen."
+twice. After three turns in a row with no change (`STALL_TURNS`), one
+question asks whether the screen already shows the result the step is
+meant to bring about (a search box that listed results as it was typed in
+leaves "press search" nothing to do). If it clearly does (`DONE`), the step
+ends `AlreadyDone`; otherwise it fails with the note "the last three actions
+changed nothing on screen". Live, 25 of a day's 189 rescues found such a
+step's work already done, each ~18 s later.
 
 ### 2. Judge
 

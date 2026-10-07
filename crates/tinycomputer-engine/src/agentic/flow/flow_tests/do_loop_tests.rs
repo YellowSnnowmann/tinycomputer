@@ -194,6 +194,40 @@ async fn actions_that_change_nothing_fail_the_step() {
 }
 
 #[tokio::test]
+async fn a_stalled_step_whose_result_already_shows_is_done() {
+    // Live, "press Enter to search" pressed Enter three times over results a
+    // live search had already listed, failed, and a rescue found its work
+    // done ~18 s later: 25 of a day's 189 rescues were such steps.
+    let run = run_with(
+        App::quirky(Quirk::Frozen),
+        json!({"app": "Mail", "steps": ["press the search button"]}),
+        |_| {},
+        |id, question, _| match id {
+            "done" => Some(noul(0.05)),
+            "move" => Some(pick(question, "activate", 0.9)),
+            "holds" if text_of(question, "condition").contains("already shows the result") => {
+                Some(noul(0.95))
+            }
+            _ => None,
+        },
+    )
+    .await;
+    let step = &run.result.steps[0];
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert_eq!(step.outcome, StepOutcome::AlreadyDone, "{}", step.note);
+    assert!(
+        step.note.contains("already shows what this step was for"),
+        "{}",
+        step.note
+    );
+}
+
+#[tokio::test]
 async fn an_irreversible_control_is_refused_inside_an_ordinary_step() {
     let run = run_with(
         App::with(|sim| sim.compose_open = true),
