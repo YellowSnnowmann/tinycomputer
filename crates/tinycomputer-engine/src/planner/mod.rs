@@ -55,7 +55,9 @@ pub enum Role {
 /// The task journals it, so a run shows what its planning and rescues cost.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ModelUse {
-    /// Calls made: the first, and one per repair.
+    /// Calls made: the first, and one per repair. A hosted call tried again
+    /// after a passing failure (`hosted.rs`) counts once: its tries, and
+    /// the waits between them, are inside it.
     pub calls: u32,
     /// Bytes of text in the first call's turns.
     pub sent_bytes: usize,

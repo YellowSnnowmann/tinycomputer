@@ -126,11 +126,10 @@ impl Tasks {
             )
             .await;
         // No task exists yet, so the plan journals to a run of its own.
-        self.runner.journal(
-            None,
-            "plan",
-            super::timing::planned(&outcome, used, started.elapsed(), planner.configuration()),
-        );
+        let drafting = started.elapsed();
+        self.runner.journal(None, "plan", &|| {
+            super::timing::planned(&outcome, used, drafting, planner.configuration())
+        });
         match outcome {
             Ok(plan) => AgentResponse::ok(plan),
             Err(reason) => AgentResponse::err(AgentError::new(
@@ -274,14 +273,9 @@ impl Tasks {
             .ok()
             .and_then(|state| state.waiting_since)
             .map(|since| since.elapsed());
-        if let Some(waited) = waited {
-            self.runner.journal(
-                Some(&request.id),
-                "resume",
-                super::timing::resumed(state_name(&status), waited),
-            );
-        }
-        match status {
+        let id = request.id.clone();
+        let paused = state_name(&status);
+        let reply = match status {
             TaskStatus::NeedsInput { .. } => self.supply(&cell, request),
             TaskStatus::NeedsApproval { .. } => self.decide(&cell, request.approve),
             TaskStatus::NeedsHuman { .. } => self.retry(&cell),
@@ -294,7 +288,19 @@ impl Tasks {
                 "call AwaitTask until the task asks for something",
                 true,
             )),
+        };
+        // The wait is over only once the task has left it: an answer that is
+        // refused, or that still leaves values missing, keeps it waiting.
+        let left = cell
+            .state
+            .lock()
+            .is_ok_and(|state| state.waiting_since.is_none());
+        if let (Some(waited), true) = (waited, left) {
+            self.runner.journal(Some(&id), "resume", &|| {
+                super::timing::resumed(paused, waited)
+            });
         }
+        reply
     }
 
     /// Stops a task, and lets go of whatever surface it still holds.

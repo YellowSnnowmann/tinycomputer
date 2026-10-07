@@ -80,7 +80,7 @@ has `""`, and goal and intent runs carry their goal or intent text.
 | `denoise` | a `do` step's screen oscillates | `step`, `oscillation` (the presses banned) |
 | `step` | a flow step ends | `step`, `kind`, `text`, `outcome`, `note`, `turns`, `jev_calls`, `actions`, `loops`, `confidence`, `wall_ms` |
 | `end` | a flow run ends | `stop`, `wall_ms`, `actions`, `metrics`, `learned` |
-| `plan` | the planner drafts a task's flow (`PlanTask`, or `StartTask` with a task) | `wall_ms`, `calls` (model calls, repairs included), `sent_bytes` (the first call's text), `model`, `ok`; on success `steps`, `questions`; on failure `error` |
+| `plan` | the planner drafts a task's flow (`PlanTask`, or `StartTask` with a task) | `wall_ms`, `calls` (model calls, repairs included; a call tried again after a passing failure counts once, its waits in `wall_ms`), `sent_bytes` (the first call's text), `model`, `ok`; on success `steps`, `questions`; on failure `error` |
 | `rescue` | the rescuer answers for a failed step | `step` (from 1), `attempt`, `limit`, `wall_ms`, `calls` and `sent_bytes` (null when it gave no answer in time), `outcome` (`guided`, `gave_up`, `error`, `timeout`), `steps` (guidance steps), `covers`, `model` |
 | `resume` | a person answers a paused task (`ContinueTask`) | `state` it waited at (`needs_input`, `needs_approval`, `needs_human`), `waited_ms` since it first asked |
 

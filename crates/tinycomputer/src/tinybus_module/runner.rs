@@ -159,8 +159,8 @@ impl FlowRunner for WorkspaceRunner {
         })
     }
 
-    fn journal(&self, task: Option<&TaskId>, event: &str, fields: serde_json::Value) {
-        let Some(runtime) = self.jev.as_ref() else {
+    fn journal(&self, task: Option<&TaskId>, event: &str, fields: &dyn Fn() -> serde_json::Value) {
+        let Some(runtime) = self.jev.as_ref().filter(|runtime| runtime.journaling()) else {
             return;
         };
         match task {

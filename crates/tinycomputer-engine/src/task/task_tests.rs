@@ -100,11 +100,11 @@ impl FlowRunner for Script {
         Box::pin(async {})
     }
 
-    fn journal(&self, task: Option<&TaskId>, event: &str, fields: serde_json::Value) {
+    fn journal(&self, task: Option<&TaskId>, event: &str, fields: &dyn Fn() -> serde_json::Value) {
         self.journaled
             .lock()
             .unwrap()
-            .push((task.cloned(), event.to_owned(), fields));
+            .push((task.cloned(), event.to_owned(), fields()));
     }
 }
 

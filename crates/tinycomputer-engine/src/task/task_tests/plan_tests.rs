@@ -90,6 +90,17 @@ async fn a_plan_that_needs_values_asks_and_a_failed_plan_says_so() {
         std::slice::from_ref(&started.id),
         "a task waiting on a person holds no browser"
     );
+    // An answer that still leaves a value missing keeps the task waiting:
+    // no wait is over yet.
+    assert!(
+        tasks
+            .continue_task(ContinueTaskRequest {
+                id: started.id.clone(),
+                ..ContinueTaskRequest::default()
+            })
+            .ok
+    );
+    assert_eq!(journaled(&script, "resume").len(), 0, "no resume yet");
     assert!(
         tasks
             .continue_task(ContinueTaskRequest {

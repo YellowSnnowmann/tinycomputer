@@ -38,19 +38,24 @@ pub(super) async fn plan_then_drive(
     );
     let id = cell.view.borrow().id.clone();
     let started = Instant::now();
-    let planning = planner.plan_measured(&task, &names, &secrets, &surfaces);
+    // Timed on its own: a browser slower to open than the plan is to draft
+    // is not planning time.
+    let planning = async {
+        let drafted = planner
+            .plan_measured(&task, &names, &secrets, &surfaces)
+            .await;
+        (drafted, started.elapsed())
+    };
     // A browser-only task's browser opens while the plan is drafted, so the
     // first step need not wait for it: whatever the plan says, it runs there.
-    let (outcome, used) = if constraints.surfaces == [SurfaceKind::Browser] {
+    let ((outcome, used), drafting) = if constraints.surfaces == [SurfaceKind::Browser] {
         tokio::join!(planning, runner.prepare(&id, &constraints)).0
     } else {
         planning.await
     };
-    runner.journal(
-        Some(&id),
-        "plan",
-        super::timing::planned(&outcome, used, started.elapsed(), planner.configuration()),
-    );
+    runner.journal(Some(&id), "plan", &|| {
+        super::timing::planned(&outcome, used, drafting, planner.configuration())
+    });
     let plan = match outcome {
         Ok(plan) => plan,
         Err(reason) => {

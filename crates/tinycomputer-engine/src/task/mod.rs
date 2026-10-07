@@ -125,9 +125,15 @@ pub trait FlowRunner: Send + Sync + 'static {
     /// Writes an `event` of the time a task spends outside its flows
     /// (`plan`, `rescue`, `resume`) to the debug journal: the task's own,
     /// or for `PlanTask`, which plans before any task exists (`task` is
-    /// `None`), a run of its own. Does nothing by default, and nothing when
-    /// the journal is off.
-    fn journal(&self, _task: Option<&TaskId>, _event: &str, _fields: serde_json::Value) {}
+    /// `None`), a run of its own. `fields` is only called when the event is
+    /// written: nothing is built by default, or when the journal is off.
+    fn journal(
+        &self,
+        _task: Option<&TaskId>,
+        _event: &str,
+        _fields: &dyn Fn() -> serde_json::Value,
+    ) {
+    }
 }
 
 /// How many tasks the controller holds; finished ones are dropped first.

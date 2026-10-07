@@ -184,8 +184,12 @@ async fn the_runner_journals_time_outside_a_tasks_flows_into_its_journal() {
         Some(jev),
         browser(),
     );
-    runner.journal(Some(&TaskId::new("t-1")), "rescue", json!({"wall_ms": 7}));
-    runner.journal(None, "plan", json!({"wall_ms": 9}));
+    runner.journal(
+        Some(&TaskId::new("t-1")),
+        "rescue",
+        &|| json!({"wall_ms": 7}),
+    );
+    runner.journal(None, "plan", &|| json!({"wall_ms": 9}));
 
     let task = std::fs::read_to_string(scratch.join("task-t-1").join(JOURNAL_FILE)).unwrap();
     assert!(task.contains(r#""event":"rescue""#), "{task}");
@@ -203,7 +207,7 @@ async fn the_runner_journals_time_outside_a_tasks_flows_into_its_journal() {
 
     // With no Jev runtime there is no journal to write to.
     crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser())
-        .journal(None, "plan", json!({}));
+        .journal(None, "plan", &|| json!({}));
 }
 
 #[tokio::test]

@@ -28,8 +28,8 @@ async fn a_runner_that_only_runs_flows_reads_nothing_and_holds_nothing() {
     RunsOnly.release(&task);
     // Nothing to get ready, and no journal to write to.
     RunsOnly.prepare(&task, &TaskConstraints::default()).await;
-    RunsOnly.journal(Some(&task), "plan", serde_json::json!({"wall_ms": 1}));
-    RunsOnly.journal(None, "plan", serde_json::json!({}));
+    RunsOnly.journal(Some(&task), "plan", &|| serde_json::json!({"wall_ms": 1}));
+    RunsOnly.journal(None, "plan", &|| serde_json::json!({}));
     assert_eq!(
         RunsOnly.visible_text(&task).await,
         [] as [std::string::String; 0]

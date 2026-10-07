@@ -182,14 +182,24 @@ impl JevRuntime {
     /// none open, into a new run named for the time and `kind`. It is for
     /// time a task spends outside its flows, such as planning, a rescue, or
     /// waiting on a person, so the task's journal accounts for all of its
-    /// time. Does nothing when the journal is off.
-    pub fn journal_event(&self, kind: &str, fields: serde_json::Value) {
+    /// time. `fields` is only built when recording: nothing is, and no run
+    /// is opened, when the journal is off.
+    pub fn journal_event(&self, kind: &str, fields: impl FnOnce() -> serde_json::Value) {
+        if !self.journaling() {
+            return;
+        }
         let journal = if self.journal.is_open() {
             self.journal.clone()
         } else {
             self.journal.fresh(kind)
         };
-        journal.record(kind, || fields);
+        journal.record(kind, fields);
+    }
+
+    /// Whether this runtime's debug journal is on.
+    #[must_use]
+    pub fn journaling(&self) -> bool {
+        self.journal.is_on()
     }
 
     /// The directory this runtime's current run journal is written to, if

@@ -212,9 +212,7 @@ async fn ask(
     let took = started.elapsed();
     let outcome = timing::answered(&answer, used.is_none());
     let (record, guided) = record(briefing.failed, briefing.failure.clone(), answer);
-    runner.journal(
-        Some(id),
-        "rescue",
+    runner.journal(Some(id), "rescue", &|| {
         timing::rescued(&timing::Rescued {
             attempt,
             limit,
@@ -223,8 +221,8 @@ async fn ask(
             outcome,
             record: &record,
             model: rescuer.configuration(),
-        }),
-    );
+        })
+    });
     let spent_ms = u64::try_from(took.as_millis()).unwrap_or(u64::MAX);
     (record, guided, spent_ms)
 }
