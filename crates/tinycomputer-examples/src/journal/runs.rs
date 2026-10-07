@@ -86,9 +86,10 @@ pub fn events(dir: &Path) -> std::io::Result<Vec<Value>> {
 }
 
 /// Every event of the task journaled at `path`: a run directory, or a
-/// folder of run directories read as one story, oldest run first. `task_live`
-/// writes such a folder: the plan, journaled before the task existed, and the
-/// task's own runs.
+/// folder of run directories read as one story, oldest run first. A
+/// `task_live` run journaling to its own folder
+/// (`TINYCOMPUTER_JEV_JOURNAL=$TASK_OUT/journal`) writes such a folder: the
+/// plan, journaled before the task existed, and the task's own runs.
 ///
 /// # Errors
 ///

@@ -139,8 +139,9 @@ by `elapsed_ms`, which each run of a task restarts, so for a task of several
 runs use `--split`.
 
 `--split` reads whole tasks by their `at` timestamps. A task is a run
-directory, or a folder of runs read as one — what `task_live` writes under
-`TASK_OUT/journal`: its `PlanTask` plan and the task's own file. It splits
+directory, or a folder of runs read as one — what a `task_live` run started
+with `TINYCOMPUTER_JEV_JOURNAL=$TASK_OUT/journal` writes there: its
+`PlanTask` plan and the task's own file. It splits
 the wall time into planning, rescues, waits for a person, and flows (and
 within flows: Jev, settling, acting, reading the screen, the rest), counting
 each moment once. It also reports per-call and per-decision latency (p50,
@@ -153,10 +154,10 @@ after it, with the change in percent: two builds, or two settings, run on
 the same tasks.
 
 ```sh
-# every task_live run of a batch
-jev_journal --split target/task-live/try-*/journal
+# every task of a batch, each run with TINYCOMPUTER_JEV_JOURNAL=$TASK_OUT/journal
+jev_journal --split target/task-live/*/journal
 # the runs of one build or setting against another's
-jev_journal --compare before/try-*/journal --vs after/try-*/journal
+jev_journal --compare before/*/journal --vs after/*/journal
 ```
 
 For anything the summary does not cover, the file is plain JSON Lines:

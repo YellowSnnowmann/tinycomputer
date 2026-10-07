@@ -14,9 +14,10 @@
 //! ```
 //!
 //! `<id>` is `latest`, any unique part of a run id, or a run directory. A
-//! `<task>` is a run directory, or a folder of runs read as one task (what
-//! `task_live` writes under `TASK_OUT/journal`); `--split` with none splits
-//! the latest run. See `docs/technical/jev-journal.md`.
+//! `<task>` is a run directory, or a folder of runs read as one task (what a
+//! `task_live` run started with `TINYCOMPUTER_JEV_JOURNAL=$TASK_OUT/journal`
+//! writes there); `--split` with none splits the latest run. See
+//! `docs/technical/jev-journal.md`.
 
 use std::process::ExitCode;
 
