@@ -14,7 +14,9 @@ use crate::error::Error;
 use super::envelope::{failure, not_a_text_field, reply};
 use super::sight;
 use super::{BrowserSurface, Perception};
-use super::{NETWORK_IDLE_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, STILL_MS, Settle, tree};
+use super::{
+    NETWORK_IDLE_MS, QUIET_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, STILL_MS, Settle, tree,
+};
 
 impl Surface for BrowserSurface {
     fn observe(
@@ -240,7 +242,7 @@ impl Surface for BrowserSurface {
             if let Ok(id) = self.ensure_session() {
                 let _quiet = self.block(self.browser.command(
                     &id,
-                    json!({"action": "waitforloadstate", "state": "networkquiet", "timeout": NETWORK_IDLE_MS}),
+                    json!({"action": "waitforloadstate", "state": "networkquiet", "timeout": QUIET_MS}),
                 ));
                 let _still = self.block(
                     self.browser

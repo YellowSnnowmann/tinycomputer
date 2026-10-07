@@ -559,7 +559,7 @@ fn a_prompt_settle_counts_quiet_from_the_start_and_waits_only_while_the_page_cha
     let quiet = fake.last("waitforloadstate");
     assert_eq!(
         (quiet["state"].as_str(), quiet["timeout"].as_u64()),
-        (Some("networkquiet"), Some(2_000))
+        (Some("networkquiet"), Some(1_000))
     );
     let still = fake.last("evaluate");
     let script = still["script"].as_str().unwrap();

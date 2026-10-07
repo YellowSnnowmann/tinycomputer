@@ -166,14 +166,19 @@ appearing anywhere on the page, an element reaching a given state
 wait_for` refuses if none of the three is given.
 
 `Surface::settle`, called before a decision loop reads the page again,
-waits (bounded, up to `NETWORK_IDLE_MS` = 2 seconds) for the page's network
-to go quiet, then only while the page is still changing. A page that polls
-constantly in the background never goes properly quiet, so the network wait
-is a cap, not a guarantee.
+waits (bounded, up to `QUIET_MS` = 1 second) for the requests that change
+the page to end, then only while the page is still changing. A page that
+polls constantly in the background never goes properly quiet, so the
+network wait is a cap, not a guarantee.
 
 That is `Settle::Prompt`, the default (the module's `browser.settle`). It
 waits for the engine's `networkquiet`, which counts its 500 ms of quiet
-from the start, and then resolves once no DOM change has happened for
+from the start and counts only requests that can change what the page
+shows: the page's own document, scripts, stylesheets, and fetched data, not
+analytics pings, pictures, fonts, media, or other frames' documents (some of
+which never report finishing at all). Live on Amazon, every action that
+opened a page sent 100+ requests for over 2 s, while what the task needed
+showed after 0.7–1.2 s. It then resolves once no DOM change has happened for
 `STILL_MS` = 120 milliseconds and no finite CSS animation or transition is
 running (a menu fading out changes no DOM node), over at least two drawn
 frames, and after `SETTLE_MS` = 400 milliseconds at most. An endless spinner

@@ -51,6 +51,13 @@ const SETTLE_MS: u64 = 400;
 /// that polls forever is never idle, so this is a cap, not an expectation.
 const NETWORK_IDLE_MS: u64 = 2_000;
 
+/// The longest [`Settle::Prompt`] waits for the requests that change the
+/// page to end. Live on Amazon, each action that opened a page sent 100+
+/// requests for over 2 s, while what the task needed (the results, a
+/// product's title and Add to Cart, the cart's subtotal) showed after
+/// 0.7–1.2 s.
+const QUIET_MS: u64 = 1_000;
+
 /// The longest one reading of the page may take, by sight or as a tree. A
 /// reading sent while a page was being replaced waited out the browser's
 /// own deadline live, 30 s for sight and again for the tree, so one look
@@ -80,10 +87,12 @@ pub enum Settle {
     /// counted only after a first quiet receive window, so at least about
     /// 1.1 s — then pause [`SETTLE_MS`] more.
     Steady,
-    /// Wait for the network to go quiet, counting the 500 ms from the start,
-    /// then only until the page stops changing: no DOM change for
-    /// [`STILL_MS`] and no finite CSS animation running, over at least two
-    /// drawn frames, at most [`SETTLE_MS`].
+    /// Wait for the network to go quiet, counting the 500 ms from the start
+    /// and only the requests that can change the page (its document,
+    /// scripts, stylesheets, fetched data), at most [`QUIET_MS`]; then only
+    /// until the page stops changing: no DOM change for [`STILL_MS`] and no
+    /// finite CSS animation running, over at least two drawn frames, at most
+    /// [`SETTLE_MS`].
     /// An idle page is read again after about 0.6 s instead of 1.6 s; a busy
     /// one still waits for its requests. The default: over 44 live runs it
     /// cost no run its outcome.
