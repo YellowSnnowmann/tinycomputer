@@ -222,9 +222,10 @@
     return byPage || byScript ? 'button' : null;
   };
 
-  // Text of the elements `ids` (space-separated) names.
-  const byIds = (ids) => squash((ids || '').split(/\s+/)
-    .map((id) => id && document.getElementById(id))
+  // Text of the elements `ids` (space-separated) names, looked up in
+  // `scope`: the document, or the shadow root an element sits in.
+  const byIds = (ids, scope = document) => squash((ids || '').split(/\s+/)
+    .map((id) => id && scope.getElementById(id))
     .filter(Boolean)
     .map((element) => element.innerText || element.textContent)
     .join(' '));
@@ -484,9 +485,14 @@
     const found = element.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"], legend');
     return found && shown(found) ? clip(found.innerText, 60) : '';
   };
-  const labelOf = (element) => clip(
-    element.getAttribute('aria-label') || byIds(element.getAttribute('aria-labelledby')), 60,
-  );
+  const labelOf = (element) => {
+    const scope = element.getRootNode();
+    return clip(
+      element.getAttribute('aria-label')
+        || byIds(element.getAttribute('aria-labelledby'), scope.getElementById ? scope : document),
+      60,
+    );
+  };
 
   // An element that floats above the page: a dialog, or a fixed layer that
   // is not the page's own header.
@@ -909,8 +915,12 @@
   // The shadow roots that show controls, each as its host's ref, which a
   // selector can address, and the label of the layer it draws, if any: the
   // controls the tree reads under the host keep the place they show in.
-  // Live, a consent banner was a fixed layer over the page.
+  // Live, a consent banner was a fixed layer over the page. Only the first
+  // is labelled: with two, the tree reads the whole page instead.
   const shadows = [];
+  // The first host handed to the tree. The tree reads under it the host
+  // and what the page puts in its slots as well, so sight reads neither.
+  let handed = null;
   const firstWords = (element) => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -922,7 +932,7 @@
   const shadowLabel = (host) => {
     for (const element of host.shadowRoot.querySelectorAll('*')) {
       const floating = layer(element);
-      if (!floating) continue;
+      if (!floating || !shown(element)) continue;
       const named = labelOf(element) || heading(element) || firstWords(element);
       return named ? `${floating} ${JSON.stringify(named)}` : floating;
     }
@@ -997,6 +1007,7 @@
   });
   let lastText = null;
   for (let node = base; node; node = walker.nextNode()) {
+    if (handed && handed.contains(node)) continue;
     if (node.nodeType === Node.TEXT_NODE) {
       const parent = node.parentElement;
       if (!parent || !squash(node.data) || texts >= limits.texts) continue;
@@ -1023,7 +1034,13 @@
     }
     if (element.shadowRoot && showsShadowControls(element)) {
       if (dropped) tally(dropped);
-      else shadows.push({ id: mark(element), label: shadowLabel(element) });
+      else {
+        shadows.push({ id: mark(element), label: shadows.length ? null : shadowLabel(element) });
+        if (!handed) {
+          handed = element;
+          continue;
+        }
+      }
     }
     if (tag(element) === 'iframe' && shown(element) && !offscreen(element) && inFront(element)) {
       const rect = box(element);

@@ -364,6 +364,61 @@ async fn live_a_shadow_root_that_shows_controls_is_handed_to_the_tree_under_its_
 
 #[cfg(feature = "agent-browser")]
 #[tokio::test]
+async fn live_what_a_shadow_host_slots_is_left_to_the_tree() {
+    // The tree read under a host holds the host and what the page puts in
+    // its slots: sight reads neither, or each would be offered twice. A
+    // hidden dialog in the shadow root names no layer, and the banner's
+    // `aria-labelledby` resolves inside the shadow root.
+    let page = r#"<main><button>Add To Cart</button></main>
+        <div id="host"><button>Slotted choice</button></div>
+        <script>
+          document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML =
+            '<div role="dialog" style="display: none">Old template</div>'
+            + '<div aria-labelledby="title" style="position: fixed; right: 0; bottom: 0; width: 400px; height: 200px">'
+            + '<p id="title">Cookie choices</p><button>Allow Selection</button><slot></slot></div>';
+        </script>"#;
+    let Some((browser, info)) = live_page(page).await else {
+        return;
+    };
+    let reading = browser
+        .command(
+            &info.id,
+            json!({"action": "evaluate", "script": script(None)}),
+        )
+        .await
+        .unwrap()["result"]
+        .clone();
+    let names = shown_names(&reading);
+    assert!(names.iter().any(|name| name == "Add To Cart"), "{names:?}");
+    assert!(
+        !names.iter().any(|name| name == "Slotted choice"),
+        "{names:?}"
+    );
+    let shadows = reading["shadows"].as_array().unwrap();
+    assert_eq!(shadows.len(), 1, "{reading}");
+    assert_eq!(
+        shadows[0]["label"], "popover \"Cookie choices\"",
+        "{reading}"
+    );
+    let host = shadows[0]["id"].as_str().unwrap().to_owned();
+    let subtree = browser
+        .snapshot(
+            &info.id,
+            tinycomputer_bus::browser::SnapshotRequest {
+                selector: Some(format!("[data-tc-seen=\"{host}\"]")),
+                ..tinycomputer_bus::browser::SnapshotRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+    browser.close_session(&info.id).await.unwrap();
+    for read in ["Allow Selection", "Slotted choice"] {
+        assert!(subtree.tree.contains(read), "{read}: {}", subtree.tree);
+    }
+}
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
 async fn live_hidden_elements_are_dropped() {
     let Some(reading) = live_reading(
         r#"<main>

@@ -43,8 +43,9 @@ to the page except a marker attribute on elements it has already seen
 
 `Perception::Sight` is the default. `BrowserSurface::observe` tries sight
 first, and only reads the accessibility tree when sight fails outright or
-runs into something it cannot address with a CSS selector, such as a shadow
-root, or a large frame sitting in front of the content. `Perception::Tree`,
+runs into something it cannot address with a CSS selector, such as two
+shadow roots showing controls, or a large frame sitting in front of the
+content. `Perception::Tree`,
 set with `BrowserSurface::with_perception`, skips sight entirely and always
 reads through the tree; the live examples expose this as
 `TINYCOMPUTER_BROWSER_PERCEPTION=tree`.
@@ -250,9 +251,12 @@ the viewport, or controls inside two shadow roots: cases where a plain CSS
 selector from the top-level page cannot address the element sight found.
 
 One shadow root that shows controls is read beside sight instead. Sight
-marks its host and names the layer its controls draw (`popover "We value
-your privacy"`), and the surface reads the tree under the host alone and
-adds its controls, under that label, after everything sight read. A tree
+marks its host and names the first shown layer its controls draw (`popover
+"We value your privacy"`, with an `aria-labelledby` resolved inside the
+shadow root), and the surface reads the tree under the host alone and adds
+its controls, under that label, after everything sight read. The tree reads
+the host itself and what the page puts in its slots too, so sight leaves
+both to it: nothing is offered twice. A tree
 snapshot's refs last until the next snapshot, so only one host's subtree
 can be read beside sight. A shadow root counts once its host or any of its
 controls shows: a host laid out as `display: contents` has no box of its

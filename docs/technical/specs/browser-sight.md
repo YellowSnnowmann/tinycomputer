@@ -108,9 +108,12 @@ a caret.
    bounding box, value read, and scoped observation. An element the page
    removes takes its mark with it, so a stale ref fails rather than reaching
    what replaced it.
-8. **Fallback.** When the reading fails, or sees a control inside a shadow
-   root or a frame of a fifth of the viewport in front, the surface reads the
-   accessibility tree for that observation, as before.
+8. **Fallback.** When the reading fails, sees controls inside two shadow
+   roots or a frame of a fifth of the viewport in front, or the tree cannot
+   read the one shadow root's host, the surface reads the accessibility tree
+   for that observation, as before. One shadow root is read beside sight:
+   the tree reads its host, its controls, and what the page puts in its
+   slots, which sight leaves out so that nothing is offered twice.
 
 9. **Denoising.** Noise is left out before anything is returned; see
    [Denoising](#denoising).

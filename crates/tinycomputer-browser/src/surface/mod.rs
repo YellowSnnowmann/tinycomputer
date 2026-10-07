@@ -70,9 +70,10 @@ const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 pub enum Perception {
     /// As a person looks at it: what is drawn and on top, the words on and
     /// beside each control, and which boxes take text, read from the
-    /// rendered page. Falls back to the accessibility tree when it cannot
-    /// reach what it sees (a shadow root, a frame in front) or the reading
-    /// fails.
+    /// rendered page. One shadow root's controls are read from the
+    /// accessibility tree beside it. Falls back to the tree alone when it
+    /// cannot reach what it sees (two shadow roots showing controls, a frame
+    /// in front, a shadow root the tree cannot read) or the reading fails.
     #[default]
     Sight,
     /// Through the accessibility tree alone: roles and names as the page's
@@ -258,7 +259,6 @@ impl BrowserSurface {
             .ok()?;
         let result = reply.get("result")?;
         let mut screen = sight::screen(result)?;
-        self.keep_denoised(sight::denoised(result));
         match sight::shadows(result).as_slice() {
             [] => {}
             [shadow] => self.read_shadow(&id, shadow, &mut screen)?,
@@ -266,13 +266,15 @@ impl BrowserSurface {
             // subtree can be read beside sight, not two.
             _ => return None,
         }
+        self.keep_denoised(sight::denoised(result));
         Some(screen)
     }
 
     /// Adds to `screen` what the tree reads under `shadow`'s host: the
-    /// controls a selector cannot reach, under the label of the layer they
-    /// draw, after everything sight read. `None` when the subtree cannot be
-    /// read, so the tree reads the whole page instead.
+    /// controls a selector cannot reach, and the host and what the page puts
+    /// in its slots, which sight leaves to the tree, under the label of the
+    /// layer they draw, after everything sight read. `None` when the subtree
+    /// cannot be read, so the tree reads the whole page instead.
     fn read_shadow(
         &self,
         id: &SessionId,
