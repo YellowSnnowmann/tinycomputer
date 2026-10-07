@@ -9,9 +9,10 @@ use tinycomputer_bus::{JevOperation, StepOutcome};
 use crate::agentic::flow::{
     Ended, FlowRun, Halt, StepLog,
     ask::{self, Questions, chosen},
+    attention::front_closer,
     backend::AgentBackend,
     memory::{learn, remember},
-    view::{Candidate, Screen, element_kind, is_banned, is_destructive, label},
+    view::{Candidate, Screen, element_kind, is_banned, is_destructive, label, signature},
 };
 
 use super::{
@@ -271,15 +272,33 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             ));
             return Ok(reply);
         }
-        let app = self.app.clone();
-        self.act(log, "press escape (uncover)", None, move |backend| {
-            backend.press(&app, "escape")
-        })
-        .await?;
-        self.history.push(format!(
-            "{} was covered by something; pressed escape to close it",
-            label(target)
-        ));
+        // A layer in front that closes with a control of its own (a consent
+        // banner's "Allow Selection") is closed with it: Escape leaves such a
+        // banner where it is.
+        let screen = self.look().await?;
+        if let Some(closer) = front_closer(&screen, &self.stop_before, &self.step_cleared) {
+            self.step_cleared.insert(signature(&closer));
+            let pressed = closer.clone();
+            self.act(log, "click (uncover)", Some(&closer), move |backend| {
+                backend.execute(JevOperation::Click, Some(pressed), None)
+            })
+            .await?;
+            self.history.push(format!(
+                "{} was covered by a layer in front; pressed {} to close it",
+                label(target),
+                label(&closer)
+            ));
+        } else {
+            let app = self.app.clone();
+            self.act(log, "press escape (uncover)", None, move |backend| {
+                backend.press(&app, "escape")
+            })
+            .await?;
+            self.history.push(format!(
+                "{} was covered by something; pressed escape to close it",
+                label(target)
+            ));
+        }
         let retried = target.clone();
         self.act(log, verb, Some(target), move |backend| {
             backend.execute(operation, Some(retried), None)

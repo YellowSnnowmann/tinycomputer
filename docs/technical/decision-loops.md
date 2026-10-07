@@ -298,9 +298,13 @@ own link, so the link is "covered" by the card itself; the browser surface
 then clicks through at the link's position, but only when the exact target
 (matched by name, and on the page, by the one element under that point with
 that label) sits in the same card as the cover and no dialog is involved.
-Anything else comes back covered, and the runtime presses Escape once and
-retries the *same* already-vetted target — in a `do` step's click and in
-`pick`'s alike. Escape never chooses a new element, so nothing exposed by
+Anything else comes back covered, and the runtime closes what lies over it
+and retries the *same* already-vetted target — in a `do` step's click and in
+`pick`'s alike. A layer in front with a control that closes it (a consent
+banner's "Allow Selection") is closed with its least committal one, as the
+attention pass would; otherwise the runtime presses Escape once. Live,
+Escape left a consent banner over "Add To Cart" and every press was refused.
+Neither chooses a new element for the step, so nothing exposed by
 dismissing whatever covered the click is ever pressed without going through
 grounding and `is_destructive` again on a later turn.
 

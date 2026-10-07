@@ -24,7 +24,7 @@ mod find;
 
 use std::collections::BTreeSet;
 
-use super::view::Candidate;
+use super::view::{Candidate, Screen};
 
 /// Most distractions one attention question offers.
 pub(super) const MAX_DISTRACTIONS: usize = 4;
@@ -49,6 +49,25 @@ pub(super) struct Distraction {
     /// for something that covers the page with no control of its own, which
     /// Escape clears.
     pub(super) closer: Option<Candidate>,
+    /// Whether it lies in front of the page (the digest's front regions).
+    pub(super) front: bool,
+}
+
+/// The control that closes a layer in front of the page, the least
+/// committal its region holds (a consent banner's "Allow Selection" before
+/// its "Allow all"), when one does and it was not pressed in this step: what
+/// a press the page refused as covered clears before trying again. Live, a
+/// consent banner lay over "Add To Cart", Escape left it there, and every
+/// press was refused.
+pub(super) fn front_closer(
+    screen: &Screen,
+    stop_before: &[String],
+    cleared: &BTreeSet<String>,
+) -> Option<Candidate> {
+    find::distractions(screen, "", stop_before, cleared)
+        .into_iter()
+        .filter(|distraction| distraction.front)
+        .find_map(|distraction| distraction.closer)
 }
 
 /// The key a step's Escape at something covering the page is remembered

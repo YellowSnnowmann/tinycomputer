@@ -112,6 +112,42 @@ async fn a_covered_click_closes_what_covers_it_and_tries_again() {
 }
 
 #[tokio::test]
+async fn a_covered_click_closes_the_banner_in_front_with_its_own_button() {
+    // Live, a consent banner lay over "Add To Cart"; Escape left it there,
+    // and every press was refused. Its least committal button closes it.
+    let run = run_with(
+        App::quirky(Quirk::ConsentBanner),
+        json!({"app": "Mail", "steps": ["start a new email message"]}),
+        |request| request.disabled_loops.push(FlowLoop::Attention),
+        |id, question, _| (id == "move").then(|| pick(question, "activate", 0.9)),
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    let sim = run.app.sim();
+    assert!(sim.compose_open);
+    assert!(sim.presses.is_empty(), "no Escape: {:?}", sim.presses);
+    assert!(
+        sim.clicks.contains(&"Allow Selection".to_owned())
+            && !sim.clicks.contains(&"Allow all".to_owned()),
+        "{:?}",
+        sim.clicks
+    );
+    let actions = &run.result.steps[0].actions;
+    assert_eq!(
+        actions
+            .iter()
+            .map(|action| action.action.as_str())
+            .collect::<Vec<_>>(),
+        ["click", "click (uncover)", "click"],
+    );
+}
+
+#[tokio::test]
 async fn a_regression_is_undone_and_the_element_is_not_tried_again() {
     let run = run_with(
         App::default(),
