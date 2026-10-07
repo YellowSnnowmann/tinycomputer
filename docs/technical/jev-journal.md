@@ -36,12 +36,17 @@ it. Do not commit a journal or paste one into an issue.
 ├── 20260928T101530Z-flow-a1b2c3/journal.jsonl   # one RunFlow call
 ├── 20260928T101902Z-goal-0f9e8d/journal.jsonl   # one RunGoal, continuations included
 ├── 20260928T102210Z-intent-77aa01/journal.jsonl # one ResolveIntent
-└── task-<task id>/journal.jsonl                  # every flow run of one task
+├── 20260928T102300Z-plan-5c6d7e/journal.jsonl   # one PlanTask, before its task exists
+└── task-<task id>/journal.jsonl                  # every flow run of one task, its plan,
+                                                  # rescues, and waits for a person
 ```
 
 A run id starts with its UTC start time, so directories sort by time. A
 task's runs — the first flow, and each run after an approval or a supplied
-value — share one `task-…` file, so a task reads as one story. A `RunGoal`
+value — share one `task-…` file, so a task reads as one story. So does the
+time between them: the task journals its plan, each rescue, and each wait
+for a person there too (`plan`, `rescue`, `resume`). A plan drafted with
+`PlanTask`, before any task exists, gets a `…-plan-…` run of its own. A `RunGoal`
 continuation appends to the journal of the run it continues.
 
 ## Events
@@ -74,6 +79,9 @@ has `""`, and goal and intent runs carry their goal or intent text.
 | `denoise` | a `do` step's screen oscillates | `step`, `oscillation` (the presses banned) |
 | `step` | a flow step ends | `step`, `kind`, `text`, `outcome`, `note`, `turns`, `jev_calls`, `actions`, `loops`, `confidence`, `wall_ms` |
 | `end` | a flow run ends | `stop`, `wall_ms`, `actions`, `metrics`, `learned` |
+| `plan` | the planner drafts a task's flow (`PlanTask`, or `StartTask` with a task) | `wall_ms`, `calls` (model calls, repairs included), `sent_bytes` (the first call's text), `model`, `ok`; on success `steps`, `questions`; on failure `error` |
+| `rescue` | the rescuer answers for a failed step | `step` (from 1), `attempt`, `limit`, `wall_ms`, `calls` and `sent_bytes` (null when it gave no answer in time), `outcome` (`guided`, `gave_up`, `error`, `timeout`), `steps` (guidance steps), `covers`, `model` |
+| `resume` | a person answers a paused task (`ContinueTask`) | `state` it waited at (`needs_input`, `needs_approval`, `needs_human`), `waited_ms` since it first asked |
 
 A voted decision writes one `exchange` per framing and then one `decision`.
 The framings run concurrently, so a decision's `wall_ms` is close to its
@@ -91,6 +99,8 @@ cargo run -p tinycomputer-examples --bin jev_journal -- latest              # su
 cargo run -p tinycomputer-examples --bin jev_journal -- a1b2c3 --transcript # every answer
 cargo run -p tinycomputer-examples --bin jev_journal -- latest --json       # summary as JSON
 cargo run -p tinycomputer-examples --bin jev_journal -- latest --calibration # deliberation's verdicts vs outcomes
+cargo run -p tinycomputer-examples --bin jev_journal -- --split <task>...   # where whole tasks' time went
+cargo run -p tinycomputer-examples --bin jev_journal -- --compare <task>... --vs <task>...  # A against B
 ```
 
 `--calibration` tabulates every `evidence` verdict by site against how its
@@ -123,7 +133,30 @@ slowest Jev calls
 ```
 
 `other` is the wall time no event accounts for: validation, merging,
-building requests, and the gaps between events.
+building requests, and the gaps between events. The summary reads one file
+by `elapsed_ms`, which each run of a task restarts, so for a task of several
+runs use `--split`.
+
+`--split` reads whole tasks by their `at` timestamps. A task is a run
+directory, or a folder of runs read as one — what `task_live` writes under
+`TASK_OUT/journal`: its `PlanTask` plan and the task's own file. It splits
+the wall time into planning, rescues, waits for a person, and flows (and
+within flows: Jev, settling, acting, reading the screen, the rest), counting
+each moment once. It also reports per-call and per-decision latency (p50,
+p90), how much the slowest call adds to each round of calls, decisions,
+calls, tokens, and step, `do` turn, and action latency (p50, p90). One task prints in full; several print one
+line each with their medians; `--json` prints every split and the median.
+
+`--compare` prints the medians of the tasks before `--vs` against those
+after it, with the change in percent: two builds, or two settings, run on
+the same tasks.
+
+```sh
+# every task_live run of a batch
+jev_journal --split target/task-live/try-*/journal
+# the runs of one build or setting against another's
+jev_journal --compare before/try-*/journal --vs after/try-*/journal
+```
 
 For anything the summary does not cover, the file is plain JSON Lines:
 
@@ -139,7 +172,7 @@ jq 'select(.event=="exchange" and .step=="3") | .request.state' .jev-journal/<ru
 ## Using it to make loops faster
 
 1. Journal a baseline: the same scenario, a few trials.
-2. Read the summary's split. If `jev` dominates, look at `decisions` per
+2. Read the summary's split (`--split` for whole tasks). If `jev` dominates, look at `decisions` per
    step and at the slowest calls; if `observe` does, look at `candidates` and
    `part: subtree` reads; if `act` does, look at `settle_ms`.
 3. Check whether latency tracks `request_bytes` (big element lists) or
@@ -147,8 +180,9 @@ jq 'select(.event=="exchange" and .step=="3") | .request.state' .jev-journal/<ru
    not a loop problem.
 4. Change one lever from the table in [`jev-harness.md`](jev-harness.md) —
    `votes`, a `disabled_loops` entry, memory — and journal again.
-5. Compare the `--json` summaries, and check the lab's checker verdicts did
-   not get worse: a faster loop that clicks the wrong thing is not faster.
+5. Compare the two sets with `--compare`, and check the lab's checker
+   verdicts or the tasks' outcomes did not get worse: a faster loop that
+   clicks the wrong thing is not faster.
 
 ## Relation to the trace
 

@@ -157,3 +157,51 @@ async fn a_task_report_request_is_one_a_confidential_call_can_carry() -> tinybus
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn the_runner_journals_time_outside_a_tasks_flows_into_its_journal() {
+    use tinycomputer_bus::agent::TaskId;
+    use tinycomputer_engine::{FlowRunner, JOURNAL_FILE, JevRuntime};
+
+    let scratch = std::env::temp_dir().join(format!(
+        "tinycomputer-runner-journal-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let browser = || {
+        std::sync::Arc::new(tinycomputer_browser::Browser::new(std::sync::Arc::new(
+            tinycomputer_browser::AgentBrowser,
+        )))
+    };
+    let jev = JevRuntime::sage("test-key", false)
+        .unwrap()
+        .with_journal(&scratch);
+    let runner = crate::tinybus_module::runner::WorkspaceRunner::new(
+        crate::Desktop::new(),
+        Some(jev),
+        browser(),
+    );
+    runner.journal(Some(&TaskId::new("t-1")), "rescue", json!({"wall_ms": 7}));
+    runner.journal(None, "plan", json!({"wall_ms": 9}));
+
+    let task = std::fs::read_to_string(scratch.join("task-t-1").join(JOURNAL_FILE)).unwrap();
+    assert!(task.contains(r#""event":"rescue""#), "{task}");
+    let plan = std::fs::read_dir(&scratch)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.to_string_lossy().contains("-plan-"))
+        .expect("a plan before any task gets a run of its own");
+    assert!(
+        std::fs::read_to_string(plan.join(JOURNAL_FILE))
+            .unwrap()
+            .contains(r#""wall_ms":9"#)
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
+
+    // With no Jev runtime there is no journal to write to.
+    crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser())
+        .journal(None, "plan", json!({}));
+}

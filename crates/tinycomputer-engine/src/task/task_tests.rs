@@ -18,6 +18,7 @@ mod rescue_tests;
 mod runner_tests;
 mod start_tests;
 mod status_tests;
+mod timing_tests;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -52,6 +53,8 @@ struct Script {
     stuck: std::sync::atomic::AtomicBool,
     /// `capture` and `release` calls, in the order they arrived.
     events: Mutex<Vec<&'static str>>,
+    /// What the task journaled outside its flows, in order.
+    journaled: Mutex<Vec<(Option<TaskId>, String, serde_json::Value)>>,
 }
 
 impl FlowRunner for Script {
@@ -89,6 +92,26 @@ impl FlowRunner for Script {
         self.events.lock().unwrap().push("release");
         self.released.lock().unwrap().push(task.clone());
     }
+
+    fn journal(&self, task: Option<&TaskId>, event: &str, fields: serde_json::Value) {
+        self.journaled
+            .lock()
+            .unwrap()
+            .push((task.cloned(), event.to_owned(), fields));
+    }
+}
+
+/// The `event`s the task journaled outside its flows, with the task each
+/// went to.
+fn journaled(script: &Script, event: &str) -> Vec<(Option<TaskId>, serde_json::Value)> {
+    script
+        .journaled
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, kind, _)| kind == event)
+        .map(|(task, _, fields)| (task.clone(), fields.clone()))
+        .collect()
 }
 
 fn controller(replies: Vec<DesktopResponse>) -> (Tasks, Arc<Script>) {

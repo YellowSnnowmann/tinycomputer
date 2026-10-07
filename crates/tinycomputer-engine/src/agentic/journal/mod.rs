@@ -128,6 +128,17 @@ impl Journal {
         }
     }
 
+    /// Whether a run is open to write to.
+    pub(crate) fn is_open(&self) -> bool {
+        self.run.is_some()
+    }
+
+    /// This journal, writing to a new run named for the time and `kind`. A
+    /// journal that is off stays off.
+    pub(crate) fn fresh(&self, kind: &str) -> Self {
+        self.named(&fresh_id(kind))
+    }
+
     /// This journal with a run begun: a `run` event in the current run, or,
     /// when there is none yet, in a new one named for the time and `kind`.
     pub(crate) fn begin(&self, kind: &str, label: &str, model: &str) -> Self {

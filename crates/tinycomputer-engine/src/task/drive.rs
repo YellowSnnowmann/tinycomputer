@@ -35,7 +35,17 @@ pub(super) async fn plan_then_drive(
             )
         },
     );
-    let plan = match planner.plan(&task, &names, &secrets, &surfaces).await {
+    let started = Instant::now();
+    let (outcome, used) = planner
+        .plan_measured(&task, &names, &secrets, &surfaces)
+        .await;
+    let id = cell.view.borrow().id.clone();
+    runner.journal(
+        Some(&id),
+        "plan",
+        super::timing::planned(&outcome, used, started.elapsed(), planner.configuration()),
+    );
+    let plan = match outcome {
         Ok(plan) => plan,
         Err(reason) => {
             publish(

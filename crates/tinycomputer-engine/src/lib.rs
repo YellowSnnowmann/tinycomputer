@@ -41,7 +41,7 @@ pub use agentic::{
     JOURNAL_DEFAULT_DIR, JOURNAL_ENV, JOURNAL_FILE, JevRuntime, flow_guide, resolve_intent,
     run_flow, run_goal, validate_flow,
 };
-pub use planner::{Completion, LanguageModel, Planner, REPAIRS, Role, Turn};
+pub use planner::{Completion, LanguageModel, ModelUse, Planner, REPAIRS, Role, Turn};
 #[cfg(feature = "planner")]
 pub use planner::{
     ModelRoute, OPEN_ROUTER_BASE_URL, OUTPUT_MODEL, PLANNER_MODEL, PlannerConfig, RESCUE_MODEL,

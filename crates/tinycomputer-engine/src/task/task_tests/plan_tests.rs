@@ -55,6 +55,17 @@ async fn a_plain_language_task_is_planned_then_run() {
             .len(),
         1
     );
+    let plans = journaled(&script, "plan");
+    assert_eq!(plans.len(), 1);
+    assert_eq!(
+        plans[0].0.as_ref(),
+        Some(&started.id),
+        "into the task's journal"
+    );
+    assert_eq!(plans[0].1["ok"], true);
+    assert_eq!(plans[0].1["calls"], 1);
+    assert_eq!(plans[0].1["steps"], 1);
+    assert!(plans[0].1["wall_ms"].is_u64());
 }
 
 #[tokio::test]
@@ -91,6 +102,14 @@ async fn a_plan_that_needs_values_asks_and_a_failed_plan_says_so() {
         script.requests.lock().unwrap()[0].vars["phone"],
         "+91 98765 43210"
     );
+    let resumes = journaled(&script, "resume");
+    assert_eq!(
+        resumes.len(),
+        1,
+        "the answer journals how long the task waited"
+    );
+    assert_eq!(resumes[0].1["state"], "needs_input");
+    assert!(resumes[0].1["waited_ms"].is_u64());
 
     let (tasks, _) = planned(Vec::new(), Err("the model is down"));
     let started = tasks
@@ -125,6 +144,13 @@ async fn plan_task_drafts_without_acting() {
         script.requests.lock().unwrap().is_empty(),
         "planning never runs anything"
     );
-    let (tasks, _) = planned(Vec::new(), Err("down"));
+    let plans = journaled(&script, "plan");
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].0, None, "no task yet: a run of its own");
+    assert_eq!(plans[0].1["ok"], true);
+    let (tasks, script) = planned(Vec::new(), Err("down"));
     assert_eq!(code(&tasks.plan(&request).await), "PLAN_FAILED");
+    let plans = journaled(&script, "plan");
+    assert_eq!(plans[0].1["ok"], false);
+    assert_eq!(plans[0].1["error"], "down");
 }

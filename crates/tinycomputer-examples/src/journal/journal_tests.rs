@@ -261,3 +261,5 @@ fn calibration_tallies_verdicts_against_how_steps_ended() {
     assert!(table.contains("duels: 2 (1 with a champion)"));
     assert!(render_calibration(&calibration(&[])).contains("undos: 0"));
 }
+
+mod split_tests;

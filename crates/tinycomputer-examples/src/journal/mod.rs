@@ -9,6 +9,8 @@
 //! ```sh
 //! cargo run -p tinycomputer-examples --bin jev_journal            # list runs
 //! cargo run -p tinycomputer-examples --bin jev_journal -- latest  # summarise
+//! cargo run -p tinycomputer-examples --bin jev_journal -- --split <run or folder of runs>...
+//! cargo run -p tinycomputer-examples --bin jev_journal -- --compare <runs>... --vs <runs>...
 //! ```
 
 use std::time::Duration;
@@ -17,11 +19,13 @@ use serde_json::Value;
 
 mod calibration;
 mod runs;
+mod split;
 mod summary;
 mod transcript;
 
 pub use calibration::{Calibration, VerdictRow, calibration, render_calibration};
-pub use runs::{events, find, root, runs};
+pub use runs::{events, find, root, runs, story};
+pub use split::{Split, at_ms, median, render_compare, render_split, render_table, split};
 pub use summary::{SlowCall, StepRow, Summary, render, summarize};
 pub use transcript::transcript;
 

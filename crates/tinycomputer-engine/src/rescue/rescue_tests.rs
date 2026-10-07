@@ -195,6 +195,32 @@ async fn invalid_guidance_is_sent_back_with_what_is_wrong() {
     );
 }
 
+#[tokio::test]
+async fn a_measured_rescue_counts_each_call_refused_guidance_included() {
+    let unknown =
+        r#"{"action": "retry", "reason": "x", "steps": [{"enter": {"name": "${full name}"}}]}"#;
+    let (rescuer, model) = scripted(&[Ok(unknown), Ok(FIX)]);
+    let (guidance, used) = rescuer.guide_measured(&briefing()).await;
+    assert!(matches!(guidance, Ok(Guidance::Retry { .. })));
+    assert_eq!(used.calls, 2, "the refused guidance cost a repair");
+    let first = model.seen.lock().unwrap()[0].clone();
+    assert_eq!(
+        used.sent_bytes,
+        first.iter().map(|turn| turn.text.len()).sum::<usize>()
+    );
+
+    let (rescuer, _) = scripted(&[Err("the model is down")]);
+    let (guidance, used) = rescuer.guide_measured(&briefing()).await;
+    assert_eq!(guidance.unwrap_err(), "the model is down");
+    assert_eq!(used.calls, 1);
+
+    let never = [Ok("nonsense"); REPAIRS + 1];
+    let (rescuer, _) = scripted(&never);
+    let (guidance, used) = rescuer.guide_measured(&briefing()).await;
+    assert!(guidance.is_err());
+    assert_eq!(used.calls, u32::try_from(REPAIRS).unwrap() + 1);
+}
+
 #[test]
 fn the_briefing_shows_earlier_rescues_and_cuts_a_long_screen() {
     let mut briefing = briefing();

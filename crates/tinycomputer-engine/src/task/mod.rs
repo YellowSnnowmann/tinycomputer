@@ -50,6 +50,7 @@ mod publish;
 mod recovery;
 mod resume;
 mod store;
+mod timing;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -106,6 +107,13 @@ pub trait FlowRunner: Send + Sync + 'static {
 
     /// Lets go of whatever the task held, once it has ended.
     fn release(&self, _task: &TaskId) {}
+
+    /// Writes an `event` of the time a task spends outside its flows
+    /// (`plan`, `rescue`, `resume`) to the debug journal: the task's own,
+    /// or for `PlanTask`, which plans before any task exists (`task` is
+    /// `None`), a run of its own. Does nothing by default, and nothing when
+    /// the journal is off.
+    fn journal(&self, _task: Option<&TaskId>, _event: &str, _fields: serde_json::Value) {}
 }
 
 /// How many tasks the controller holds; finished ones are dropped first.
