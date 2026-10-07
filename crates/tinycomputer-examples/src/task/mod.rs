@@ -15,6 +15,11 @@ use tinycomputer_bus::browser::SessionInfo;
 
 use crate::host::{Host, LabError};
 
+mod person;
+
+use person::printable;
+pub use person::{Person, Terminal, reply};
+
 /// The longest one `AwaitTask` call blocks before the loop looks again.
 pub const AWAIT_SLICE: Duration = Duration::from_secs(30);
 
@@ -22,6 +27,14 @@ pub const AWAIT_SLICE: Duration = Duration::from_secs(30);
 /// `needs_input` from `answers` when every field it asks for is there, and
 /// cancels the task once `limit` has passed — checked on every state it
 /// reports, so an answerable pause past the limit is cancelled, not answered.
+///
+/// With a `person`, the pauses only a person can answer wait for them
+/// instead of ending the run: an approval, a login or captcha, a detail
+/// `answers` lacks (see [`reply`]), and a payment page, which stays open
+/// until they say they are done. A person is never cut short, as a browser
+/// closed under someone mid-login or on a payment page would be: their
+/// answer is sent however long it took, and the limit is checked again on
+/// the state that follows.
 ///
 /// # Errors
 ///
@@ -31,15 +44,27 @@ pub async fn follow(
     mut view: TaskView,
     answers: &BTreeMap<String, String>,
     limit: Duration,
+    person: Option<&dyn Person>,
 ) -> Result<TaskView, LabError> {
     let started = Instant::now();
     let id = view.id.clone();
     let mut last = String::new();
     loop {
-        let line = format!("[{}] {}", state(&view.status), view.summary);
+        let line = format!("[{}] {}", state(&view.status), printable(&view.summary));
         if line != last {
             println!("{line}");
             last = line;
+        }
+        if let (
+            Some(person),
+            TaskStatus::Checkpoint {
+                reason,
+                continuable: false,
+                ..
+            },
+        ) = (person, &view.status)
+        {
+            person.finish(reason);
         }
         if view.status.is_final() {
             return Ok(view);
@@ -53,7 +78,7 @@ pub async fn follow(
                 let timeout_ms = u64::try_from(wait.as_millis()).unwrap_or(u64::MAX);
                 host.await_task(&id, timeout_ms).await?
             }
-            TaskStatus::NeedsInput { fields } => {
+            TaskStatus::NeedsInput { fields } if person.is_none() => {
                 let Some(inputs) = inputs_for(fields, answers) else {
                     return Ok(view);
                 };
@@ -68,7 +93,13 @@ pub async fn follow(
                 })
                 .await?
             }
-            _ => return Ok(view),
+            status => {
+                let Some(request) = person.and_then(|person| reply(&id, status, answers, person))
+                else {
+                    return Ok(view);
+                };
+                host.continue_task(&request).await?
+            }
         };
     }
 }
@@ -140,8 +171,9 @@ pub fn passed(status: &TaskStatus) -> bool {
 /// report (`TaskReport`); when the task managed to take one as it stopped,
 /// `final.png` (`BrowserReadOutput` on the report's last artifact, which
 /// `read_output` releases); otherwise an `open-<n>.png` of each browser
-/// session still open; every open session is then closed; and, for a
-/// finished task, its records and any shaped result.
+/// session still open; every open session is then closed; what the task
+/// read, printed and in `records.json`, wherever it stopped; and, for a
+/// finished task, any shaped result.
 ///
 /// Only the task's own sessions are touched: those not in `before`, the
 /// sessions [`browser_sessions`](Host::browser_sessions) listed before
@@ -171,6 +203,13 @@ pub async fn conclude(
             rescue.step, rescue.outcome, rescue.reason
         );
     }
+    for line in read_lines(&report.records) {
+        println!("{line}");
+    }
+    std::fs::write(
+        out.join("records.json"),
+        serde_json::to_string_pretty(&report.records)?,
+    )?;
     std::fs::write(
         out.join("report.json"),
         serde_json::to_string_pretty(&report)?,
@@ -231,22 +270,34 @@ pub async fn conclude(
         println!("no screenshot: the task's surface could not take one");
     }
     if let TaskStatus::Done {
-        records, result, ..
+        result: Some(result),
+        ..
     } = &view.status
     {
         std::fs::write(
-            out.join("records.json"),
-            serde_json::to_string_pretty(records)?,
+            out.join("result.json"),
+            serde_json::to_string_pretty(result)?,
         )?;
-        if let Some(result) = result {
-            std::fs::write(
-                out.join("result.json"),
-                serde_json::to_string_pretty(result)?,
-            )?;
-        }
     }
     println!("final: [{}] {}", state(&view.status), view.summary);
     Ok(())
+}
+
+/// One line per variable the task read, as [`conclude`] prints them: a read
+/// value as it is, and an `extract`'s or a `pick`'s rows joined by `|`.
+#[must_use]
+pub fn read_lines(records: &BTreeMap<String, Vec<BTreeMap<String, String>>>) -> Vec<String> {
+    records
+        .iter()
+        .map(|(name, rows)| {
+            let rows = rows
+                .iter()
+                .map(|row| row.values().cloned().collect::<Vec<_>>().join(", "))
+                .collect::<Vec<_>>()
+                .join(" | ");
+            format!("  read {name}: {rows}")
+        })
+        .collect()
 }
 
 /// The status's wire name, such as `needs_input`.

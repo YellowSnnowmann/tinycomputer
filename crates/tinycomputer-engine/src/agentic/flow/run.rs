@@ -18,6 +18,7 @@ use tinycomputer_core::Facts;
 use super::{
     Ended, FlowRun, Halt, MAX_ACTIONS, MAX_CALLS, StepLog,
     backend::AgentBackend,
+    front::Front,
     ledger, steps,
     validate::{self, step_path, substitute_safe},
     vote,
@@ -59,10 +60,13 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
             .iter()
             .map(|(name, value)| (name.clone(), validate::substitute(value, &request.vars)))
             .collect::<BTreeMap<_, _>>();
+        // What the task has read so far outranks the flow's own declaration
+        // of it: a planner declares each read's variable up front, empty, and
+        // a flow resumed after a rescue declares it again, so `${total}`
+        // read before the rescue expanded to nothing after it. The caller's
+        // own values outrank both.
+        vars.extend(request.collected.clone());
         vars.extend(request.vars.clone());
-        for (name, value) in &request.collected {
-            vars.entry(name.clone()).or_insert_with(|| value.clone());
-        }
         let facts = validate::carrying_facts(&request.flow.vars, &request.facts);
         let secrets = Facts::with_secrets(
             facts
@@ -135,6 +139,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
             expecting: None,
             step_location: None,
             step_cleared: BTreeSet::new(),
+            front: Front::default(),
         }
     }
 
@@ -292,6 +297,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
         self.frontier.clear();
         self.step_location.clone_from(&self.location);
         self.step_cleared.clear();
+        self.front.next_step();
     }
 
     pub(in crate::agentic::flow) fn enabled(&self, flow_loop: FlowLoop) -> bool {

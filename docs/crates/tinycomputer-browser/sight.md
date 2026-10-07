@@ -62,12 +62,22 @@ Sight decides what is a control by behavior, not by role:
   stop is a control too, but only if its *parent* is not already one of
   those (so a `<span>` inside a button does not become a second control just
   because it inherits the button's pointer cursor).
+- A small element (under a quarter of the window) whose React props hold a
+  press handler (`onClick`, `onPress`) is a control too: a page can wire a
+  plain `div` to a click with neither a cursor nor a tab stop. A handler for
+  the mouse going down alone (a carousel's track) makes no control, and a
+  control made only by such a handler hides nothing pressable inside it.
 - Disabled controls are left out entirely, as they are in the tree. "Disabled"
   here is broader than the `disabled` property: it also covers
   `aria-disabled="true"` and a class name that *ends* in `disabled`. That last
   rule exists because plenty of date pickers grey out a past day purely
   through a CSS class, `rdrDay rdrDayDisabled` on a real calendar widget,
   with no ARIA attribute at all.
+- Chosen controls read `selected` by the same reasoning: besides
+  `aria-selected`, `aria-current`, `aria-checked`, and `aria-pressed`, a class
+  name ending in `-selected` or `-checked` (never `unselected` or
+  `not-selected`) marks one, as a store's picked size
+  (`size-buttons-size-button-selected`) carries no ARIA state at all.
 
 The IndiGo case above is the sharpest illustration of the next rule: **a
 claimed text box that takes no text is a button, not a text box.** Sight
@@ -93,6 +103,12 @@ to get wrong when reading markup instead of pixels:
   `covered`. This is not the same as being off screen: the element is on
   screen and rendered, something else is simply sitting on top of the exact
   point a click would land on.
+- **Hidden from screen readers.** What the page marks `aria-hidden` is kept
+  when a person plainly sees it: below the fold, or on top at its middle.
+  An element that turns pointer events off itself (a seat table's number
+  and status cells) is passed through by the hit test, so landing on what
+  holds it counts as seeing it; a whole page a modal library turned off
+  behind its dialog does not.
 
 Covered is not always the end of the story for a click; see "click-through"
 in [interacting.md](interacting.md) for what happens next.
@@ -100,9 +116,10 @@ in [interacting.md](interacting.md) for what happens next.
 ## Naming: what a person would call it
 
 This is the part that fixes the IndiGo bug. A control's name comes from,
-roughly in order: its own tied `<label>`, then the page's `aria-label`, then
-the words a person would read beside or above the box (to its right, for a
-checkbox or radio), then its placeholder. A word-less control falls back to
+roughly in order: its own tied `<label>`, then the page's `aria-label`, its
+placeholder, or its title, then the words a person would read beside or
+above the box (to its right, for a checkbox or radio), never a divider such
+as "OR". A word-less control falls back to
 `aria-label`, `title`, or an image's alt text, then the words in its own or
 its icon's class/id/test-id (`close`, `search`, `menu`, and a fixed list of
 similar terms sight recognizes) with the description "an icon", and for a
@@ -132,7 +149,9 @@ ARIA roles), named sections and groups, and the cards of a result list. Cards
 get an ordinal among their same-role siblings, `listitem #3`, `row #2`, in
 the same label format the accessibility tree fallback uses, so grouping and
 the shared "digest" logic downstream work the same whichever perception
-produced the screen.
+produced the screen. A table row with no label of its own is named by what
+its cells without a control say, `row "01 Handicapped" #2`, so a row's
+button reads with what the row is about.
 
 The screen's `surface` field becomes `sheet` when a dialog covers the middle
 of the viewport, or `alert` for an `alertdialog`, the same signal a flow

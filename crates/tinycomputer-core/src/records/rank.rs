@@ -18,6 +18,10 @@ pub enum Criterion {
     FewestStops,
     /// The shortest duration first.
     Shortest,
+    /// The list's own order: the first item shown first.
+    First,
+    /// The list's own order reversed: the last item shown first.
+    Last,
 }
 
 impl Criterion {
@@ -27,6 +31,24 @@ impl Criterion {
     pub fn parse(text: &str) -> Option<Self> {
         let lower = text.to_ascii_lowercase();
         let has = |words: &[&str]| words.iter().any(|word| lower.contains(word));
+        // "first" or "last" alone is the list's own order; with more words
+        // ("first product rated 4 stars or more") it is a judgement.
+        let bare = lower
+            .trim()
+            .trim_start_matches("the ")
+            .trim_end_matches(" one")
+            .trim_end_matches(" result")
+            .trim_end_matches(" item")
+            .trim_end_matches(" product")
+            .trim_end_matches(" listed")
+            .trim()
+            .to_owned();
+        if matches!(bare.as_str(), "first" | "top" | "1st") {
+            return Some(Self::First);
+        }
+        if bare == "last" {
+            return Some(Self::Last);
+        }
         if has(&[
             "cheapest",
             "lowest price",
@@ -79,6 +101,8 @@ impl Criterion {
             Self::Shortest => named_or_any(&["duration", "length"], &|text| {
                 parse_duration(text).map(f64::from)
             }),
+            // Order alone ranks these (`rank`); no field is read.
+            Self::First | Self::Last => None,
         }
     }
 }
@@ -100,6 +124,13 @@ impl Criterion {
 /// ```
 #[must_use]
 pub fn rank(records: &[Record], criterion: Criterion) -> Option<Vec<usize>> {
+    match criterion {
+        Criterion::First => return (!records.is_empty()).then(|| (0..records.len()).collect()),
+        Criterion::Last => {
+            return (!records.is_empty()).then(|| (0..records.len()).rev().collect());
+        }
+        _ => {}
+    }
     let keyed = records
         .iter()
         .map(|record| criterion.key(record))

@@ -32,6 +32,72 @@ async fn pick_ranks_a_measurable_criterion_exactly_and_opens_the_winner() {
     }
 }
 
+/// Says an item belongs to the list picked from only when it shows `brand`.
+fn belongs_when(brand: &'static str) -> impl Fn(&str, &Question, &Sim) -> Option<Answer> {
+    move |id, question, _| {
+        id.starts_with("belongs_").then(|| {
+            noul(if text_of(question, "item").contains(brand) {
+                0.9
+            } else {
+                0.1
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn an_exact_ranking_takes_the_first_item_that_belongs_to_the_list() {
+    // Live, "the results rated 4 stars or more" ranked by lowest price took
+    // the cheapest result on the page, a 3.1-star item of another brand:
+    // the ranking reads only the price.
+    let run = run_with(
+        flights(),
+        json!({"app": "Mail", "steps": [
+            {"pick": {"from": "the Air India flights", "by": "lowest price", "into": "flight"}}
+        ]}),
+        |_| {},
+        belongs_when("air india"),
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert!(
+        run.result.vars["flight"].starts_with("Air India"),
+        "{}",
+        run.result.vars["flight"]
+    );
+    assert_eq!(run.app.sim().picked, ["@s:select-3"]);
+    assert!(run.result.steps[0].note.contains("ranked"));
+}
+
+#[tokio::test]
+async fn a_ranking_none_of_whose_leaders_belongs_is_judged_instead() {
+    let run = run_with(
+        flights(),
+        json!({"app": "Mail", "steps": [
+            {"pick": {"from": "the Emirates flights", "by": "lowest price", "into": "flight"}}
+        ]}),
+        |_| {},
+        belongs_when("emirates"),
+    )
+    .await;
+    assert!(
+        run.requests
+            .iter()
+            .any(|request| request.questions.contains_key("record")),
+        "Jev judges the list when no ranked item belongs to it"
+    );
+    assert_ne!(
+        run.app.sim().picked,
+        ["@s:select-1"],
+        "not the cheapest card"
+    );
+}
+
 #[tokio::test]
 async fn pick_ranks_the_list_that_has_prices_not_the_longest_one() {
     let app = flights();
@@ -253,4 +319,85 @@ async fn a_picked_card_that_cannot_be_opened_says_why() {
         run.app.sim().presses.is_empty(),
         "only a covered click is retried"
     );
+}
+
+#[test]
+fn a_first_with_a_condition_walks_the_list_in_order() {
+    use super::steps::first_meeting;
+    assert_eq!(
+        first_meeting("first product rated 4 stars or more").as_deref(),
+        Some("product rated 4 stars or more")
+    );
+    assert_eq!(
+        first_meeting("The first one under ₹500").as_deref(),
+        Some("one under ₹500")
+    );
+    for bare in [
+        "first",
+        "the first",
+        "first one",
+        "first result",
+        "lowest price",
+        // A name the list holds, or an order of its own: Jev judges these.
+        "First AC",
+        "first class",
+        "first to depart",
+        "first alphabetically",
+    ] {
+        assert_eq!(first_meeting(bare), None, "{bare}");
+    }
+}
+
+#[tokio::test]
+async fn a_pick_the_page_already_has_selected_is_not_pressed_again() {
+    // Live, a ride app's cheapest car was selected by default, and pressing
+    // it again opened a fare breakdown over the button that requests it.
+    let run = run(
+        App::with(|sim| {
+            sim.results = vec![
+                ("IndiGo 6E-2135", "₹6,840", "6:45 PM"),
+                ("Vistara UK-707", "₹7,210", "09:10"),
+            ];
+            sim.selected_result = Some(0);
+        }),
+        json!({"app": "Mail", "steps": [
+            {"pick": {"from": "the flight results", "by": "lowest price", "into": "flight"}}
+        ]}),
+    )
+    .await;
+    let step = &run.result.steps[0];
+    assert_eq!(step.outcome, StepOutcome::Done, "{}", step.note);
+    assert!(step.note.contains("already selected"), "{}", step.note);
+    assert!(
+        run.app.sim().picked.is_empty(),
+        "{:?}",
+        run.app.sim().picked
+    );
+    assert!(run.result.vars["flight"].starts_with("IndiGo"));
+}
+
+#[test]
+fn a_list_not_clearly_chosen_is_the_one_jev_leaned_to_when_it_leads_clearly() {
+    let keys = ["1", "2", "3"].map(str::to_owned);
+    let answer = |weights: &[(&str, f64)]| {
+        BTreeMap::from([(
+            "list".to_owned(),
+            Answer::Choice(ChoiceAnswer {
+                choice: "none".to_owned(),
+                probabilities: weights
+                    .iter()
+                    .map(|(key, weight)| ((*key).to_owned(), *weight))
+                    .collect(),
+                confidence: 0.4,
+            }),
+        )])
+    };
+    // Live, a ride app's option cards drew 0.41 to the next list's 0.05.
+    let leaned = answer(&[("1", 0.02), ("2", 0.05), ("3", 0.41), ("none", 0.52)]);
+    assert_eq!(steps::leaning(&leaned, &keys), Some(2));
+    let split = answer(&[("1", 0.3), ("2", 0.25), ("3", 0.0), ("none", 0.45)]);
+    assert_eq!(steps::leaning(&split, &keys), None, "no clear lead");
+    let faint = answer(&[("1", 0.2), ("2", 0.01), ("3", 0.01), ("none", 0.78)]);
+    assert_eq!(steps::leaning(&faint, &keys), None, "too faint");
+    assert_eq!(steps::leaning(&BTreeMap::new(), &keys), None);
 }

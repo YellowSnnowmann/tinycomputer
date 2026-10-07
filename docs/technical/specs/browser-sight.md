@@ -56,7 +56,14 @@ a caret.
    `combobox`, or `spinbutton` that takes no text is a `button`, or, when it
    wraps a real input, is read as that input. A label that stands in for a
    hidden checkbox or radio is that checkbox or radio. Disabled controls are
-   left out, as in the tree.
+   left out, as in the tree. A region a page marks as holding controls (a
+   menu, list, listbox, grid, tab panel, toolbar, dialog, or a landmark) is
+   not a control for its tab stop alone, which only moves the focus inside
+   it (one with a pointer cursor or a click handler, such as a carousel's
+   slide, still is), and a button or link that holds a box to type in is a
+   panel (a popover with its own search box). The rows inside either are read as controls of their
+   own; read as one button, a panel's name strings every row together and a
+   press lands on whatever row sits at its middle.
 2. **Only what is drawn.** Zero-size, `display: none`, invisible, and
    transparent elements are left out, and so are disabled controls: the
    `disabled` property, `aria-disabled`, or a class name ending in
@@ -66,9 +73,9 @@ a caret.
    rule the click-through uses).
 3. **Names are the words a person reads.** A control's own words (without
    those of a list of controls nested in it); for a field, its tied
-   `<label>`, then the page's `aria-label`, then the words inside its box,
-   left of it on its line, or just above it (right of it for a checkbox),
-   then its placeholder; for a word-less control, its `aria-label`, `title`,
+   `<label>`, then the page's `aria-label`, placeholder, or title, then the
+   words inside its box, left of it on its line, or just above it (right of
+   it for a checkbox), never a divider such as "OR"; for a word-less control, its `aria-label`, `title`,
    or pictures' alternative text, then the icon's class, id, or test-id words
    (`close`, `search`, `menu`, …) with the description "an icon", and for a
    link, where it leads ("leads to sightseeing"). A page label that adds to
@@ -85,8 +92,9 @@ a caret.
    bar with links), landmarks (`banner`, `navigation`, `main`, `form`, …),
    named sections and groups, lists (an unnamed one after the first of its
    kind numbered in page order, `list 2`, so two lists' first cards stay
-   apart), and cards (`listitem #3`, `row #2`, `article #1`), in the tree's
-   label format so card grouping and the digest
+   apart), and cards (`listitem #3`, `row #2`, `article #1`; an unlabelled
+   table row by its control-free cells' words, `row "01 Handicapped" #2`),
+   in the tree's label format so card grouping and the digest
    work unchanged. The screen's surface is `sheet` (or `alert`) when a dialog
    is on top at the middle of the viewport.
 6. **Text.** Visible words outside controls and fields, within a screen of
@@ -239,8 +247,17 @@ The `Screen` does not carry it.
   the flow runtime's `untrusted_accessibility_data` wrapping and masking.
 - Typing still passes the surface's editable check (`takes_text`); sight
   only stops offering `SetValue` for what cannot take it.
-- A ref never silently moves to another element.
-- Nothing is added to the page but the marks.
+- A ref never silently moves to another element; a control a page claims
+  around a native button (a `td role="gridcell"` holding a `<button>`) is
+  marked on that button, which a press must reach, unless the control says
+  whether it is chosen (a tab, a radio, an option).
+- Reading adds nothing to the page but the marks. Pressing adds, best
+  effort, only this: the pressed link or form, when it would open a new
+  tab, is aimed at the page's own; for two seconds a script's
+  `window.open` of an address on the same site opens it in place (another
+  site's still opens its own window, and the patched `open` returns no
+  window); and a flag notes that the page began to unload, so a slow link is
+  not followed twice.
 
 ## Acceptance
 
@@ -255,6 +272,8 @@ The `Screen` does not carry it.
   frames, ad-named and "Sponsored" blocks, ad links, and pixels are removed,
   while `header`, `shadow`, `download`, `adults`, and generated classes are
   kept; blank boxes are dropped while picture boxes and native buttons stay;
+  a panel holding a search box and a tab panel taking a tab stop leave their
+  rows to be read one by one;
   consent, cookie, and newsletter banners are kept whole; `inert`, clipped,
   and sideways `aria-hidden` content and the page behind a dialog are
   dropped, while `aria-hidden` content a person sees stays and hidden

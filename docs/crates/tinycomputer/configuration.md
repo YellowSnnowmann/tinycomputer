@@ -79,6 +79,12 @@ OpenJEV and Sage have no Tiny Humans proxy route, so a host that wants its
 decisions to go through Tiny Humans uses `tiny_humans_open_router`.
 `sdk_name` is sent only to the Tiny Humans proxy.
 
+A provider's server error (HTTP 5xx) or rate limit (429) is retried, waiting
+1, 2, 4, then 8 seconds between attempts, or as long as the provider asks.
+`max_retries` sets how many retries follow the first attempt; it defaults to
+four, about 15 seconds in all, so a gateway's brief outage does not end a
+run.
+
 Sage answers the loops' questions as its own calibrated decisions
 ([`../tinycomputer-engine/sage.md`](../tinycomputer-engine/sage.md)). It
 takes no model selection, so `model` is ignored, and neither `timeout_ms` nor

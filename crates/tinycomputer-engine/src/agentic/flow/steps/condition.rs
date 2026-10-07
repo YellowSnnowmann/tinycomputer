@@ -10,9 +10,45 @@ use crate::agentic::flow::{
     backend::AgentBackend,
     escalate::Belief,
     validate::{MAX_REPEAT, substitute_safe},
+    view::{Screen, fingerprint},
 };
 
-use super::WAIT_CHECKS;
+use super::{EMPTY_CHECKS, STEADY_CHECKS, STEADY_HOLD, WAIT_CHECKS, matching::plain};
+
+/// What a page says when a search found nothing, as whole-word phrases in
+/// its title or its visible text: what a `wait_for` waits for will not come.
+/// Never a bare "no products" or "0 products": a header's empty cart says
+/// that on every page.
+const FOUND_NOTHING: &[&str] = &[
+    "no results",
+    "no result found",
+    "0 results",
+    "no products found",
+    "no items found",
+    "no matches found",
+    "no matching results",
+    "nothing found",
+    "did not match any",
+    "could not find any",
+    "couldn t find any",
+    "no matching products",
+];
+
+/// The phrase of [`FOUND_NOTHING`] `screen` shows in its title or visible
+/// text, if any. Field contents are not read.
+fn found_nothing(screen: &Screen) -> Option<&'static str> {
+    let shown = screen
+        .window
+        .iter()
+        .chain(&screen.context)
+        .map(|text| format!(" {} ", plain(text)))
+        .collect::<Vec<_>>();
+    FOUND_NOTHING.iter().copied().find(|phrase| {
+        shown
+            .iter()
+            .any(|text| text.contains(&format!(" {phrase} ")))
+    })
+}
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// Judges one condition on the current screen.
@@ -27,6 +63,17 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         log: &mut StepLog,
         condition_text: &str,
     ) -> Result<f64, Halt> {
+        self.holds_on(log, condition_text)
+            .await
+            .map(|(held, _)| held)
+    }
+
+    /// [`FlowRun::holds`], with the screen it was judged on.
+    async fn holds_on(
+        &mut self,
+        log: &mut StepLog,
+        condition_text: &str,
+    ) -> Result<(f64, Screen), Halt> {
         log.used(FlowLoop::Completion);
         let screen = self.look().await?;
         let request = ask::request(
@@ -69,7 +116,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             .await?
             .unwrap_or_default();
         log.confidence = Some(held);
-        Ok(held)
+        Ok((held, screen))
     }
 
     pub(super) async fn verify(
@@ -90,18 +137,65 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
     }
 
+    /// Waits for a condition, checking it up to [`WAIT_CHECKS`] times. A
+    /// page that says it found nothing ([`FOUND_NOTHING`]) on
+    /// [`EMPTY_CHECKS`] checks in a row will not turn up what the step waits
+    /// for, so the step fails there and says so: live, a store's "No Results
+    /// Found" page was checked ten times over, and the rescue, told only that
+    /// the condition never held, guessed at the search's wording.
     pub(super) async fn wait_for(
         &mut self,
         log: &mut StepLog,
         condition_text: &str,
     ) -> Result<Ended, Halt> {
+        let mut empty = 0;
+        // A settled screen judged likely to show the condition, check after
+        // check, will not be judged otherwise by waiting longer: live, a
+        // results page was judged to show its results at 0.70 to 0.80 on
+        // every one of ten checks, under the bar each time.
+        let mut steady = (0, String::new());
         for check in 0..WAIT_CHECKS {
-            let held = self.holds(log, condition_text).await?;
+            let (held, screen) = self.holds_on(log, condition_text).await?;
             if held >= DONE {
                 return Ok(Ended::new(
                     StepOutcome::Done,
                     format!("held after {} check(s)", check + 1),
                 ));
+            }
+            let seen = fingerprint(&screen);
+            steady = if held >= STEADY_HOLD && (steady.0 == 0 || steady.1 == seen) {
+                (steady.0 + 1, seen)
+            } else if held >= STEADY_HOLD {
+                (1, seen)
+            } else {
+                (0, String::new())
+            };
+            if steady.0 >= STEADY_CHECKS {
+                return Ok(Ended::new(
+                    StepOutcome::Done,
+                    format!(
+                        "held on {STEADY_CHECKS} checks of a settled screen (confidence {held:.2})"
+                    ),
+                ));
+            }
+            // A dialog the task opened asks its question first (a format, a
+            // quantity): what lies past it will not show while it waits.
+            if self.front.opened_dialog && check >= 1 {
+                return Err(Halt::Failed(
+                    "a dialog the task opened is waiting for an answer, so nothing past it shows: choose what it asks, then continue"
+                        .to_owned(),
+                ));
+            }
+            match found_nothing(&screen) {
+                Some(phrase) => {
+                    empty += 1;
+                    if empty >= EMPTY_CHECKS {
+                        return Err(Halt::Failed(format!(
+                            "the page says {phrase:?}: it found nothing, so the condition will not hold"
+                        )));
+                    }
+                }
+                None => empty = 0,
             }
             self.act(log, "wait", None, |backend| {
                 backend.execute(JevOperation::Wait, None, None)

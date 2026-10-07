@@ -2,6 +2,7 @@
 //! configuration, desktop dispatch, and the reply helpers.
 
 use super::*;
+use crate::agentic::runtime::{RETRY, client_config};
 
 #[test]
 fn runtime_configuration_covers_all_providers_and_rejects_empty_keys() {
@@ -29,6 +30,19 @@ fn runtime_configuration_covers_all_providers_and_rejects_empty_keys() {
     untrusted.provider = JevProvider::OpenRouter;
     untrusted.endpoint_url = Some("https://attacker.example/decisions".to_owned());
     assert!(JevRuntime::configure(&untrusted).is_err());
+}
+
+#[test]
+fn jev_calls_ride_out_a_provider_outage_unless_told_otherwise() {
+    // Live, the client's own retries, 100 ms and then 200 ms apart, gave a
+    // gateway's 502s 2.5 s before they ended the task.
+    let mut request = JevConfig::new("key");
+    request.provider = JevProvider::TinyHumansOpenRouter;
+    assert_eq!(client_config(&request).retry, RETRY);
+    request.max_retries = Some(0);
+    let told = client_config(&request).retry;
+    assert_eq!(told.max_retries, 0, "a configured number of retries wins");
+    assert_eq!(told.initial_backoff, RETRY.initial_backoff);
 }
 
 #[test]

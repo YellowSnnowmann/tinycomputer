@@ -133,8 +133,18 @@ pub(super) async fn drive(cell: Arc<Cell>, runner: Arc<dyn FlowRunner>, runs: Ve
                 state.steps.extend(result.steps);
                 state.exchanges.extend(result.trace);
                 state.learned.extend(result.learned);
+                // A variable the flow declares is the caller's input unless
+                // a step writes it: a planner declares each read's variable
+                // up front, empty, while one the flow defines from the
+                // caller's values (`"recipient": "${email}"`) is expanded as
+                // the run starts, so a changed value alone tells nothing.
+                let written = written_names(&run.flow.steps);
                 for (name, value) in result.vars {
-                    if state.facts.get(&name).is_none() && !run.flow.vars.contains_key(&name) {
+                    let read = match run.flow.vars.get(&name) {
+                        None => true,
+                        Some(declared) => written.contains(&name) && *declared != value,
+                    };
+                    if read && state.facts.get(&name).is_none() {
                         state.reads.insert(name, value);
                     }
                 }
@@ -249,4 +259,26 @@ pub(super) async fn finish(cell: &Cell, runner: &dyn FlowRunner) {
         &answer,
     );
     runner.release(&cell.view.borrow().id);
+}
+
+/// Every variable a step of `steps` writes: a `read`'s, `extract`'s, or
+/// `pick`'s `into`, at any depth.
+fn written_names(steps: &[tinycomputer_bus::FlowStep]) -> std::collections::BTreeSet<String> {
+    use tinycomputer_bus::FlowAction;
+    let mut names = std::collections::BTreeSet::new();
+    for step in steps {
+        match step.action() {
+            FlowAction::Read(read) | FlowAction::Extract(read) => {
+                names.insert(read.into);
+            }
+            FlowAction::Pick(pick) => names.extend(pick.into),
+            FlowAction::If(branch) => {
+                names.extend(written_names(&branch.then));
+                names.extend(written_names(&branch.otherwise));
+            }
+            FlowAction::RepeatUntil(repeat) => names.extend(written_names(&repeat.steps)),
+            _ => {}
+        }
+    }
+    names
 }

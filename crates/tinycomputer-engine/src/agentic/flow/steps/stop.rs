@@ -19,6 +19,20 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         log: &mut StepLog,
         action: &str,
     ) -> Result<Ended, Halt> {
+        // Signing in is no irreversible action, and a login wall pauses for
+        // a person by itself (`tinycomputer_core::safety`): a stop before it
+        // gates nothing, and on any page it finds a header's sign-in link.
+        // Live, a plan for "do not log in" stopped short of the cart, at
+        // "Hello, sign in".
+        if only_signs_in(action) {
+            self.history.push(format!(
+                "did not stop before {action:?}: signing in is no irreversible action, and a login wall pauses for a person by itself"
+            ));
+            return Ok(Ended::new(
+                StepOutcome::Done,
+                "signing in is no irreversible action: nothing to stop before".to_owned(),
+            ));
+        }
         let purpose = format!("perform: {action}");
         // Asked to "perform: paying", Jev weighs the request against the
         // brief's own rule to stop before paying and hesitates (measured:
@@ -91,4 +105,56 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             )))
         }
     }
+}
+
+/// Phrases that name signing in to an account that exists. Signing up,
+/// registering, or creating an account hands the person's details to a
+/// site, and stays gated.
+const SIGNING_IN: &[&str] = &[
+    "logging in",
+    "log in",
+    "login",
+    "signing in",
+    "sign in",
+    "signin",
+];
+
+/// Words that add nothing beside such a phrase ("signing in to your
+/// account").
+const SIGN_IN_FILLER: &[&str] = &[
+    "the", "a", "an", "to", "your", "my", "or", "and", "with", "using", "via", "account", "page",
+    "screen", "button", "form", "before", "otp",
+];
+
+/// Whether `action` names signing in and nothing else: "signing in",
+/// "logging in to your account", but not "paying or logging in", nor
+/// "signing up or logging in".
+pub(in crate::agentic::flow) fn only_signs_in(action: &str) -> bool {
+    let words = action
+        .to_lowercase()
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>();
+    let mut text = format!(
+        " {} ",
+        words.split_whitespace().collect::<Vec<_>>().join(" ")
+    );
+    let mut found = false;
+    for phrase in SIGNING_IN {
+        let padded = format!(" {phrase} ");
+        while text.contains(&padded) {
+            text = text.replacen(&padded, " ", 1);
+            found = true;
+        }
+    }
+    found
+        && text
+            .split_whitespace()
+            .all(|word| SIGN_IN_FILLER.contains(&word))
 }

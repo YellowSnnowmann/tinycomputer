@@ -43,6 +43,15 @@ pub(super) enum Quirk {
     /// The opened booking widget leaves the focus outside any text field:
     /// text with no target is refused, as the browser surface refuses it.
     NoFocus,
+    /// The obstacle sheet is a dialog whose own bar covers "Keep Editing".
+    BarOverSheet,
+    /// The obstacle sheet also asks to confirm, with a "Yes" button.
+    YesOnSheet,
+    /// The inbox shows its search only once its "Search mail" link is
+    /// pressed, beside a "Contact us" link.
+    SearchBehindLink,
+    /// The search behind "Search mail" shows.
+    SearchOpen,
 }
 
 #[derive(Debug, Default)]
@@ -59,11 +68,15 @@ pub(super) struct Sim {
     pub(super) results: Vec<(&'static str, &'static str, &'static str)>,
     /// Refs of the result cards' "Select" buttons clicked, in order.
     pub(super) picked: Vec<String>,
+    /// The result card, by index, whose "Select" the page shows selected.
+    pub(super) selected_result: Option<usize>,
     /// Days in a date strip above the results, a longer list than they are.
     pub(super) date_strip: usize,
     pub(super) extra_buttons: usize,
     /// A booking form with an autocomplete destination and a calendar.
     pub(super) booking: Option<Booking>,
+    /// A ride form whose two boxes keep a place only once it is picked.
+    pub(super) places: Option<Places>,
     /// A fare radio shown already checked, as a fare page preselects one.
     pub(super) checked_fare: Option<&'static str>,
     /// A line of guidance shown on the page, such as a date layout.
@@ -181,6 +194,7 @@ impl App {
                 &[&root, "toolbar"],
                 40.0,
             ));
+            search_behind_link(&sim, &root, &mut candidates);
             let mut archive = node("Archive", "button", &["Click"], &[&root, "toolbar"], 40.0);
             if sim.has(Quirk::DisabledArchive) {
                 archive.states = vec!["disabled".to_owned()];
@@ -205,6 +219,9 @@ impl App {
         if let Some(booking) = &sim.booking {
             booking_widget(&sim, booking, &root, &mut candidates);
         }
+        if let Some(places) = &sim.places {
+            places_widget(&sim, places, &root, &mut candidates);
+        }
         if let Some(adults) = sim.adults {
             passenger_steppers(adults, &root, &mut candidates);
         }
@@ -219,7 +236,7 @@ impl App {
         let mut surface = "window".to_owned();
         if sim.obstacle {
             surface = "sheet".to_owned();
-            obstacle_sheet(&mut candidates);
+            obstacle_sheet(&sim, &mut candidates);
         }
         Screen {
             app: "Mail".to_owned(),
@@ -304,13 +321,7 @@ impl AgentBackend for App {
         }
         match operation {
             JevOperation::Click => {
-                if let Some(reference) = target
-                    .as_ref()
-                    .map(|target| target.ref_id.clone())
-                    .filter(|reference| reference.starts_with("@s:select-"))
-                {
-                    sim.picked.push(reference);
-                }
+                note_pick(&mut sim, target.as_ref());
                 sim.clicks.push(name.clone());
                 if name == "Close" && sim.has(Quirk::PromoToast) {
                     sim.quirks.remove(&Quirk::PromoToast);
@@ -321,6 +332,9 @@ impl AgentBackend for App {
                     return sim.located("click");
                 }
                 match name.as_str() {
+                    "Search mail" => {
+                        sim.quirks.insert(Quirk::SearchOpen);
+                    }
                     "New Message" => sim.compose_open = true,
                     "Send" => sim.sent = true,
                     "Keep Editing" => sim.obstacle = false,
@@ -344,6 +358,7 @@ impl AgentBackend for App {
                     _ if name.starts_with("Decrease number of Adult") => {
                         sim.adults = sim.adults.map(|adults| adults.saturating_sub(1));
                     }
+                    _ if press_place(&mut sim, &name) => {}
                     _ if sim.booking.is_some() => press_booking(&mut sim, &name),
                     _ => {}
                 }
@@ -367,8 +382,7 @@ impl AgentBackend for App {
                     .insert("Search city".to_owned(), text.unwrap_or_default());
             }
             JevOperation::TypeText if !(name == "Body" && sim.has(Quirk::BodyIgnoresSetValue)) => {
-                sim.focused = Some(name.clone());
-                sim.fields.insert(name, text.unwrap_or_default());
+                type_into(&mut sim, &name, text.unwrap_or_default());
             }
             _ => {}
         }
@@ -386,8 +400,7 @@ impl AgentBackend for App {
         }
         let mut sim = self.sim();
         let name = target.name.clone().unwrap_or_default();
-        sim.focused = Some(name.clone());
-        sim.fields.insert(name, text.to_owned());
+        type_into(&mut sim, &name, text.to_owned());
         DesktopResponse::ok("paste", json!({}))
     }
 
@@ -402,6 +415,7 @@ impl AgentBackend for App {
             "escape" => {
                 sim.obstacle = false;
                 sim.quirks.remove(&Quirk::Drawer);
+                drop_unpicked(&mut sim);
             }
             _ => {}
         }
@@ -474,4 +488,21 @@ pub(super) fn no_focus() -> DesktopResponse {
         "type-text",
         tinycomputer_bus::DesktopError::new("INVALID_TARGET", "no editable field has focus"),
     )
+}
+
+/// A press of a result card's "Select": recorded, and the card shows itself
+/// chosen, as a store's card turns its "Add" into a stepper.
+fn note_pick(sim: &mut Sim, target: Option<&Candidate>) {
+    let Some(reference) = target
+        .map(|target| target.ref_id.clone())
+        .filter(|reference| reference.starts_with("@s:select-"))
+    else {
+        return;
+    };
+    sim.selected_result = reference
+        .trim_start_matches("@s:select-")
+        .parse::<usize>()
+        .ok()
+        .and_then(|number| number.checked_sub(1));
+    sim.picked.push(reference);
 }

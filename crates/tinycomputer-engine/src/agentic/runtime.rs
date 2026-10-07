@@ -11,12 +11,23 @@ use std::{
 
 use tinycomputer_bus::{DesktopError, JevConfig, JevConfiguration, JevProvider};
 use tinyinference_decisions::{
-    Client, ClientConfig, Error as JevError, EvaluationFailure, EvaluationRequest, EvaluationResult,
+    Client, ClientConfig, Error as JevError, EvaluationFailure, EvaluationRequest,
+    EvaluationResult, RetryPolicy,
 };
 
 use super::journal::Journal;
 use super::pending::PendingRun;
 use super::sage;
+
+/// How a Jev call retries a provider's server error or rate limit when the
+/// configuration does not say: four more attempts, waiting 1, 2, 4, then 8
+/// seconds, or what the provider asks for. Live, the client's own 100 ms and
+/// 200 ms waits gave a gateway's 502s 2.5 s before they ended the run.
+pub(super) const RETRY: RetryPolicy = RetryPolicy {
+    max_retries: 4,
+    initial_backoff: Duration::from_secs(1),
+    max_backoff: Duration::from_secs(8),
+};
 
 /// Configured Jev transport and non-secret policy metadata.
 #[derive(Clone)]
@@ -65,30 +76,7 @@ impl JevRuntime {
                 request.endpoint_url.as_deref(),
             );
         }
-        let mut config = match request.provider {
-            JevProvider::TypeSafe => ClientConfig::new(request.api_key()),
-            JevProvider::OpenRouter => ClientConfig::openrouter(request.api_key()),
-            JevProvider::TinyHumansOpenRouter => {
-                ClientConfig::tinyhumans_openrouter(request.api_key())
-            }
-            // Sage returned above; it has a client of its own.
-            JevProvider::OpenJev | JevProvider::Sage => ClientConfig::openjev(request.api_key()),
-        };
-        if let Some(endpoint) = &request.endpoint_url {
-            config = config.with_endpoint_url(endpoint);
-        }
-        if let Some(timeout_ms) = request.timeout_ms {
-            config.timeout = Duration::from_millis(timeout_ms);
-        }
-        if let Some(max_retries) = request.max_retries {
-            config.retry.max_retries = max_retries;
-        }
-        if request.provider == JevProvider::TinyHumansOpenRouter
-            && let Some(sdk_name) = request.sdk_name.as_deref()
-        {
-            config = config.with_sdk_name(sdk_name);
-        }
-        let client = Client::new(config).map_err(|error| config_error(&error))?;
+        let client = Client::new(client_config(request)).map_err(|error| config_error(&error))?;
         Ok(Self {
             client: Arc::new(client),
             configuration: JevConfiguration {
@@ -279,6 +267,35 @@ pub(super) fn trusted_endpoint(provider: JevProvider, endpoint: &str) -> bool {
     return endpoint.starts_with("http://127.0.0.1:");
     #[cfg(not(test))]
     false
+}
+
+/// The HTTP client configuration for a Jev `request`: its provider's
+/// route, endpoint, timeout, and attribution, retrying as [`RETRY`] unless
+/// the request sets its own number of retries.
+pub(super) fn client_config(request: &JevConfig) -> ClientConfig {
+    let mut config = match request.provider {
+        JevProvider::TypeSafe => ClientConfig::new(request.api_key()),
+        JevProvider::OpenRouter => ClientConfig::openrouter(request.api_key()),
+        JevProvider::TinyHumansOpenRouter => ClientConfig::tinyhumans_openrouter(request.api_key()),
+        // Sage has a client of its own; `configure` never asks for it here.
+        JevProvider::OpenJev | JevProvider::Sage => ClientConfig::openjev(request.api_key()),
+    };
+    if let Some(endpoint) = &request.endpoint_url {
+        config = config.with_endpoint_url(endpoint);
+    }
+    if let Some(timeout_ms) = request.timeout_ms {
+        config.timeout = Duration::from_millis(timeout_ms);
+    }
+    config.retry = RETRY;
+    if let Some(max_retries) = request.max_retries {
+        config.retry.max_retries = max_retries;
+    }
+    if request.provider == JevProvider::TinyHumansOpenRouter
+        && let Some(sdk_name) = request.sdk_name.as_deref()
+    {
+        config = config.with_sdk_name(sdk_name);
+    }
+    config
 }
 
 pub(super) fn config_error(error: &JevError) -> Box<DesktopError> {

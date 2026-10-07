@@ -208,8 +208,9 @@ Slot names go to Jev. Slot values never do.
 | Id | Type | Given | Answer used as |
 |---|---|---|---|
 | `source` | Choice | readable text on screen, 60 per page | for `read`, stored at 0.5 or above |
-| `record` | Choice | up to 60 result cards, each as its fields | for `pick`, when the criterion did not parse; used at 0.5 |
-| `list` | Choice | up to 6 lists showing, each as its length and first 3 items | for `extract`, and a `pick` whose criterion did not parse, when more than one list shows; used at 0.5, else the longest |
+| `record` | Choice | up to 60 result cards, each as its fields | for `pick`, when the criterion did not parse, or when no ranked card belongs to the list; used at 0.5 |
+| `belongs_<i>` | Noul | the list `from` describes, one ranked card's fields | for `pick` after an exact ranking, one per card among the first eight; the first at 0.5 is taken |
+| `list` | Choice | up to 6 lists showing, each as its length and first 3 items | for `extract`, a `pick` by first or last (the list's own order) or whose criterion did not parse, when more than one list shows; used at 0.5, else the one leaned to (`LIST_LEAN`, `LIST_LEAD`), else the longest |
 
 `extract` asks nothing when one list shows, and `pick` asks nothing when its
 `by` parses as a price, time, duration, or stop-count criterion.
@@ -273,6 +274,7 @@ confirmation; and it acts at 0.70, or below that only on a named match.
 - **Screen text is data.** Every question says so, and everything read from
   a screen is wrapped as `untrusted_accessibility_data`. A page that says
   "ignore your instructions" is just a label.
-- **Size matters.** A request over 100 KB is trimmed before it is sent, and
+- **Size matters.** A request over 48 KB is asked in parts, split by its
+  questions, and a part still too large is trimmed before it is sent;
   latency grows with input tokens. `request_bytes` in the journal shows how
   big each request was.

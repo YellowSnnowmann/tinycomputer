@@ -84,16 +84,23 @@ When more than one list shows at once, such as a chat list beside the
 open chat's own messages, the runtime asks Jev which one the step means
 (the `list` question in `steps/list.rs`): each of the first `MAX_LISTS` (6)
 lists is shown by its first `LIST_PREVIEW` (3) items, and a clear winner
-at or above `LOCATE_FLOOR` (0.5) is used. Anything less clear falls back
-to the longest list, the one an `extract` or an unranked `pick` would have
-used before it asked. A `pick` whose criterion parses exactly (price,
+at or above `LOCATE_FLOOR` (0.5) is used. Anything less clear goes to
+the list Jev leaned to, when it has `LIST_LEAN` (0.3) or more and
+`LIST_LEAD` (3) times the next list's probability, and otherwise falls
+back to the longest list, the one an `extract` or an unranked `pick`
+would have used before it asked. A list whose one-line items each sit
+inside one of another list's cards, and outnumber them, is those cards'
+lines split apart, and `result_families` drops it. A `pick` whose criterion parses exactly (price,
 time, duration, stop count) skips this question outright: it ranks
 whichever list has that measure and never asks which list is meant.
 
 A `read` of an element whose name and value differ, such as a chat button
 named for the chat but holding its last message as a separate value,
 offers both the name and the value to Jev as separate sources rather than
-picking one for it.
+picking one for it. Where two or more controls in one list show checked or
+selected (two seats marked "Selected" in a seat table), the read also
+offers what their cards or rows say, together, as one source
+(`02 Companion; 03 Available`): no single piece of text names them all.
 
 ## Shaping the answer
 

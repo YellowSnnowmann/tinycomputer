@@ -50,6 +50,24 @@ pub(super) fn judge(reply: &str, briefing: &Briefing) -> Result<Guidance, String
         );
     }
     let covers = covered(&value, briefing)?;
+    // Guidance that ends by running the failed step again covers only the
+    // later steps it does before that: live, a rescue that pressed "Book
+    // tickets" and chose the date again counted the next step as done too,
+    // and the show time that step was to pick never was. One that fills the
+    // later steps' fields first and then presses the failed Continue does
+    // cover them.
+    let covers = match (steps.split_last(), briefing.flow.steps.get(briefing.failed)) {
+        (Some((last, before)), Some(failed)) if reruns(last, failed) => briefing
+            .flow
+            .steps
+            .get(briefing.failed + 1..)
+            .unwrap_or_default()
+            .iter()
+            .take(covers)
+            .take_while(|covered| before.iter().any(|step| does(step, covered)))
+            .count(),
+        _ => covers,
+    };
     let flow = resumed(briefing, steps.clone(), covers);
     if flow.steps.is_empty() {
         return Err(
@@ -98,6 +116,38 @@ fn covered(value: &Value, briefing: &Briefing) -> Result<usize, String> {
         ));
     }
     Ok(covers)
+}
+
+/// Whether `step` runs `failed` again: the same action, or the same `do`
+/// intent in other letter case or spacing.
+fn reruns(step: &FlowStep, failed: &FlowStep) -> bool {
+    let squashed = |intent: &str| {
+        intent
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect::<Vec<_>>()
+    };
+    match (step.action(), failed.action()) {
+        (FlowAction::Do(step), FlowAction::Do(failed)) => squashed(&step) == squashed(&failed),
+        (step, failed) => step == failed,
+    }
+}
+
+/// Whether `step` does what `covered` does: runs it again, or fills a field
+/// it fills.
+fn does(step: &FlowStep, covered: &FlowStep) -> bool {
+    if reruns(step, covered) {
+        return true;
+    }
+    match (step.action(), covered.action()) {
+        (FlowAction::Enter(step), FlowAction::Enter(covered)) => step.0.iter().any(|slot| {
+            covered
+                .0
+                .iter()
+                .any(|other| other.slot.eq_ignore_ascii_case(&slot.slot))
+        }),
+        _ => false,
+    }
 }
 
 /// Whether `step` holds a `stop_before`, at any depth. Used only to refuse

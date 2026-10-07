@@ -63,8 +63,8 @@ pub struct JevConfig {
     /// Per-attempt HTTP timeout. Absent means the client default. Ignored by
     /// Sage.
     pub timeout_ms: Option<u64>,
-    /// Additional transient retries. Absent means the client default. Ignored
-    /// by Sage.
+    /// Additional transient retries. Absent means the module's default: four,
+    /// waiting 1, 2, 4, then 8 seconds between attempts. Ignored by Sage.
     pub max_retries: Option<u32>,
     /// Host product attribution for the `TinyHumans` proxy only.
     pub sdk_name: Option<String>,

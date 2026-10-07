@@ -36,6 +36,7 @@ in `enter/` (`assign.rs` matches, `fill.rs` delivers).
    `combobox` role rather than a genuine text input) is struck off for the
    rest of the step, along with every other element of its kind, so no
    later `do` move in this step tries to press one instead.
+6. **Pick the suggestion the text opened**, when it opened one (below).
 
 ## Verified delivery
 
@@ -90,7 +91,20 @@ a slot after that, the step fails, naming which slots would not go in.
 A slot with no field to enter it into at all is treated as "not asked for"
 by the form when the probability that the form asks for it is under 0.35
 (`NOT_ASKED`), rather than as a hard failure: not every form has every
-field a caller might supply.
+field a caller might supply. A step none of whose slots is asked for has
+typed nothing, though, and fails ("nothing on screen asks for: …"): going
+on as if it had left the next step pressing a search for an empty box.
+
+Before it looks for a field the long way, a step whose fields do not show
+presses a link or button whose label holds a slot's own word (a store's
+search link for the slot "search box"). Within one step, a box one slot
+was typed into is never another slot's, by its ref or by the text it now
+holds: live, a pickup box was the only box in the next round, and the drop
+was typed over the pickup.
+
+A plain step that asks for typing ("enter 560001 into the pincode field",
+"type 'Maggi' in the search box", "fill in the pincode with 560001") runs as
+the `enter` it means: a `do` step cannot type.
 
 ## `enter` on the web: autocomplete and calendars
 
@@ -101,5 +115,66 @@ calendar forward to the requested day, or types into the field that just
 gained focus and picks the suggestion that appears, retrying up to four
 times.
 
+A box that does take the text can still need a suggestion picked. A
+location, city, or airport box lists matches under itself as you type, and
+keeps the text only once one of them is chosen: move the focus on, or
+press Escape on the list, and the text is dropped. So once a text has
+arrived, `enter` looks again, and if rows appeared that were not on screen
+before the text was typed, it picks the one that matches it
+(`commit_suggestion`, in `steps/suggestion.rs`):
+
+- rows that mention the text come first; one that reads exactly as typed
+  is pressed without asking, and any other is Jev's to pick, even alone: a
+  search box's "boat airdopes 141 anc" for "boAt Airdopes 141" is another
+  search;
+- a panel whose label strings its rows together (a popover the page draws
+  as one button) mentions the text without being a row, and is never
+  pressed: a press lands on whatever row sits at its middle;
+- when none mentions it, only new rows drawn as a list's rows (`option`,
+  `menuitem`, `listitem`, `row`, `gridcell`) are offered, so a differently
+  worded suggestion can still be matched while a button that appeared
+  beside the box is never taken for one;
+- otherwise Jev picks among at most 12 of them, and may answer that none
+  fits, which leaves the text as typed; so does a pick under 0.5
+  (`SUGGESTION_FLOOR`), since pressing replaces what was typed;
+- a private text, a fact's value, is never offered: picking would show it
+  to Jev, so it stays as typed;
+- a search box (a `searchbox`, or a slot or box named for searching, but
+  not a place box whose own words say "Search for area…") takes only a new
+  row that is the same search: the text as typed, or it after words such as
+  "Show all results for". Any other completion is another search (live,
+  "blue light blocking glasses" became another product's name), so the text
+  stays as typed;
+- a place box (a slot named for a place: pickup, drop, from, to, address,
+  city, …) is given two more looks, a wait apart, when no row showed yet
+  (`LATE_LOOKS`), and there a row that was already showing still counts when
+  it matches the text, as does a pressable box sharing at least half the
+  text's words: a ride app lists popular places as soon as its box has the
+  focus, and words its rows its own way ("MG Road / Shivaji Nagar Bengaluru"
+  for "MG Road Metro Station, Bengaluru"). When no row completes the text,
+  Jev is asked once more for the row naming the same place in other words,
+  or the nearest place listed, at the same floor: a place box keeps nothing
+  until a row is chosen, and no row is ever pressed on shared words alone.
+
+A field that opens no list costs nothing extra: no question is asked.
+
+When no field for a slot is on screen, a link or button whose name holds a
+word of the slot's name (four letters or more, never a word that only says
+"box" or names a kind of control) may show it: a store's search link for the
+slot "search". It is pressed only once Jev agrees it shows that slot's box
+(`OPENER_FLOOR`, 0.8): a shared word alone is no reason, and a link named
+"Email us" shares "email".
+
+A plain `do` step that types ("enter 560001 into the pincode field", "type
+'Maggi' in the search box") runs as this `enter`, read from the step as
+written, before any substitution. A quoted text ends at its quote; otherwise
+the text splits at the first " into ", or the last " in ", " as ", or " for "
+whose field names a box. "Enter" also means going into something ("enter
+Reader mode in Safari"), so with " in " it types only what is quoted, data
+(digits, an address, a `${name}`), or into what names a box; a step that
+does more than type ("… and press Enter") stays a plain step, for a rescue
+to split.
+
 See [`docs/technical/decision-thresholds.md`](../../../technical/decision-thresholds.md)
-for `SLOT_FLOOR`, `FIELD_ERROR`, `NOT_ASKED`, and `BLIND_PICK_MISSES`.
+for `SLOT_FLOOR`, `FIELD_ERROR`, `NOT_ASKED`, `BLIND_PICK_MISSES`, and
+`OPENER_FLOOR`.

@@ -53,6 +53,13 @@
   // A page that greys a control out by style alone says so only in its class:
   // a calendar's past day is `rdrDay rdrDayDisabled`, pressable but inert.
   const DISABLED_CLASS = /disabled$/i;
+  // And one it shows chosen, the same way: a store's picked size is
+  // `size-buttons-size-button-selected`, with no ARIA state at all, so a
+  // step choosing it never saw it chosen. Never `unselected`.
+  const SELECTED_CLASS = /(?:^|[-_])(?:selected|checked)$/i;
+  const UNSELECTED_CLASS = /(?:^|[-_])(?:un|not[-_]?)(?:selected|checked)$/i;
+  const classChosen = (element) => [...element.classList]
+    .some((name) => SELECTED_CLASS.test(name) && !UNSELECTED_CLASS.test(name));
   const disabled = (element) =>
     element.disabled === true || element.getAttribute('aria-disabled') === 'true'
     || [...element.classList].some((name) => DISABLED_CLASS.test(name));
@@ -76,6 +83,10 @@
     return element.isContentEditable
       && !(element.parentElement && element.parentElement.isContentEditable);
   };
+  const FIELDS = 'input, textarea, [contenteditable=""], [contenteditable="true"]';
+  // Whether a box to type in is drawn inside `element`.
+  const holdsField = (element) => [...element.querySelectorAll(FIELDS)]
+    .some((inner) => takesText(inner) && shown(inner));
 
   // The hidden checkbox or radio a label stands in for: pages draw their own
   // box and hide the real one — out of sight, or clipped away — and the
@@ -89,6 +100,26 @@
   };
 
   const pointer = (element) => style(element).cursor === 'pointer';
+  // A click handler a script framework keeps on the element itself (React
+  // stores each element's props on it), on a box smaller than a quarter of
+  // the window: a page can wire a plain `div` to a click with neither a
+  // cursor nor a tab stop. Live, a store's "Add to cart" and "Buy now" read
+  // as plain words, and the step to add to the cart had nothing to press.
+  // Only a press handler: a carousel's track or a select's menu listens for
+  // the mouse going down and is no button to press.
+  const HANDLERS = ['onClick', 'onPress'];
+  // What is a control only by such a handler: it hides nothing pressable
+  // inside it, since a page can wire a whole card to a click around its own
+  // "Add" button.
+  const scriptedOnly = new Set();
+  const scripted = (element) => {
+    if (!element || element === document.body) return false;
+    const key = Object.keys(element).find((name) => name.startsWith('__reactProps$'));
+    const props = key && element[key];
+    if (!props || !HANDLERS.some((handler) => typeof props[handler] === 'function')) return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width * rect.height < window.innerWidth * window.innerHeight * 0.25;
+  };
 
   // A date picker's calendar: a table of day numbers under its month and
   // year. Many pickers draw a day as a plain cell that shows a pointer only
@@ -165,7 +196,7 @@
     if (TEXT_ROLES.includes(claimed)) {
       // A page's "text box" that holds no text box: a wrapper around the
       // real one, which is read instead, or a row or button to press.
-      if (element.querySelector('input, textarea, [contenteditable=""], [contenteditable="true"]')) {
+      if (element.querySelector(FIELDS)) {
         return null;
       }
       return 'button';
@@ -174,12 +205,21 @@
     if (name === 'a' && element.hasAttribute('href')) return 'link';
     if (name === 'button' || name === 'summary') return 'button';
     if (calendarDays.has(element)) return 'gridcell';
+    // A region that holds controls (a menu, a list, a tab panel, a dialog)
+    // takes a tab stop to move the focus inside it, not to be pressed: read
+    // as one button, it would hide every row inside it. One a page makes
+    // pressable itself, by its cursor or a click handler (a carousel's slide),
+    // is still a button.
+    if ((GROUP_ROLES.includes(claimed) || claimed === 'dialog' || claimed === 'alertdialog')
+      && !element.hasAttribute('onclick') && !pointer(element)) return null;
     if (insideControl) return null;
     const tabindex = element.getAttribute('tabindex');
-    const clickable = element.hasAttribute('onclick')
+    const byPage = element.hasAttribute('onclick')
       || (tabindex !== null && tabindex !== '-1')
       || (pointer(element) && !(element.parentElement && pointer(element.parentElement)));
-    return clickable ? 'button' : null;
+    const byScript = !byPage && scripted(element) && !scripted(element.parentElement);
+    if (byScript) scriptedOnly.add(element);
+    return byPage || byScript ? 'button' : null;
   };
 
   // Text of the elements `ids` (space-separated) names.
@@ -196,25 +236,54 @@
     'expand', 'collapse', 'up', 'down', 'left', 'right', 'download', 'upload', 'refresh',
     'favorite', 'favourite', 'like', 'heart', 'star', 'bookmark', 'notification', 'bell',
     'logout', 'login', 'copy', 'print', 'mail', 'phone', 'location', 'map', 'clear', 'cancel',
+    'increment', 'decrement', 'increase', 'decrease',
   ];
   // A picture-only control's meaning, from the words in its own or its
   // icon's class, id, or test id: all a person would see is the picture.
   const iconWords = (element) => {
-    const sources = [element, ...element.querySelectorAll('svg, i, img, span')].slice(0, 6);
+    const sources = [element, ...element.querySelectorAll('svg, use, i, img, span')].slice(0, 8);
     const words = new Set();
     for (const source of sources) {
+      // A sprite's symbol ("#icon-cart") and a picture's file name
+      // ("cart.svg") say what the icon shows too.
+      const used = source.getAttribute('href') || source.getAttribute('xlink:href') || '';
+      const file = tag(source) === 'img' ? (source.getAttribute('src') || '').split(/[?#]/)[0].split('/').pop() : '';
       const text = [
         typeof source.className === 'string' ? source.className
           : (source.className && source.className.baseVal) || '',
         source.id || '',
         source.getAttribute('data-testid') || '',
         source.getAttribute('data-icon') || '',
+        tag(source) === 'use' ? used : '',
+        file,
       ].join(' ').toLowerCase();
       for (const word of text.split(/[^a-z]+/)) {
         if (ICON_WORDS.includes(word)) words.add(word);
       }
     }
     return [...words].slice(0, 3).join(' ');
+  };
+
+  // A stepper's unmarked picture buttons around the count they change ("−
+  // 1 +" drawn as two icons): the one before the count lowers it, the one
+  // after raises it. Live, a store's quantity buttons had no name at all,
+  // and "increase the quantity to 2" pressed buttons at random.
+  const stepperWord = (element) => {
+    let parent = element.parentElement;
+    for (let depth = 0; parent && depth < 3; depth += 1, parent = parent.parentElement) {
+      const count = squash(parent.innerText);
+      if (!/^\d{1,3}$/.test(count)) continue;
+      if (parent.querySelectorAll('button, [role="button"]').length < 2) return '';
+      const walker = document.createTreeWalker(parent, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (squash(node.data) !== count) continue;
+        if (element.contains(node)) return '';
+        const before = element.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING;
+        return before ? 'decrease' : 'increase';
+      }
+      return '';
+    }
+    return '';
   };
 
   // The words `element` shows, without those of the dropdown it wraps (or
@@ -255,6 +324,7 @@
   // The words a person reads as a field's label: inside its box (a
   // floating label), to its left on the same line, or just above it; for a
   // checkbox or radio, just to its right.
+  const DIVIDERS = /^(?:or|and|[^\p{L}\p{N}]*)$/iu;
   const nearby = (element, checkable) => {
     const field = box(element);
     let best = null;
@@ -278,7 +348,8 @@
         gap = rect.left - field.right;
         if (gap > 40) gap = Infinity;
       }
-      if (gap < bestGap && word.text.length <= 60) {
+      // A divider between two ways in ("OR") labels neither.
+      if (gap < bestGap && word.text.length <= 60 && !DIVIDERS.test(word.text)) {
         best = word.text;
         bestGap = gap;
       }
@@ -304,6 +375,39 @@
     return squash(parts.join(' '));
   };
 
+  // Letters an icon font draws as pictures: a person sees a magnifier or a
+  // cross where the page stores "p" or "!". Live, a store's search and
+  // close buttons read as "p" and "!", and the steps pressed them blindly.
+  // Glyphs in Unicode's private use area are pictures in any font.
+  const ICON_FONT = /icon|glyph|awesome|symbols|feather|icomoon/i;
+  const PRIVATE_USE = /[\uE000-\uF8FF]/g;
+  const SHORT_WORD = /(^| )\S{1,2}( |$)|[\uE000-\uF8FF]/;
+  // A lone letter or two drawn in a font of its own, other than its
+  // parent's, is a picture too, whatever the font is called (live, a
+  // store's icon font had no telling name). Digits, currency signs, and
+  // the signs a stepper or a close button shows as text are never pictures.
+  const PICTURED = /^[^\p{N}\p{Sc}\s+\-−×✕<>‹›]$/u;
+  // A font stack's own family, and the family a weight of it belongs to:
+  // "Gilroy-SemiBold" inside "Gilroy-Regular" is the same text font, and a
+  // fallback named in a stack ("Noto Sans Symbols") says nothing.
+  const firstFamily = (font) => (font.split(',')[0] || '').replace(/["']/g, '').trim();
+  const familyRoot = (font) => firstFamily(font).split(/[-\s_]/)[0].toLowerCase();
+  const withoutGlyphs = (element, text) => {
+    if (!SHORT_WORD.test(text)) return text;
+    const glyphs = new Set();
+    for (const part of [element, ...element.querySelectorAll('*')].slice(0, 30)) {
+      const drawn = squash(part.textContent);
+      if (!drawn || drawn.length > 2) continue;
+      const font = style(part).fontFamily || '';
+      const parent = part.parentElement;
+      const own = parent && part !== element
+        && familyRoot(font) !== familyRoot(style(parent).fontFamily || '');
+      if (ICON_FONT.test(firstFamily(font)) || (own && PICTURED.test(drawn))) glyphs.add(drawn);
+    }
+    return squash(text.replace(PRIVATE_USE, ' ').split(' ')
+      .filter((word) => !glyphs.has(word)).join(' '));
+  };
+
   // The page's label on the one element inside a control that carries the
   // words it shows: a calendar day drawn as "18" whose inner span says
   // "Sunday, 18 October 2026". Several labels inside make it a container,
@@ -325,14 +429,20 @@
     if (['textbox', 'searchbox', 'combobox', 'slider'].includes(what) || (tag(element) === 'input' && !input)) {
       const labels = element.labels ? [...element.labels].map((label) => shownWords(label, element)).join(' ') : '';
       const checkable = ['checkbox', 'radio', 'switch'].includes(what);
-      // A label the page ties to the field comes first; then the words a
-      // person reads beside it, and last what the empty box shows.
-      const name = squash(labels) || aria || nearby(element, checkable)
-        || squash(element.getAttribute('placeholder')) || title
+      // A label the page ties to the field comes first, then its page
+      // label; then what the field itself shows (its placeholder or title),
+      // with the words a person reads beside it kept as its description;
+      // the words beside it name it only when it says nothing itself. Live,
+      // a neighbour's words ("Location not set", a divider's "OR") named a
+      // search box and a location box, and the steps never found them.
+      const near = nearby(element, checkable);
+      const own = squash(element.getAttribute('placeholder')) || title;
+      const name = squash(labels) || aria || own || near
         || (tag(element) === 'input' && !['text', 'search', 'password'].includes(element.type) ? squash(element.value) : '');
-      return { name: clip(name, limits.name), description: aria && aria !== name ? clip(aria, limits.name) : '' };
+      const extra = [aria, near].find((said) => said && said !== name) || '';
+      return { name: clip(name, limits.name), description: clip(extra, limits.name) };
     }
-    const text = ownText(element);
+    const text = withoutGlyphs(element, ownText(element));
     if (text) {
       const said = aria || innerLabel(element, text) || calendarDays.get(element);
       const description = said && said !== text && !text.includes(said) ? clip(said, limits.name) : '';
@@ -345,6 +455,8 @@
     if (name) return { name: clip(name, limits.name), description: '' };
     const icon = iconWords(element);
     if (icon) return { name: icon, description: 'an icon' };
+    const step = stepperWord(element);
+    if (step) return { name: step, description: 'an icon beside a count' };
     // A picture link with no words: where it leads is all there is to go on.
     const href = tag(element) === 'a' && element.getAttribute('href');
     if (href) {
@@ -464,12 +576,16 @@
     const rect = box(element);
     return rect.width <= 1 && rect.height <= 1 && computed.overflow === 'hidden';
   };
-  const inFront = (element) => {
+  // What a hit test at the element's middle lands on.
+  const hitAt = (element) => {
     const rect = box(element);
     const x = Math.min(Math.max((rect.left + rect.right) / 2, 0), width - 1);
     const y = Math.min(Math.max((rect.top + rect.bottom) / 2, 0), height - 1);
-    const hit = document.elementFromPoint(x, y);
-    return hit === element || (hit && element.contains(hit));
+    return document.elementFromPoint(x, y);
+  };
+  const inFront = (element) => {
+    const hit = hitAt(element);
+    return hit === element || Boolean(hit && element.contains(hit));
   };
   // Whether a person sees what the page marks `aria-hidden`: pages mark
   // plenty they draw — a custom list's shown label, a pill below the fold,
@@ -481,7 +597,19 @@
     if (rect.width < 1 || rect.height < 1) return true;
     if (rect.right <= 0 || rect.left >= width) return false;
     if (rect.bottom <= 0 || rect.top >= height) return true;
-    return inFront(element);
+    if (inFront(element)) return true;
+    // A hit passes through what takes no pointer events, so landing on what
+    // holds such an element means nothing is drawn over it. Live, a seat
+    // table drew each seat's number and status in `aria-hidden` cells that
+    // take no pointer events, and every row in view lost them. Only an
+    // element that turns pointer events off itself counts, and never a hit
+    // on the page's root: a modal library turns them off for the whole body
+    // while it hides the page behind its dialog.
+    const own = style(element).pointerEvents === 'none'
+      && !(element.parentElement && style(element.parentElement).pointerEvents === 'none');
+    const hit = hitAt(element);
+    return Boolean(own && hit && hit !== document.documentElement && hit !== document.body
+      && hit.contains(element));
   };
   // Blocks labelled as ads, found once up front: the label and the nearest
   // block around it that holds the ad, but never a landmark, a form, a
@@ -546,12 +674,59 @@
     denoised[noiseKinds.get(root)] += 1;
   };
 
+  // Result cards a page draws as plain boxes: three or more siblings of
+  // one tag and class (or one more of a kind already found), each holding
+  // a link or button, a line of words, and links to one place at most two
+  // ways (a picture and a title). Live, a store's product grid was all
+  // `div`s, so no list of products showed, and a pick took a row of
+  // carousel dots for the results; and a grid laid out in rows of four
+  // read each row as one card, whose first link was another product. The
+  // card's place among all cards of its kind on the page, counted in page
+  // order, so the rows' cards make one list; 0 when it is not one.
+  const siblingKinds = new Map();
+  const kindCounts = new Map();
+  const kindOf = (element) => `${element.tagName} ${classText(element).trim()}`;
+  const repeatedCard = (element) => {
+    const parent = element.parentElement;
+    if (!parent || !classText(element).trim()) return 0;
+    let kinds = siblingKinds.get(parent);
+    if (!kinds) {
+      kinds = new Map();
+      for (const child of parent.children) kinds.set(kindOf(child), (kinds.get(kindOf(child)) || 0) + 1);
+      siblingKinds.set(parent, kinds);
+    }
+    const kind = kindOf(element);
+    if ((kinds.get(kind) || 0) < 3 && !kindCounts.has(kind)) return 0;
+    if (!element.querySelector('a[href], button, [role="button"], [role="link"]')) return 0;
+    const places = new Set([...element.querySelectorAll('a[href]')].map((link) => link.getAttribute('href')));
+    if (places.size > 2) return 0;
+    // A card says something in words: a carousel's numbered dots ("1 2 3
+    // … 22") are long enough, but name nothing (live, a pick took them).
+    const said = squash(element.innerText);
+    if (said.length < 20 || !/\p{L}{3}/u.test(said)) return 0;
+    // A row that holds cards already counted is their row, not a card.
+    if ([...element.querySelectorAll('[class]')].some((inner) => kindCounts.has(kindOf(inner)))) return 0;
+    const ordinal = (kindCounts.get(kind) || 0) + 1;
+    kindCounts.set(kind, ordinal);
+    return ordinal;
+  };
+
+  // A table row's own words: what its cells holding no control say, as a
+  // person reads across a row to its button. Live, a seat table's rows
+  // read `row #1`, and the "Select" of a seat whose status cell said
+  // "Handicapped" was pressed for an available one.
+  const rowWords = (element) => clip([...element.children]
+    .filter((cell) => !cell.matches(NESTED) && !cell.querySelector(NESTED))
+    .map((cell) => cell.textContent)
+    .join(' '), 60);
+
   const containers = new Map();
   const unnamed = new Map();
   // The container label a person would see `element` as, or null.
   const container = (element) => {
     if (containers.has(element)) return containers.get(element);
     let label = null;
+    let repeated = 0;
     const name = tag(element);
     const claimed = role(element);
     const floating = layer(element);
@@ -566,9 +741,13 @@
         for (let sibling = element.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
           if (sibling.tagName === element.tagName && role(sibling) === claimed) ordinal += 1;
         }
-        const named = labelOf(element);
+        const named = labelOf(element) || (card === 'row' ? rowWords(element) : '');
         label = named ? `${card} ${JSON.stringify(named)} #${ordinal}` : `${card} #${ordinal}`;
         if (!parent) label = null;
+      } else if (!claimed && !LANDMARKS[name] && !['ul', 'ol'].includes(name)
+        && (repeated = repeatedCard(element))) {
+        const named = labelOf(element);
+        label = named ? `listitem ${JSON.stringify(named)} #${repeated}` : `listitem #${repeated}`;
       } else {
         const group = GROUP_ROLES.includes(claimed) ? claimed
           : (LANDMARKS[name] || (['ul', 'ol'].includes(name) ? 'list' : null));
@@ -630,7 +809,8 @@
     if (aria('expanded') === 'true' || (tag(element) === 'summary' && element.parentElement && element.parentElement.open)) {
       states.push('expanded');
     }
-    if (aria('selected') === 'true' || (aria('current') && aria('current') !== 'false')) states.push('selected');
+    if (aria('selected') === 'true' || (aria('current') && aria('current') !== 'false')
+      || (!states.includes('checked') && classChosen(element))) states.push('selected');
     if (input.required === true || aria('required') === 'true') states.push('required');
     if (offscreen(element)) states.push('offscreen');
     else if (covered(element)) states.push('covered');
@@ -689,11 +869,38 @@
       && squash(other.element.innerText) === squash(element.innerText)) return true;
     return other.record.role === what && home(element) !== null && home(element) === home(other.element);
   };
+  // A native button or link inside a control a page only claims (a table
+  // cell with `role="gridcell"`, a row a script makes pressable) is what a
+  // press must reach: the wrapper's middle can be bare cell. Live, a seat
+  // table's "Select" buttons sat at their cells' left edge, and six presses
+  // at the cells' middles selected nothing.
+  const NATIVE_PRESS = 'button, a[href], summary, input[type="button"], input[type="submit"]';
+  // Never a control that says whether it is chosen (a tab, a radio, an
+  // option): what selects it checks that state on the record's element, and
+  // the inner one never carries it, so it would be pressed twice.
+  const CHOOSING_ROLES = ['tab', 'radio', 'option', 'checkbox', 'switch', 'menuitemradio',
+    'menuitemcheckbox', 'treeitem'];
+  const pressedInside = (wrapper, element) => wrapper !== element && wrapper.contains(element)
+    && element.matches(NATIVE_PRESS) && !wrapper.matches(`${NATIVE_PRESS}, input, select, textarea, label`)
+    && !CHOOSING_ROLES.includes(role(wrapper));
+  // Points `twin`'s record at `element`, the control inside it, keeping
+  // what the wrapper says of itself (selected, checked) beside where the
+  // inner control is drawn and whether something covers it.
+  const aimAt = (twin, element) => {
+    const placed = ['offscreen', 'covered'];
+    const own = twin.record.states.filter((state) => !placed.includes(state));
+    const inner = statesOf(element, twin.record.role);
+    twin.record.states = [...new Set([...own, ...inner])];
+    twin.record.id = mark(element);
+    twin.record.box = [box(element).x, box(element).y, box(element).width, box(element).height]
+      .map(Math.round);
+    twin.element = element;
+  };
   let unreachable = 0;
   let texts = 0;
   const insideControl = (element) => {
     for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-      if (controls.has(parent)) return true;
+      if (controls.has(parent) && !scriptedOnly.has(parent)) return true;
     }
     return false;
   };
@@ -795,9 +1002,31 @@
         else unreachable += 1;
       }
     }
+    // A big drawn area (a canvas, or an svg picture without words) holds
+    // no controls to read: say so, so a seat map or a chart drawn there is
+    // not taken for an empty page. Such a page often offers an accessible
+    // alternative, which the flow guide tells a planner to open.
+    const drawn = tag(element) === 'canvas'
+      || (tag(element) === 'svg' && !element.querySelector('text, a, [role]'));
+    if (drawn && texts < limits.texts && shown(element) && !offscreen(element)) {
+      const rect = box(element);
+      if (rect.width * rect.height >= width * height * 0.15) {
+        texts += 1;
+        nodes.push({
+          text: `a drawn ${tag(element) === 'canvas' ? 'canvas' : 'picture'} with no controls to press, ${Math.round(rect.width)}x${Math.round(rect.height)}`,
+          path: pathOf(element),
+        });
+      }
+    }
     if (controls.size >= limits.controls || disabled(element)) continue;
     const what = kind(element, insideControl(element));
     if (!what || !shown(element)) continue;
+    // A box to type in is never part of something pressed: a button or link
+    // that holds one is a panel (a popover with its own search box), and the
+    // rows it lists are read as controls of their own. Read as one button,
+    // its name strings every row together, and a press lands on whatever row
+    // sits at its middle.
+    if ((what === 'button' || what === 'link') && holdsField(element)) continue;
     if (tag(element) === 'input' && (element.type === 'checkbox' || element.type === 'radio')) {
       // Drawn by its label instead: the label stands in for it.
       if ([...(element.labels || [])].some((label) => standIn(label) === element)) continue;
@@ -827,6 +1056,7 @@
           twin.record.description = description;
         }
         else if (!twin.record.description && name && name !== twin.record.name) twin.record.description = name;
+        if (pressedInside(twin.element, element)) aimAt(twin, element);
         controls.add(element);
         continue;
       }

@@ -14,6 +14,24 @@ pub(in crate::agentic) use tinycomputer_core::surface::{
 /// Least probability a target choice needs to be used without re-asking.
 pub(in crate::agentic) const ACT: f64 = 0.70;
 
+/// A pressed control's identity across the states pressing it flips: its
+/// label and where it sits, without the value and states a toggle changes
+/// (`signature` keeps them, so a toggle's open and closed looks are two
+/// signatures).
+pub(in crate::agentic) fn press_key(candidate: &Candidate) -> String {
+    format!("press:{}:{}", label(candidate), candidate.path.join(">"))
+}
+
+/// Whether a step has struck `candidate` off: by its signature, after a
+/// press that changed nothing, or by its press key, after it was pressed
+/// too often or its copy on another item was pressed.
+pub(in crate::agentic) fn is_banned(
+    banned: &std::collections::BTreeSet<String>,
+    candidate: &Candidate,
+) -> bool {
+    banned.contains(&signature(candidate)) || banned.contains(&press_key(candidate))
+}
+
 /// Whether a lower-cased label names an action that is hard to undo. A
 /// counter's minus button ("remove adult") is not: it only lowers a number.
 pub(in crate::agentic) fn destructive_label(evidence: &str) -> bool {

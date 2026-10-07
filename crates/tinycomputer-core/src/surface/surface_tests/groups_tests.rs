@@ -204,3 +204,63 @@ fn a_run_of_leaf_siblings_is_a_list_where_nothing_repeats_by_ordinal() {
     ]]);
     assert!(result_groups(&pair).is_empty());
 }
+
+fn list(items: &[&[&str]]) -> Vec<crate::surface::Group> {
+    items
+        .iter()
+        .map(|fields| crate::surface::Group {
+            label: String::new(),
+            fields: fields.iter().map(|field| (*field).to_owned()).collect(),
+            primary: None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_list_of_another_lists_cards_split_line_by_line_is_dropped() {
+    // Live, a ride app's five option cards also read as their nine lines,
+    // and the lines, the longer list, were taken for the options.
+    let lines = list(&[
+        &["Get an auto at your doorstep"],
+        &["4 min"],
+        &["Comfy hatchbacks at pocket-friendly fares"],
+        &["4 min"],
+        &["Zip through traffic at affordable fares"],
+        &["1 min"],
+        &["Sedans with free wifi and top drivers"],
+    ]);
+    let names = list(&[&["Auto"], &["Mini"], &["Bike"], &["Prime Sedan"]]);
+    let cards = list(&[
+        &["Auto ... Get an auto at your doorstep"],
+        &["Mini 4 min Comfy hatchbacks at pocket-friendly fares"],
+        &["Bike 4 min Zip through traffic at affordable fares"],
+        &["Prime Sedan 1 min Sedans with free wifi and top drivers"],
+    ]);
+    let kept = crate::surface::groups::unsplit(vec![lines, names.clone(), cards.clone()]);
+    let firsts = kept
+        .iter()
+        .map(|groups| groups[0].fields[0].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        firsts,
+        [names[0].fields[0].clone(), cards[0].fields[0].clone()]
+    );
+
+    // Cards of several fields each are records of their own, even inside
+    // larger cards: three sections of a store, each holding its products.
+    let products = list(&[
+        &["Milk 1 L", "₹68"],
+        &["Milk 500 ml", "₹34"],
+        &["Curd 400 g", "₹45"],
+        &["Paneer 200 g", "₹90"],
+    ]);
+    let sections = list(&[
+        &["Dairy Milk 1 L ₹68 Milk 500 ml ₹34"],
+        &["Curd 400 g ₹45"],
+        &["Paneer 200 g ₹90"],
+    ]);
+    assert_eq!(
+        crate::surface::groups::unsplit(vec![products, sections]).len(),
+        2
+    );
+}

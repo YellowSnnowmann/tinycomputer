@@ -18,6 +18,10 @@ fn payment_controls_are_recognised_in_any_wording() {
         "Proceed to payment",
         "Buy now",
         "Place order",
+        "Place your order",
+        "Confirm order",
+        "Complete order",
+        "Proceed to Pay",
         "Checkout",
         "Complete purchase",
         "Confirm and pay",
@@ -34,6 +38,8 @@ fn irreversible_controls_need_approval() {
         "Delete draft",
         "Publish",
         "Confirm booking",
+        "Confirm ride",
+        "Confirm pickup",
         "Cancel reservation",
         "Sign out",
         "Empty Trash",
@@ -287,6 +293,69 @@ fn walls_only_a_person_can_pass_are_named() {
         None,
         "a sign-in link on an ordinary page is no wall"
     );
+    // A dialog that names what it hides, and asks to log in or sign up.
+    for wall in [
+        "Log in to see ride options",
+        "Please take a moment to quickly log in or sign up so we can show you your ride options",
+        "Sign in to view your basket",
+        "You must be logged in to view this page",
+        "Login required",
+        "Sign up or Log in with Uber",
+        "Login/ Sign up Using OTP",
+        "Please log in to check exact prices",
+        "Log in to view your orders",
+        "Sign in to see your bookings",
+        "Login with OTP",
+    ] {
+        assert_eq!(needs(wall).as_deref(), Some("sign in"), "{wall}");
+    }
+    assert_eq!(
+        needs("Verify your phone number to continue").as_deref(),
+        Some("verify the phone number"),
+        "a phone check is no sign-in"
+    );
+    assert_eq!(
+        needs("Enter OTP").as_deref(),
+        Some("enter the one-time password")
+    );
+    for challenge in [
+        "Please check the reCAPTCHA box",
+        "Please verify that you are not a robot",
+    ] {
+        assert!(needs(challenge).is_some(), "{challenge}");
+    }
+    // The invisible reCAPTCHA badge asks nothing, by its frame's title or its
+    // notice; a challenge beside it does.
+    let badge = "This site is protected by reCAPTCHA and the Google Privacy Policy and \
+                 Terms of Service apply.";
+    assert_eq!(needs("reCAPTCHA"), None);
+    assert_eq!(needs(badge), None);
+    assert_eq!(
+        human_needed(&[badge.to_owned(), "I'm not a robot".to_owned()]).as_deref(),
+        Some("prove you are human")
+    );
+    for challenge in [
+        "recaptcha challenge expires in two minutes",
+        "Select all images with traffic lights",
+        "Select all squares with motorcycles",
+    ] {
+        assert_eq!(
+            needs(challenge).as_deref(),
+            Some("solve the captcha"),
+            "{challenge}"
+        );
+    }
+    assert_eq!(needs("I am human").as_deref(), Some("prove you are human"));
+    // A header's account links are no wall.
+    for links in [
+        "Log in | Sign up",
+        "Login / Signup",
+        "Login/ Sign Up",
+        "Log in",
+        "Sign up",
+    ] {
+        assert_eq!(needs(links), None, "{links}");
+    }
     assert_eq!(needs("Verification complete"), None);
     assert_eq!(human_needed(&[]), None);
 }

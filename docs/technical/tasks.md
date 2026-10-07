@@ -105,8 +105,11 @@ one entry, the whole flow. For each run it:
 3. reads the result (`interpret::run_outcome`) and decides whether to carry
    on or stop with a status;
 4. adds the run's steps, trace, learned hints, and spend to the task, and
-   keeps any values the run read that were not facts or flow variables. Those
-   become the `records` in the final answer.
+   keeps any values the run read: every variable that is not a fact and that
+   the run changed from what the flow gave it. A flow variable passed in and
+   left as it was is the caller's input, while one a planner declared empty
+   up front and a `read` then filled is a read. Those become the `records` in
+   the final answer and in `TaskReport`.
 
 The `FlowRunner` trait is what makes the controller testable: tests script the
 runs, and the module plugs in `WorkspaceRunner`
@@ -133,7 +136,9 @@ share that workspace, so a resumed task picks up on the page the last run left.
 - **A step failed.** The task fails, marked recoverable, and remembers the
   failed step and everything after it. Then `human_wall` reads the surface's
   visible text. If it shows a captcha, "verify you are human", a one-time code,
-  two-factor authentication, or "sign in to continue", the status becomes
+  two-factor authentication, or a login wall ("sign in to continue", "log in to
+  see …", "log in or sign up", "login required"; a header's bare "Log in" and
+  "Sign up" links are not one), the status becomes
   `needs_human` and `ContinueTask` reruns the failed step and the rest once
   the person has got past it. If not, and a rescuer is configured, the failure
   is rescued (below). Otherwise it stays `failed`.

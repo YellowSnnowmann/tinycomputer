@@ -19,9 +19,12 @@ Change a constant and its row together.
 | `CORROBORATED` | 0.80 | `ground/mod.rs` | corroboration that accepts a target alone |
 | `AGREED` | 0.50 | `ground/mod.rs` | corroboration that accepts a target the re-ask agreed on |
 | `SLOT_FLOOR` | 0.40 | `enter/mod.rs` | least probability for a slot assignment |
-| `LOCATE_FLOOR` | 0.50 | `steps/mod.rs` | least probability for a `read`, `pick`, or `stop_before` target, or an `extract`'s list |
+| `LOCATE_FLOOR` | 0.50 | `steps/mod.rs` | least probability for a `read`, `pick`, or `stop_before` target, an `extract`'s list, or a ranked card belonging to the list a `pick` picks from |
+| `RANKED_CHECKS` | 8 | `steps/mod.rs` | cards an exact `pick` ranking puts first that are asked about, at once, for the first that belongs to the list picked from |
 | `MAX_LISTS` | 6 | `steps/mod.rs` | lists an `extract` offers Jev when several show; past it, the longest six |
 | `LIST_PREVIEW` | 3 | `steps/mod.rs` | first items of each list an `extract` shows Jev to tell the lists apart |
+| `LIST_LEAN` | 0.30 | `steps/mod.rs` | least probability of the list Jev leaned to when it chose none clearly, for that list to be taken over the longest |
+| `LIST_LEAD` | 3.0 | `steps/mod.rs` | times the next list's probability that list needs |
 | `MAX_COLLECTED` | 12 | `wide/mod.rs` | saved variables every state recalls as `already_collected`, the most recent first kept |
 | `COLLECTED_CHARS` | 120 | `wide/mod.rs` | characters of each saved value `already_collected` recalls |
 | `MIN_FLAT_ITEMS` | 3 | `tinycomputer-core` `surface/groups.rs` | same-role leaf siblings that make a list for `extract` and `pick` on a screen where nothing repeats by ordinal, as on a desktop tree |
@@ -38,6 +41,19 @@ Change a constant and its row together.
 | `FIELD_ERROR` | 0.70 | `enter/mod.rs` | field-error probability that makes a slot be entered again |
 | `NOT_ASKED` | 0.35 | `enter/mod.rs` | "the form asks for it" probability under which a slot with no field is taken as not asked for |
 | `BLIND_PICK_MISSES` | 1 | `enter/mod.rs` | details no picker offered, on a screen with no editable field, after which the rest are not looked for one by one and the step fails |
+| `OPENER_FLOOR` | 0.80 | `enter/mod.rs` | least belief Jev gives that a control named by a slot's word (a "Search" link for the slot "search") shows that slot's box, before `enter` presses it to reveal the box |
+| `EMPTY_CHECKS` | 2 | `steps/mod.rs` | checks in a row, a wait apart, on which a page says it found nothing (`FOUND_NOTHING` in `steps/condition.rs`) before a `wait_for` fails |
+| `SUGGESTION_FLOOR` | 0.5 | `steps/suggestion.rs` | least probability a suggestion Jev picks after typing needs before it is pressed; under it the text stays as typed |
+| `MOST_SUGGESTIONS` | 12 | `steps/suggestion.rs` | most new rows one pick of an autocomplete's suggestion is asked over |
+| `OPTION_EXTRA_WORDS` | 12 | `steps/matching.rs` | words beyond an option's own that a label may carry and still be the option; a label longer than that lists more than the option (a panel naming every row) and is not pressed for it |
+| `MAX_REPEAT_PRESSES` | 3 | `act/mod.rs` | presses of one control (by label and place, so a toggle's two looks count as one) or one key in one `do` step after which it is struck off for the step; a scroll is no press. Pressing a named control also strikes off its copies on the other items of its list (same label, another card of the same list), once the next look shows the press changed the screen, unless the step says all, every, each, or both, or chooses several items (a choosing verb in its first two words and a count of 2 to 20, or a number word, within three words before a plural: "choose 2 adjacent seats"); undoing that press lifts its own copies again |
+| `MAX_IDLE_SCROLLS` | 1 | `act/mod.rs` | scrolls that showed nothing new after which a step's "scroll" move is taken as "activate": the screen already lists what lies below the fold |
+| `LAYER_COVERS` | 3 | `front.rs` | controls something drawn over the window must cover, beyond what was covered before the press that opened it, on the same page, before it counts as a dialog the task opened (`surface` `layer`); a step that pressed inside such a dialog hands it back at the next step, and opening an address forgets it |
+| `FRONT_CONTROLS` | 8 | `act/turns.rs` | most controls of the task's dialog in front a failed step's note names, so a rescue answers with one of them |
+| `STEADY_HOLD` / `STEADY_CHECKS` | 0.65 / 3 | `steps/mod.rs` | belief a `wait_for` condition must keep, on checks in a row of one unchanged screen, to be taken as held under `DONE` |
+| `LATE_LOOKS` | 2 | `steps/suggestion.rs` | looks again, a wait apart, for the suggestions a place or search box lists late, before its text is left as typed |
+| `BARE_CHARS` | 3 | `tinycomputer-core` `surface/groups.rs` | most letters and digits each field of a card may show for a list of such cards to be bare markers (carousel dots, size chips, page numbers), never results |
+| `CARD_LINK_CHARS` | 20 | `tinycomputer-core` `surface/groups.rs` | least characters (with a word in them) a link, option, radio, or button must show for a run of three or more under one parent to be a list of cards that are one control each |
 
 ## Deliberation
 

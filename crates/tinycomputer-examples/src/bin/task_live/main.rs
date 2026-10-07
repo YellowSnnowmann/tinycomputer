@@ -15,8 +15,8 @@
 //! - `TINYHUMANS_TOKEN` — optional, in place of `OPENROUTER_API_KEY`: a Tiny
 //!   Humans bearer (a session token, or an API key with the `inference`
 //!   scope) that sends Jev and the planner through Tiny Humans' routes, with
-//!   the gateway's `agentic-v1` planning, rescuing, and shaping unless the
-//!   model variables below name another.
+//!   `openrouter/deepseek/deepseek-v4-flash` planning, rescuing, and shaping
+//!   unless the model variables below name another.
 //! - `TASK_FILE` — the task in plain language.
 //! - `FACTS_FILE` — a JSON object of facts for the task, by name. A value is
 //!   a string, or `{"value": "...", "secret": true}` to keep it secret; a
@@ -28,8 +28,8 @@
 //!   `schema`) asking for the answer in a fixed shape; the result is written
 //!   to `result.json`.
 //! - `TINYCOMPUTER_OUTPUT_MODEL` — optional: the model that shapes it
-//!   (`openai/gpt-6-luna` by default on `OpenRouter`, `agentic-v1` on Tiny
-//!   Humans).
+//!   (`openai/gpt-6-luna` by default on `OpenRouter`,
+//!   `openrouter/deepseek/deepseek-v4-flash` on Tiny Humans).
 //! - `TASK_SURFACE` — optional: `browser` (default) or `desktop`, the
 //!   applications on this Mac through the accessibility tree. A desktop task
 //!   runs on the host, in a shell that has the Accessibility permission.
@@ -40,8 +40,8 @@
 //! - `TASK_RESCUES` — optional: how many failed steps the reasoning model
 //!   may rescue (0 to 5, default 5; 0 turns rescues off).
 //! - `TINYCOMPUTER_RESCUE_MODEL` — optional: the model that rescues them
-//!   (`openai/gpt-6-luna` by default on `OpenRouter`, `agentic-v1` on Tiny
-//!   Humans).
+//!   (`openai/gpt-6-luna` by default on `OpenRouter`,
+//!   `openrouter/deepseek/deepseek-v4-flash` on Tiny Humans).
 //! - `TINYCOMPUTER_DECISIONS` — optional: `sage` makes Levanto Sage take
 //!   every decision in place of Jev, with `SAGE_API_KEY`, through the
 //!   module's `jev` configuration; `SAGE_FAST=1` scores each choice in one
@@ -56,6 +56,11 @@
 //!   `tinycomputer-cursor-overlay` helper, which the module finds beside
 //!   itself, over a browser window on this screen — an attached Chrome, or a
 //!   headed one.
+//! - `TASK_INTERACTIVE` — optional: `1` makes the run wait for the person
+//!   at this terminal where only a person can go on, instead of ending it:
+//!   approve or decline an irreversible action, get past a login or captcha
+//!   in the browser window and press Enter, type a detail the task lacks,
+//!   and finish on a payment page before the browser closes.
 //! - `TASK_HEADED` — optional: `1` shows the browser the task launches
 //!   instead of running it headless. A headed browser needs a display, so
 //!   such a run is on the host.
@@ -78,7 +83,7 @@ use tinycomputer_bus::agent::{
     PlanTaskRequest, StartTaskRequest, SurfaceKind, TaskBudget, TaskConstraints, TaskOutput,
 };
 use tinycomputer_examples::host::{Host, LabError, jev_config, module_path};
-use tinycomputer_examples::task::{conclude, follow, passed};
+use tinycomputer_examples::task::{Person, Terminal, conclude, follow, passed};
 
 #[tokio::main]
 async fn main() -> Result<(), LabError> {
@@ -135,7 +140,11 @@ async fn main() -> Result<(), LabError> {
             .and_then(|minutes| minutes.parse().ok())
             .unwrap_or(20),
     );
-    let view = follow(&host, view, &BTreeMap::new(), limit).await?;
+    // A person at the terminal answers the pauses only a person can.
+    let person = std::env::var("TASK_INTERACTIVE")
+        .is_ok_and(|value| value == "1")
+        .then_some(&Terminal as &dyn Person);
+    let view = follow(&host, view, &BTreeMap::new(), limit, person).await?;
     conclude(&host, &view, &before, &out).await?;
     host.shutdown();
     if passed(&view.status) {
@@ -184,9 +193,14 @@ fn module_config() -> Result<Value, LabError> {
 }
 
 /// The model the Tiny Humans gateway plans, rescues, and shapes with when
-/// none is named: the gateway serves its own model ids, and refuses the
-/// engine's `OpenRouter` vendor ids.
-const TINY_HUMANS_MODEL: &str = "agentic-v1";
+/// none is named: the managed default `OpenHuman` runs its own hosted work
+/// on, an `openrouter/`-prefixed id from the gateway's catalog. The gateway
+/// refuses the engine's own defaults, bare vendor ids such as
+/// `anthropic/claude-sonnet-5`, and its `agentic-v1` tier reasons for 25 to
+/// 45 seconds over a small rescue, long enough on a real one to pass the
+/// module's 120-second rescue limit; this model answers the same rescue in
+/// 7 to 13 seconds.
+const TINY_HUMANS_MODEL: &str = "openrouter/deepseek/deepseek-v4-flash";
 
 /// What this runner calls itself to the Tiny Humans routes.
 const SDK_NAME: &str = "tinycomputer-task-live";

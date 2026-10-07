@@ -145,3 +145,77 @@ async fn without_an_output_no_model_is_asked() {
     ));
     assert!(model.seen.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_value_read_into_a_declared_variable_is_reported() {
+    // Live, the planner declared each read's variable up front, empty
+    // ("total": ""), and every one was dropped as the caller's own input:
+    // the brand, price, and bag total a task was asked for never came back.
+    let (tasks, _) = controller(vec![finished_run(
+        FlowStopReason::Completed,
+        vec![],
+        &[("total", "Rs. 264"), ("city", "Pune")],
+        None,
+    )]);
+    let view = tasks
+        .start(&StartTaskRequest {
+            task: Some("read the bag total".to_owned()),
+            flow: Some(flow(json!({
+                "app": "browser",
+                "vars": {"total": "", "city": "Pune"},
+                "steps": [{"read": {"what": "the bag total", "into": "total"}}]
+            }))),
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    let TaskStatus::Done { records, .. } = settle(&tasks, &view.id).await.status else {
+        panic!("done");
+    };
+    assert_eq!(
+        records["total"],
+        [BTreeMap::from([("value".to_owned(), "Rs. 264".to_owned())])]
+    );
+    assert!(
+        !records.contains_key("city"),
+        "a value the flow was given is not a read"
+    );
+}
+
+#[tokio::test]
+async fn a_variable_defined_from_a_fact_is_never_reported_as_a_read() {
+    // A flow may define a variable from the caller's values, and the run
+    // expands it when it starts: its value then differs from the flow's own
+    // `${email}`, but it is the caller's input, and when the fact is secret
+    // it must never come back in the records.
+    let (tasks, _) = controller(vec![finished_run(
+        FlowStopReason::Completed,
+        vec![],
+        &[("recipient", "asha@example.com"), ("total", "Rs. 264")],
+        None,
+    )]);
+    let view = tasks
+        .start(&StartTaskRequest {
+            task: Some("read the bag total".to_owned()),
+            flow: Some(flow(json!({
+                "app": "browser",
+                "vars": {"recipient": "${email}", "total": ""},
+                "steps": [
+                    {"enter": {"email": "${recipient}"}},
+                    {"read": {"what": "the bag total", "into": "total"}}
+                ]
+            }))),
+            facts: BTreeMap::from([("email".to_owned(), "asha@example.com".to_owned())]),
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    let TaskStatus::Done { records, .. } = settle(&tasks, &view.id).await.status else {
+        panic!("done");
+    };
+    assert!(
+        !records.contains_key("recipient"),
+        "a variable defined from a fact is the caller's input: {records:?}"
+    );
+    assert!(records.contains_key("total"));
+}

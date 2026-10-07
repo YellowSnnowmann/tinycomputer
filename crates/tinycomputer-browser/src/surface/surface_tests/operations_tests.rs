@@ -6,7 +6,10 @@ use tinycomputer_bus::JevOperation;
 use tinycomputer_core::Platform;
 use tinycomputer_core::surface::{Depth, Surface};
 
-use super::{Harness, PAGE, harness, node, page_fake};
+use tinycomputer_bus::browser::SessionOptions;
+use tinycomputer_core::surface::Candidate;
+
+use super::{Drawn, Harness, PAGE, harness, node, page_fake, shown_harness};
 use crate::fake::{Fake, failure, ok};
 use crate::surface::operations::browser_key;
 
@@ -300,4 +303,249 @@ fn text_is_never_filled_or_pasted_into_an_element_that_does_not_take_it() {
         "nothing is typed: {actions:?}"
     );
     assert_eq!(fake.last("focus")["selector"], "@e216");
+}
+
+#[test]
+fn only_a_control_asking_for_the_place_is_read_as_one() {
+    use crate::surface::location::asks_where;
+    let button = |name: &str| Candidate {
+        name: Some(name.to_owned()),
+        role: "button".to_owned(),
+        ..Candidate::default()
+    };
+    for asks in ["Use my current location", "Detect my location", "Locate me"] {
+        assert!(asks_where(&button(asks)), "{asks}");
+    }
+    for other in ["Auto detect language", "Search", "Change city"] {
+        assert!(!asks_where(&button(other)), "{other}");
+    }
+}
+
+#[test]
+fn two_addresses_of_one_page_are_one_place() {
+    use crate::surface::tabs::place;
+    assert_eq!(
+        place("https://www.shop.test/Cart/#top"),
+        place("http://shop.test/cart")
+    );
+    assert_ne!(
+        place("https://shop.test/cart"),
+        place("https://shop.test/bag")
+    );
+    assert_ne!(
+        place("https://shop.test/search?q=boots"),
+        place("https://shop.test/search?q=shoes"),
+        "another search is another page"
+    );
+}
+
+#[test]
+fn location_is_granted_only_in_a_browser_the_module_launched() {
+    // The grant covers every page of the browser for the session: a
+    // person's own browser keeps its own say in the bubble they answer.
+    let location = Candidate {
+        ref_id: "e5".to_owned(),
+        role: "button".to_owned(),
+        name: Some("Use my current location".to_owned()),
+        available_actions: vec!["Click".to_owned()],
+        ..Candidate::default()
+    };
+    let granted = |harness: &Harness| {
+        harness
+            .fake
+            .sent()
+            .iter()
+            .any(|command| command["action"] == "permissions")
+    };
+    let own = harness("location-own", page_fake());
+    let _pressed = own
+        .surface
+        .execute(JevOperation::Click, Some(location.clone()), None);
+    assert!(granted(&own));
+    let attached = shown_harness(
+        "location-attached",
+        page_fake(),
+        SessionOptions {
+            endpoint: Some("ws://127.0.0.1:9222/devtools/browser/test".to_owned()),
+            ..SessionOptions::default()
+        },
+        &Drawn::default(),
+    );
+    let _pressed = attached
+        .surface
+        .execute(JevOperation::Click, Some(location), None);
+    assert!(!granted(&attached), "{:?}", attached.fake.sent());
+}
+
+/// A page read by sight holding one control, `role` and `name`, whose
+/// commands `answer` scripts first; everything else answers as the engine
+/// would.
+fn seen_page(
+    role: &'static str,
+    name: &'static str,
+    answer: impl Fn(&serde_json::Value) -> Option<serde_json::Value> + Send + Sync + 'static,
+) -> Fake {
+    Fake::scripted(move |command| {
+        if let Some(reply) = answer(command) {
+            return Some(reply);
+        }
+        let script = command["script"].as_str().unwrap_or_default();
+        match command["action"].as_str().unwrap() {
+            "evaluate" if script.contains("__tinycomputerSeen") => Some(ok(&json!({"result": {
+                "ok": true,
+                "title": "Shop",
+                "surface": "window",
+                "unreachable": 0,
+                "denoised": {"ads": 0, "empty": 0, "hidden": 0},
+                "nodes": [{"id": "1", "role": role, "name": name, "states": [], "path": []}]
+            }}))),
+            "boundingbox" => Some(ok(
+                &json!({"x": 10.0, "y": 20.0, "width": 100.0, "height": 40.0}),
+            )),
+            "evaluate" => Some(ok(&json!({"result": true}))),
+            _ => None,
+        }
+    })
+}
+
+#[test]
+fn a_press_refused_as_covered_is_tried_again_centred_with_the_pointer_moved_off() {
+    // Live, a product photo's hover zoom covered "Add to cart" twelve times
+    // while the pointer rested on the photo.
+    let clicks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = clicks.clone();
+    let fake = seen_page("button", "Add to cart", move |command| {
+        let script = command["script"].as_str().unwrap_or_default();
+        match command["action"].as_str().unwrap() {
+            "click" if counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 => {
+                Some(failure(
+                    "Element is covered by <div.zoom> at its click point, so the input would land on that element instead.",
+                ))
+            }
+            // Not the card's own layer: the click-through declines.
+            "evaluate" if script.contains("elementsFromPoint") => {
+                Some(ok(&json!({"result": false})))
+            }
+            _ => None,
+        }
+    });
+    let Harness { fake, surface, .. } = harness("covered-retry", fake);
+    let screen = surface.observe("shop", None, Depth::Skeleton).unwrap();
+    let reply = surface.execute(
+        JevOperation::Click,
+        Some(screen.candidates[0].clone()),
+        None,
+    );
+    assert!(reply.ok, "{:?}", reply.error);
+    assert!(
+        fake.sent()
+            .iter()
+            .any(|command| command["action"] == "mouse" && command["eventType"] == "mouseMoved"),
+        "{:?}",
+        fake.actions()
+    );
+    assert_eq!(
+        fake.actions()
+            .iter()
+            .filter(|action| *action == "click")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn a_link_whose_press_went_nowhere_is_followed_unless_the_page_moved() {
+    // Live, a product link pressed six times never opened its product.
+    let follow = |moves: bool| {
+        let pressed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        seen_page("link", "boAt Airdopes 141 Gen 2 earbuds", move |command| {
+            let script = command["script"].as_str().unwrap_or_default();
+            match command["action"].as_str().unwrap() {
+                "click" => {
+                    pressed.store(true, std::sync::atomic::Ordering::SeqCst);
+                    None
+                }
+                "url" => {
+                    let went = moves && pressed.load(std::sync::atomic::Ordering::SeqCst);
+                    let url = if went {
+                        "https://shop.test/product/141"
+                    } else {
+                        "https://shop.test/results"
+                    };
+                    Some(ok(&json!({"url": url})))
+                }
+                "evaluate" if script.contains("__tcLeaving") && script.contains("download") => {
+                    Some(ok(&json!({"result": "https://shop.test/product/141"})))
+                }
+                "navigate" => Some(ok(&json!({
+                    "url": "https://shop.test/product/141",
+                    "title": "boAt Airdopes 141"
+                }))),
+                _ => None,
+            }
+        })
+    };
+    let followed = harness("link-follow", follow(false));
+    let screen = followed
+        .surface
+        .observe("shop", None, Depth::Skeleton)
+        .unwrap();
+    let reply = followed.surface.execute(
+        JevOperation::Click,
+        Some(screen.candidates[0].clone()),
+        None,
+    );
+    assert!(reply.ok, "{:?}", reply.error);
+    assert_eq!(
+        followed.fake.last("navigate")["url"],
+        "https://shop.test/product/141"
+    );
+
+    let moved = harness("link-moved", follow(true));
+    let screen = moved
+        .surface
+        .observe("shop", None, Depth::Skeleton)
+        .unwrap();
+    let reply = moved.surface.execute(
+        JevOperation::Click,
+        Some(screen.candidates[0].clone()),
+        None,
+    );
+    assert!(reply.ok, "{:?}", reply.error);
+    assert!(
+        !moved
+            .fake
+            .actions()
+            .iter()
+            .any(|action| action == "navigate"),
+        "the page moved by itself: {:?}",
+        moved.fake.actions()
+    );
+}
+
+#[test]
+fn a_navigation_that_timed_out_on_a_drawn_page_is_taken_as_open() {
+    // A heavy results page can be read long before its `load` fires.
+    let opening = |drawn: bool| {
+        Fake::scripted(move |command| {
+            let script = command["script"].as_str().unwrap_or_default();
+            match command["action"].as_str().unwrap() {
+                "navigate" => Some(failure("navigation timed out after 30000ms")),
+                "evaluate" if script.contains("readyState") => Some(ok(&json!({"result": {
+                    "url": "https://www.shop.test/search?q=milk",
+                    "title": "milk - Shop",
+                    "drawn": drawn,
+                }}))),
+                _ => None,
+            }
+        })
+    };
+    let drawn = harness("drawn-page", opening(true));
+    let reply = drawn.surface.navigate("https://shop.test/search?q=milk");
+    assert!(reply.ok, "{:?}", reply.error);
+    assert_eq!(reply.data.unwrap()["title"], "milk - Shop");
+
+    let blank = harness("blank-page", opening(false));
+    let reply = blank.surface.navigate("https://shop.test/search?q=milk");
+    assert!(!reply.ok, "nothing drawn yet: the timeout stands");
 }

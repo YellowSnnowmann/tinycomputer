@@ -5,13 +5,25 @@ use super::{has_phrase, normalize};
 /// What only a person can get past, by the words a page shows for it.
 const HUMAN_GATES: &[(&str, &str)] = &[
     ("captcha", "solve the captcha"),
-    ("recaptcha", "solve the captcha"),
+    // reCAPTCHA by its challenge, never by its name alone: an invisible
+    // reCAPTCHA puts a frame titled "reCAPTCHA" (and "protected by
+    // reCAPTCHA") on every form it guards, asking nothing of anyone.
+    ("complete the recaptcha", "solve the captcha"),
+    ("recaptcha challenge", "solve the captcha"),
+    ("select all images", "solve the captcha"),
+    ("select all squares", "solve the captcha"),
+    ("i am human", "prove you are human"),
     ("verify you are human", "prove you are human"),
     ("verify you re human", "prove you are human"),
     ("i m not a robot", "prove you are human"),
+    ("not a robot", "prove you are human"),
+    ("check the recaptcha", "solve the captcha"),
     ("are you a robot", "prove you are human"),
     ("one time password", "enter the one-time password"),
     ("enter the otp", "enter the one-time password"),
+    ("enter otp", "enter the one-time password"),
+    ("verify your mobile number", "verify the phone number"),
+    ("verify your phone number", "verify the phone number"),
     ("verification code", "enter the verification code"),
     ("enter the code we sent", "enter the verification code"),
     ("two factor", "complete two-factor authentication"),
@@ -20,6 +32,34 @@ const HUMAN_GATES: &[(&str, &str)] = &[
     ("log in to continue", "sign in"),
     ("login to continue", "sign in"),
     ("please sign in", "sign in"),
+    ("please log in", "sign in"),
+    ("please login", "sign in"),
+    // A wall that names what it hides: "Log in to see ride options".
+    ("log in to see", "sign in"),
+    ("login to see", "sign in"),
+    ("sign in to see", "sign in"),
+    ("log in to view", "sign in"),
+    ("login to view", "sign in"),
+    ("sign in to view", "sign in"),
+    // The call to action a wall's dialog makes; a header's "Log in | Sign
+    // up" links lack the "or" and are no wall.
+    ("log in or sign up", "sign in"),
+    ("login or sign up", "sign in"),
+    ("sign in or sign up", "sign in"),
+    ("sign up or log in", "sign in"),
+    ("sign up or login", "sign in"),
+    // A sign-in dialog by one-time code: a store's "Login/ Sign up Using
+    // OTP" over its basket. The header's bare "Login/ Sign Up" says no
+    // more and is no wall.
+    ("sign up using otp", "sign in"),
+    ("login using otp", "sign in"),
+    ("log in using otp", "sign in"),
+    ("login with otp", "sign in"),
+    ("log in with otp", "sign in"),
+    ("you must be logged in", "sign in"),
+    ("you need to be logged in", "sign in"),
+    ("login required", "sign in"),
+    ("sign in required", "sign in"),
 ];
 
 /// What a person must do before a task can go on, when the visible text

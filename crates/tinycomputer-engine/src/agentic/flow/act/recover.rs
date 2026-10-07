@@ -13,9 +13,10 @@ use crate::agentic::flow::{
     denoise,
     expect::{self, Outcome},
     ground::{AGREED, Grounded},
-    view::{Candidate, Screen, fingerprint, label, signature},
+    view::{Candidate, Screen, fingerprint, is_banned, label, signature},
 };
 
+use super::copies;
 use super::{
     BLOCKED, CLEAR_MISTAKE, DoState, Expected, MAX_BRANCHES, MAX_OBSTACLES, MAX_UNDOS, MISTAKE,
     REGRESSION, UNHELPFUL, judge::Judgement,
@@ -31,7 +32,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         intent: &str,
         judged: &Judgement,
     ) -> Result<bool, Halt> {
-        if judged.blocked.unwrap_or_default() >= BLOCKED && state.obstacles < MAX_OBSTACLES {
+        if judged.blocked.unwrap_or_default() >= BLOCKED
+            && state.obstacles < MAX_OBSTACLES
+            && !self.front.opened_dialog
+        {
             state.obstacles += 1;
             log.used(FlowLoop::Obstacles);
             match &judged.dismissal {
@@ -92,12 +96,18 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let Some((why, target)) = mistaken.or(regressed).or(unhelpful) else {
             return Ok(false);
         };
-        if !self.enabled(FlowLoop::Undo) || state.undos >= MAX_UNDOS {
+        // A press that opened a dialog of the task's (the seat count after
+        // a showtime) moved the flow on, whatever the judge made of it:
+        // undoing it with Escape closed the dialog live.
+        if !self.enabled(FlowLoop::Undo) || state.undos >= MAX_UNDOS || self.front.opened_dialog {
             return Ok(false);
         }
         state.undos += 1;
         log.used(FlowLoop::Undo);
         if let Some(target) = &target {
+            // The undone press may have been the wrong item's copy: the
+            // copies it struck off are candidates again.
+            copies::lift(state, target);
             state.banned.insert(signature(target));
             self.ledger.tried(format!(
                 "pressed {}: it made things worse ({why})",
@@ -176,7 +186,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         state.branch = self
             .frontier
             .iter()
-            .find(|candidate| !state.banned.contains(&signature(candidate)))
+            .find(|candidate| !is_banned(&state.banned, candidate))
             .cloned();
     }
 

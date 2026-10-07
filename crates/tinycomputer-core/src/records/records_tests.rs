@@ -210,3 +210,31 @@ fn nothing_readable_means_judgement_is_needed() {
     assert_eq!(rank(&records, Criterion::LowestPrice), None);
     assert_eq!(rank(&[], Criterion::Earliest), None);
 }
+
+#[test]
+fn first_and_last_alone_are_the_lists_own_order() {
+    for (text, expected) in [
+        ("first", Some(Criterion::First)),
+        ("the first one", Some(Criterion::First)),
+        ("the first result", Some(Criterion::First)),
+        ("top", Some(Criterion::First)),
+        ("1st", Some(Criterion::First)),
+        ("the last item", Some(Criterion::Last)),
+        // With more words it is a judgement, or a name the list holds.
+        ("first product rated 4 stars or more", None),
+        ("First AC", None),
+    ] {
+        assert_eq!(Criterion::parse(text), expected, "{text}");
+    }
+    let records = flights();
+    let count = records.len();
+    assert_eq!(
+        rank(&records, Criterion::First),
+        Some((0..count).collect::<Vec<_>>())
+    );
+    assert_eq!(
+        rank(&records, Criterion::Last),
+        Some((0..count).rev().collect::<Vec<_>>())
+    );
+    assert_eq!(rank(&[], Criterion::First), None, "nothing to rank");
+}

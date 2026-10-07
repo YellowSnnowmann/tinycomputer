@@ -78,7 +78,7 @@ pub(super) fn is_next_month(name: &str) -> bool {
 }
 
 /// The day, month, and year (when given) a date option names, as words.
-pub(super) fn date_words(option: &str) -> Vec<String> {
+pub(in crate::agentic::flow) fn date_words(option: &str) -> Vec<String> {
     plain(option)
         .split(' ')
         .filter(|word| {
@@ -89,4 +89,37 @@ pub(super) fn date_words(option: &str) -> Vec<String> {
         })
         .map(str::to_owned)
         .collect()
+}
+
+/// Whether a control showing `text` is the day `words` names
+/// ([`date_words`]): the day's number with or without a leading zero, the
+/// month in full or by its first three letters ("Sept" too), and the year
+/// only when the control shows one. Live, a strip of show dates read "WED
+/// 07 OCT", and the day was never found in it.
+pub(in crate::agentic::flow) fn shows_date(text: &str, words: &[String]) -> bool {
+    let shown = plain(text)
+        .split(' ')
+        .map(|word| {
+            if let Ok(number) = word.parse::<u16>() {
+                return number.to_string();
+            }
+            MONTHS
+                .iter()
+                .find(|month| {
+                    word.len() >= 3
+                        && (month.starts_with(word) || (*month == &"september" && word == "sept"))
+                })
+                .map_or_else(|| word.to_owned(), |month| (*month).to_owned())
+        })
+        .collect::<Vec<_>>();
+    let shows_year = shown.iter().any(|word| {
+        word.parse::<u16>()
+            .is_ok_and(|year| (1900..=2100).contains(&year))
+    });
+    words.iter().all(|word| {
+        let year = word
+            .parse::<u16>()
+            .is_ok_and(|year| (1900..=2100).contains(&year));
+        (year && !shows_year) || shown.iter().any(|shown| shown == word)
+    })
 }

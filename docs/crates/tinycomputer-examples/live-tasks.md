@@ -104,7 +104,7 @@ they control.
 | Variable | For |
 |---|---|
 | `OPENROUTER_API_KEY` | Jev and the planner |
-| `TINYHUMANS_TOKEN` | in place of `OPENROUTER_API_KEY`: a Tiny Humans bearer (a session token, or an API key with the `inference` scope) that sends Jev and the planner through Tiny Humans' routes; the gateway's `agentic-v1` plans, rescues, and shapes unless a model variable below names another |
+| `TINYHUMANS_TOKEN` | in place of `OPENROUTER_API_KEY`: a Tiny Humans bearer (a session token, or an API key with the `inference` scope) that sends Jev and the planner through Tiny Humans' routes; `openrouter/deepseek/deepseek-v4-flash` plans, rescues, and shapes unless a model variable below names another |
 | `TINYCOMPUTER_MODULE` | the attested module; `scripts/build-module` prints it (`tasks/run` sets it) |
 | `TASK_FILE` | the task, in plain language |
 | `FACTS_FILE` | the JSON facts file described above |
@@ -119,8 +119,8 @@ they control.
 | `TINYCOMPUTER_FLOW_DELIBERATION` | `deep` | `deep`, `standard`, or `off` |
 | `TASK_MAX_MINUTES` | `20` | the task is cancelled after this long |
 | `TASK_RESCUES` | `5` | how many failed steps a reasoning model may rescue (`0` turns rescues off); see [rescue](../../rescue.md) |
-| `TINYCOMPUTER_RESCUE_MODEL` | `openai/gpt-6-luna` (`agentic-v1` with `TINYHUMANS_TOKEN`) | the model that performs a rescue |
-| `TINYCOMPUTER_PLANNER_MODEL` | the engine's default (`agentic-v1` with `TINYHUMANS_TOKEN`) | the model asked to plan the flow |
+| `TINYCOMPUTER_RESCUE_MODEL` | `openai/gpt-6-luna` (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model that performs a rescue |
+| `TINYCOMPUTER_PLANNER_MODEL` | the engine's default (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model asked to plan the flow |
 
 **Optional, the browser:**
 
@@ -132,6 +132,7 @@ they control.
 | `TINYCOMPUTER_BROWSER_PERCEPTION` | `sight` (default) or `tree`: how pages are read |
 | `TINYCOMPUTER_BROWSER_ENDPOINT` | attach to a running Chrome (e.g. `http://127.0.0.1:9222`) instead of launching one |
 | `TASK_HEADED` | `1` shows the browser the task launches instead of running it headless; a headed run needs a display, so it runs on the host |
+| `TASK_INTERACTIVE` | `1` waits for you at the terminal where only a person can go on, instead of ending the run: approve or decline an irreversible action, log in or solve a captcha in the browser and press Enter, type a detail the task lacks, finish on a payment page before the browser closes; end of input answers no |
 
 All but the endpoint and `TASK_HEADED` become the module's `browser`
 configuration; those two become the task's `constraints.browser_endpoint`
@@ -151,8 +152,10 @@ the running binary or at `TINYCOMPUTER_CURSOR_OVERLAY`.
 
 Under `TASK_OUT` (`target/task-live/<name>` when run through `tasks/run`),
 you get `plan.json` (the flow the planner wrote, if you didn't supply
-`FLOW_FILE`), `report.json` (every step, its outcome, and its note), and
-`final.png` (a screenshot of wherever the browser ended up). `task_live`
+`FLOW_FILE`), `report.json` (every step, its outcome, and its note),
+`records.json` (what the task read, wherever it stopped, also printed as
+`read <name>: <value>` lines), and `final.png` (a screenshot of wherever
+the browser ended up). `task_live`
 prints the task's status as it runs and treats stopping at a checkpoint
 whose reason mentions payment as success (`PASS stopped at payment`);
 anything else, including finishing without ever reaching that checkpoint,

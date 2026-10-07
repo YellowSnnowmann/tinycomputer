@@ -64,7 +64,16 @@ fn sight_reads_the_page_and_its_refs_reach_their_marks() {
     let link = screen.candidates[1].clone();
     let reply = surface.execute(JevOperation::Click, Some(link), None);
     assert!(reply.ok, "{:?}", reply.error);
-    let script = fake.last("evaluate")["script"].as_str().unwrap().to_owned();
+    // A link's press is then checked for having gone anywhere, by a later
+    // script: the card's click-through is the one that reads the point.
+    let script = fake
+        .sent()
+        .iter()
+        .filter(|command| command["action"] == "evaluate")
+        .filter_map(|command| command["script"].as_str())
+        .find(|script| script.contains("elementsFromPoint"))
+        .unwrap()
+        .to_owned();
     assert!(
         script.ends_with(r#"(60, 40, "", "[data-tc-seen=\"2\"]")"#),
         "{script}"

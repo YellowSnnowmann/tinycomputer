@@ -72,5 +72,5 @@ fn an_option_that_is_not_native_is_pressed_as_a_control() {
             .ok
     );
     assert!(fake.actions().iter().any(|action| action == "click"));
-    assert!(!fake.actions().iter().any(|action| action == "evaluate"));
+    assert!(!fake.evaluated_besides_keeping_the_tab());
 }

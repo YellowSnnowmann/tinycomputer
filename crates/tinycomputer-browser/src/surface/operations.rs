@@ -9,11 +9,12 @@ use tinycomputer_bus::{DesktopError, DesktopResponse, JevOperation};
 use tinycomputer_core::surface::{Candidate, Depth, Screen, Surface, uses_pointer};
 use tinycomputer_core::{Key, Platform};
 
-use super::card::selects_on_click;
-use super::envelope::{covered, failure, not_a_text_field, reply};
+use crate::error::Error;
+
+use super::envelope::{failure, not_a_text_field, reply};
 use super::sight;
 use super::{BrowserSurface, Perception};
-use super::{NETWORK_IDLE_MS, SETTLE_MS, SKELETON_DEPTH, tree};
+use super::{NETWORK_IDLE_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, tree};
 
 impl Surface for BrowserSurface {
     fn observe(
@@ -37,7 +38,16 @@ impl Surface for BrowserSurface {
         };
         let snapshot = self
             .ensure_session()
-            .and_then(|id| self.block(self.browser.snapshot(&id, request)))
+            .and_then(|id| {
+                let reading = self.browser.snapshot(&id, request);
+                self.block(async { tokio::time::timeout(READ_TIMEOUT, reading).await })
+                    .unwrap_or_else(|_| {
+                        Err(Error::timeout(
+                            "snapshot",
+                            u64::try_from(READ_TIMEOUT.as_millis()).unwrap_or(u64::MAX),
+                        ))
+                    })
+            })
             .map_err(|error| Box::new(failure("snapshot", &error)))?;
         let mut screen = tree::screen(&snapshot.tree, &snapshot.title);
         if !app.is_empty() {
@@ -78,29 +88,11 @@ impl Surface for BrowserSurface {
             return reply;
         }
         match operation {
-            JevOperation::Click | JevOperation::Expand | JevOperation::Collapse => {
-                let reply = targeted("click", |target, _| Action::Click {
-                    target,
-                    new_tab: false,
-                });
-                let name = target.as_ref().and_then(|node| node.name.as_deref());
-                let reply = match (&reference, name) {
-                    (Some(reference), name)
-                        if covered(&reply) && (name.is_some() || sight::is_seen(reference)) =>
-                    {
-                        self.click_through_own_card(reference, name.unwrap_or_default())
-                            .unwrap_or(reply)
-                    }
-                    _ => reply,
-                };
-                if reply.ok
-                    && let (Some(reference), Some(node)) = (&reference, &target)
-                    && selects_on_click(node)
-                    && sight::is_seen(reference)
-                {
-                    self.select_if_ignored(reference);
-                }
-                reply
+            JevOperation::Click => self.press_element(target.as_ref(), reference.as_deref(), true),
+            // Opening or closing in place goes nowhere by design: never
+            // followed as a link that ignored its press.
+            JevOperation::Expand | JevOperation::Collapse => {
+                self.press_element(target.as_ref(), reference.as_deref(), false)
             }
             // Without a target the text goes where the focus is, as into an
             // autocomplete's unnamed input once it has been opened — but
@@ -256,10 +248,16 @@ impl Surface for BrowserSurface {
     fn navigate(&self, url: &str) -> DesktopResponse {
         let page = self
             .ensure_session()
-            .and_then(|id| self.block(self.browser.navigate(&id, NavigateRequest::new(url))));
+            .and_then(|id| self.block(self.browser.navigate(&id, NavigateRequest::new(url))))
+            .map(|page| (page.url, page.title));
+        // A heavy page can be read long before its `load` event fires.
+        let page = match page {
+            Err(error @ Error::Timeout { .. }) => self.drawn_page(url).ok_or(error),
+            other => other,
+        };
         reply(
             "navigate",
-            page.map(|page| json!({"url": page.url, "title": page.title})),
+            page.map(|(url, title)| json!({"url": url, "title": title})),
         )
     }
 
