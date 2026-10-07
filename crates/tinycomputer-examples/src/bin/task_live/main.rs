@@ -91,12 +91,16 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use tinycomputer_bus::Flow;
 use tinycomputer_bus::agent::{
     PlanTaskRequest, StartTaskRequest, SurfaceKind, TaskBudget, TaskConstraints, TaskOutput,
 };
-use tinycomputer_bus::{Flow, GroundingHint};
 use tinycomputer_examples::host::{Host, LabError, jev_config, module_path};
 use tinycomputer_examples::task::{Person, Terminal, conclude, follow, passed};
+
+mod saved;
+
+use saved::{read_memory, record_plan, remember};
 
 #[tokio::main]
 async fn main() -> Result<(), LabError> {
@@ -111,15 +115,17 @@ async fn main() -> Result<(), LabError> {
     };
     let kind = surface_kind()?;
 
-    let host = Host::load(&module_path(), module_config()?).await?;
     // `TASK_PLAN=in-task` leaves planning to `StartTask`, as `OpenHuman` does,
     // so the module can open the browser while it plans.
-    let in_task = std::env::var("TASK_PLAN").is_ok_and(|value| value.trim() == "in-task");
+    let in_task = in_task(std::env::var("TASK_PLAN").ok().as_deref())?;
+    let host = Host::load(&module_path(), module_config()?).await?;
     let flow = match std::env::var("FLOW_FILE") {
         Ok(path) => Some(serde_json::from_str(&std::fs::read_to_string(path)?)?),
         Err(_) if in_task => None,
         Err(_) => Some(plan(&host, &task, &facts, &secret_facts, kind, &out).await?),
     };
+    // A given flow is no plan the task drafted.
+    let drafted_in_task = flow.is_none();
     // The task travels with the flow, so every Jev question is briefed on it.
     // Sessions open before the task are not its own, and `conclude` leaves
     // them alone.
@@ -168,7 +174,7 @@ async fn main() -> Result<(), LabError> {
         .then_some(&Terminal as &dyn Person);
     let view = follow(&host, view, &BTreeMap::new(), limit, person).await?;
     conclude(&host, &view, &before, &out).await?;
-    if in_task {
+    if drafted_in_task {
         record_plan(&out)?;
     }
     if let Some(path) = &memory_file {
@@ -199,17 +205,8 @@ fn module_config() -> Result<Value, LabError> {
             browser.insert(field.to_owned(), json!(value.trim()));
         }
     }
-    match optional("TINYCOMPUTER_BROWSER_PRELAUNCH")
-        .as_deref()
-        .map(str::trim)
-    {
-        Some("0") => {
-            browser.insert("prelaunch".to_owned(), json!(false));
-        }
-        Some("1") => {
-            browser.insert("prelaunch".to_owned(), json!(true));
-        }
-        _ => {}
+    if let Some(prelaunch) = prelaunch(optional("TINYCOMPUTER_BROWSER_PRELAUNCH").as_deref())? {
+        browser.insert("prelaunch".to_owned(), json!(prelaunch));
     }
     for (variable, field) in [
         ("TINYCOMPUTER_BROWSER_PERCEPTION", "perception"),
@@ -341,6 +338,29 @@ fn read_facts(text: &str) -> Result<(BTreeMap<String, String>, Vec<String>), Lab
     Ok((facts, secret))
 }
 
+/// Whether `TASK_PLAN`'s `value` leaves planning to the task: `in-task`
+/// does, and no value does not.
+fn in_task(value: Option<&str>) -> Result<bool, LabError> {
+    match value.map(str::trim) {
+        None | Some("") => Ok(false),
+        Some("in-task") => Ok(true),
+        Some(other) => Err(format!("TASK_PLAN must be `in-task`, not `{other}`").into()),
+    }
+}
+
+/// The module's `prelaunch` from `TINYCOMPUTER_BROWSER_PRELAUNCH`'s `value`:
+/// `0` or `1`, or the module's own default when unset.
+fn prelaunch(value: Option<&str>) -> Result<Option<bool>, LabError> {
+    match value.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some("0") => Ok(Some(false)),
+        Some("1") => Ok(Some(true)),
+        Some(other) => {
+            Err(format!("TINYCOMPUTER_BROWSER_PRELAUNCH must be `0` or `1`, not `{other}`").into())
+        }
+    }
+}
+
 fn env(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|_| format!("{name} is not set"))
 }
@@ -373,56 +393,6 @@ async fn plan(
     }
     std::fs::write(out.join("plan.json"), &text)?;
     Ok(plan.flow)
-}
-
-/// Writes the flow a task planned for itself (`TASK_PLAN=in-task`) to
-/// `plan.json` beside its report, as a plan drafted first would be.
-fn record_plan(out: &std::path::Path) -> Result<(), LabError> {
-    let report: Value = serde_json::from_str(&std::fs::read_to_string(out.join("report.json"))?)?;
-    if let Some(flow) = report.get("flow").filter(|flow| !flow.is_null()) {
-        let text = serde_json::to_string_pretty(flow)?;
-        println!("plan (drafted inside the task):\n{text}");
-        std::fs::write(out.join("plan.json"), text)?;
-    }
-    Ok(())
-}
-
-/// The grounding hints saved at `path`: none when it does not exist yet.
-fn read_memory(path: &std::path::Path) -> Result<Vec<GroundingHint>, LabError> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => Ok(serde_json::from_str(&text)?),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(error) => Err(error.into()),
-    }
-}
-
-/// `kept` with what a run `learned`: a hint for the same element (the same
-/// application and key) gives way to the newer one, and the rest keep their
-/// order.
-fn merge_memory(kept: Vec<GroundingHint>, learned: Vec<GroundingHint>) -> Vec<GroundingHint> {
-    let mut merged = kept
-        .into_iter()
-        .filter(|hint| {
-            !learned
-                .iter()
-                .any(|new| new.app == hint.app && new.key == hint.key)
-        })
-        .collect::<Vec<_>>();
-    merged.extend(learned);
-    merged
-}
-
-/// Saves what the task's report learned into the memory at `path`, beside
-/// what it already held.
-fn remember(out: &std::path::Path, path: &std::path::Path) -> Result<(), LabError> {
-    let report: Value = serde_json::from_str(&std::fs::read_to_string(out.join("report.json"))?)?;
-    let learned: Vec<GroundingHint> = match report.get("learned") {
-        Some(learned) => serde_json::from_value(learned.clone())?,
-        None => Vec::new(),
-    };
-    let merged = merge_memory(read_memory(path)?, learned);
-    std::fs::write(path, serde_json::to_string_pretty(&merged)?)?;
-    Ok(())
 }
 
 #[cfg(test)]

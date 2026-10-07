@@ -114,13 +114,13 @@ they control.
 | Variable | Default | For |
 |---|---|---|
 | `FLOW_FILE` | unset | run this flow instead of asking the planner for one |
-| `TASK_PLAN` | unset | `in-task` hands the task to `StartTask` to plan, as OpenHuman does, rather than planning it first with `PlanTask`; the plan is printed and saved to `plan.json` when the task stops |
+| `TASK_PLAN` | unset | `in-task` hands the task to `StartTask` to plan, as OpenHuman does, rather than planning it first with `PlanTask`; the plan is printed and saved to `plan.json` when the task stops (not with `FLOW_FILE`, which gives the flow). Any other value is refused |
 | `TASK_OUT` | `target/task-live` | where the plan, report, and a final screenshot are written |
 | `TINYCOMPUTER_FLOW_STRATEGY` | `narrow` | `narrow` or `wide` asking; see [`specs/jev-wide-turns.md`](../../technical/specs/jev-wide-turns.md) |
 | `TINYCOMPUTER_FLOW_DELIBERATION` | `deep` | `deep`, `standard`, or `off` |
 | `TASK_MAX_MINUTES` | `20` | the task is cancelled after this long |
 | `TASK_RESCUES` | `5` | how many failed steps a reasoning model may rescue (`0` turns rescues off); see [rescue](../../rescue.md) |
-| `TASK_MEMORY` | unset | a JSON file of grounding hints: the task starts with the elements earlier runs learned (`StartTask`'s `memory`), so a remembered one is confirmed rather than searched for, and what this run learns is saved back; unset, every run starts fresh |
+| `TASK_MEMORY` | unset | a JSON file of grounding hints: the task starts with the elements earlier runs learned (`StartTask`'s `memory`), so a remembered one is confirmed rather than searched for, and what this run learns is saved back (its folder made when missing); unset, every run starts fresh |
 | `TINYCOMPUTER_RESCUE_MODEL` | `openai/gpt-6-luna` (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model that performs a rescue |
 | `TINYCOMPUTER_PLANNER_MODEL` | the engine's default (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model asked to plan the flow |
 
@@ -132,7 +132,7 @@ they control.
 | `TINYCOMPUTER_BROWSER_USER_AGENT` | the user agent it announces |
 | `TINYCOMPUTER_BROWSER_ARGS` | space-separated extra launch arguments |
 | `TINYCOMPUTER_BROWSER_PERCEPTION` | `sight` (default) or `tree`: how pages are read |
-| `TINYCOMPUTER_BROWSER_PRELAUNCH` | `0` opens the browser at the first step rather than while the task plans itself (with `TASK_PLAN=in-task`), as it does by default; `1` asks for the default (the module's `browser.prelaunch`) |
+| `TINYCOMPUTER_BROWSER_PRELAUNCH` | `0` opens the browser at the first step rather than while the task plans itself (with `TASK_PLAN=in-task`), as it does by default; `1` asks for the default (the module's `browser.prelaunch`); any other value is refused |
 | `TINYCOMPUTER_BROWSER_SETTLE` | `prompt` (default) or `steady`: how long a page is let settle after an action (see the module's `browser.settle`) |
 | `TINYCOMPUTER_BROWSER_ENDPOINT` | attach to a running Chrome (e.g. `http://127.0.0.1:9222`) instead of launching one |
 | `TASK_HEADED` | `1` shows the browser the task launches instead of running it headless; a headed run needs a display, so it runs on the host |
