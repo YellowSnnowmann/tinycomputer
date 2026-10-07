@@ -268,4 +268,6 @@ async fn the_open_router_planner_needs_a_key_and_never_prints_it() {
 }
 
 #[cfg(feature = "planner")]
+mod retry_tests;
+#[cfg(feature = "planner")]
 mod route_tests;

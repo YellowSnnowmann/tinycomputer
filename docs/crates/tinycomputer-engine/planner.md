@@ -91,9 +91,12 @@ route. This is the only file in the crate that links a text-generating model
 at all: the keys it is given in the module's private configuration never
 leave this one adapter. Every call is streamed and gathered into one reply:
 Tiny Humans' gateway answers HTTP 504 to a request that sends nothing back
-for 60 seconds, and a reasoning model's whole reply can take longer. It
-builds all three of the crate's language-model helpers, not just
-the planner:
+for 60 seconds, and a reasoning model's whole reply can take longer. A call
+that fails in passing (a server error, a rate limit that is not a spending
+cap, a dropped connection) is tried up to 4 times, 1, 2, then 4 seconds
+apart: live, one 502 from the gateway ended a task at its plan. A refused key
+or a rejected request is not tried again. It builds all three of the crate's
+language-model helpers, not just the planner:
 
 ```rust
 pub fn open_router(config: &PlannerConfig) -> Result<Planner, String>
