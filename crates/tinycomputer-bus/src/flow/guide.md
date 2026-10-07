@@ -155,7 +155,9 @@ do.
    buttons only once the item is in the cart, so to buy more than one,
    add the item first and raise its count in the next step; a − count +
    stepper where the add button was means the item is in the cart with
-   that count. A
+   that count. To report the price of one, `read` it before raising the
+   count: after that, the item's line and the cart show the total for all
+   of them, and a cart often shows no price for one. A
    `pick` opens a whole result card; to press one of several buttons inside
    the cards (a time or a slot listed under each place), use a plain step
    that names it ("press the earliest time listed"). A dialog's headings
