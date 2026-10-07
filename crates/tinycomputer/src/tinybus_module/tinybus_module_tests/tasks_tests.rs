@@ -205,3 +205,36 @@ async fn the_runner_journals_time_outside_a_tasks_flows_into_its_journal() {
     crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser())
         .journal(None, "plan", json!({}));
 }
+
+#[tokio::test]
+async fn the_runner_opens_no_browser_early_unless_told_to_prelaunch() {
+    use tinycomputer_bus::agent::{TaskConstraints, TaskId};
+    use tinycomputer_engine::FlowRunner;
+
+    let browser = std::sync::Arc::new(tinycomputer_browser::Browser::new(std::sync::Arc::new(
+        tinycomputer_browser::AgentBrowser,
+    )));
+    let mut runner =
+        crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser);
+    runner
+        .prepare(&TaskId::new("t-1"), &TaskConstraints::default())
+        .await;
+    assert!(
+        runner.workspaces.lock().unwrap().is_empty(),
+        "nothing is made ready unless browser.prelaunch asks"
+    );
+
+    // Asked to, it makes the task's workspace ready; one without a browser
+    // has none to open.
+    runner.defaults.prelaunch = true;
+    runner
+        .prepare(
+            &TaskId::new("t-2"),
+            &TaskConstraints {
+                surfaces: vec![tinycomputer_bus::agent::SurfaceKind::Desktop],
+                ..TaskConstraints::default()
+            },
+        )
+        .await;
+    assert_eq!(runner.workspaces.lock().unwrap().len(), 1);
+}

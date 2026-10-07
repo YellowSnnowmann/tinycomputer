@@ -6,7 +6,7 @@
 //! a desktop `user_agent` and launch `args` once here rather than on every
 //! request.
 
-use tinycomputer_browser::{CursorPace, Perception, ScreenCursor, SessionOptions};
+use tinycomputer_browser::{CursorPace, Perception, ScreenCursor, SessionOptions, Settle};
 
 use crate::Result;
 
@@ -22,12 +22,19 @@ pub(crate) struct BrowserDefaults {
     pub(crate) args: Vec<String>,
     /// How a task reads a page: by sight (the default) or the tree alone.
     pub(crate) perception: Perception,
+    /// How a task lets a page settle after an action: `steady` (the
+    /// default) or `prompt`.
+    pub(crate) settle: Settle,
+    /// Whether a browser-only task's browser opens while its plan is
+    /// drafted, rather than at its first step.
+    pub(crate) prelaunch: bool,
 }
 
 impl BrowserDefaults {
     /// Reads the optional `browser` object: `executable` and `user_agent`
-    /// strings, `args` an array of strings, and `perception` either `sight`
-    /// or `tree`.
+    /// strings, `args` an array of strings, `perception` either `sight` or
+    /// `tree`, `settle` either `steady` or `prompt`, and `prelaunch` a
+    /// boolean.
     ///
     /// # Errors
     ///
@@ -41,7 +48,8 @@ impl BrowserDefaults {
         let invalid = || crate::Error::ConfigFieldType {
             field: "browser",
             expected: "an object with optional `executable` and `user_agent` strings, an `args` \
-                       array of strings, and a `perception` of sight or tree",
+                       array of strings, a `perception` of sight or tree, a `settle` of \
+                       steady or prompt, and a `prelaunch` boolean",
         };
         let browser = browser.as_object().ok_or_else(invalid)?;
         let text = |name: &str| match browser.get(name) {
@@ -67,10 +75,27 @@ impl BrowserDefaults {
             Some("tree") => Perception::Tree,
             Some(_) => return Err(invalid()),
         };
-        if browser
-            .keys()
-            .any(|key| !["executable", "user_agent", "args", "perception"].contains(&key.as_str()))
-        {
+        defaults.settle = match text("settle")?.as_deref() {
+            None | Some("steady") => Settle::Steady,
+            Some("prompt") => Settle::Prompt,
+            Some(_) => return Err(invalid()),
+        };
+        defaults.prelaunch = match browser.get("prelaunch") {
+            None => false,
+            Some(serde_json::Value::Bool(prelaunch)) => *prelaunch,
+            Some(_) => return Err(invalid()),
+        };
+        if browser.keys().any(|key| {
+            ![
+                "executable",
+                "user_agent",
+                "args",
+                "perception",
+                "settle",
+                "prelaunch",
+            ]
+            .contains(&key.as_str())
+        }) {
             return Err(invalid());
         }
         Ok(defaults)

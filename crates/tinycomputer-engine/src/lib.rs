@@ -44,13 +44,14 @@ pub use agentic::{
 pub use planner::{Completion, LanguageModel, ModelUse, Planner, REPAIRS, Role, Turn};
 #[cfg(feature = "planner")]
 pub use planner::{
-    ModelRoute, OPEN_ROUTER_BASE_URL, OUTPUT_MODEL, PLANNER_MODEL, PlannerConfig, RESCUE_MODEL,
-    TINYHUMANS_BASE_URL, open_router, open_router_rescuer, open_router_shaper,
+    ModelRoute, OPEN_ROUTER_BASE_URL, OUTPUT_MODEL, PLANNER_MODEL, PlanReasoning, PlannerConfig,
+    RESCUE_MODEL, TINYHUMANS_BASE_URL, open_router, open_router_rescuer, open_router_shaper,
 };
 pub use rescue::{Briefing, Guidance, MAX_RESCUE_STEPS, MAX_RESCUES, Rescuer, SCREEN_CHARS};
 pub use shape::{Harvest, RECORDS_CHARS, Shaper};
 pub use task::{
-    CaptureFuture, FlowFuture, FlowRunner, MAX_AWAIT_MS, MAX_TASKS, Tasks, TextFuture, capabilities,
+    CaptureFuture, FlowFuture, FlowRunner, MAX_AWAIT_MS, MAX_TASKS, PrepareFuture, Tasks,
+    TextFuture, capabilities,
 };
 pub use tinycomputer_bus::DesktopResponse;
 use tinycomputer_desktop::Desktop;

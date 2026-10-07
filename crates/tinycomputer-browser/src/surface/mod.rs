@@ -72,6 +72,28 @@ pub enum Perception {
     Tree,
 }
 
+/// How a [`BrowserSurface`] lets the page settle after an action, before
+/// the page is read again.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Settle {
+    /// Wait for the network to go idle — 500 ms with nothing in flight,
+    /// counted only after a first quiet receive window, so at least about
+    /// 1.1 s — then pause [`SETTLE_MS`] more.
+    #[default]
+    Steady,
+    /// Wait for the network to go quiet, counting the 500 ms from the start,
+    /// then only until the page stops changing: no DOM change for
+    /// [`STILL_MS`] and no finite CSS animation running, over at least two
+    /// drawn frames, at most [`SETTLE_MS`].
+    /// An idle page is read again after about 0.6 s instead of 1.6 s; a busy
+    /// one still waits for its requests.
+    Prompt,
+}
+
+/// How long the page must go without a DOM change, under [`Settle::Prompt`],
+/// to count as still.
+const STILL_MS: u64 = 120;
+
 /// One browser session, lazily opened, as a [`Surface`].
 #[derive(Clone)]
 pub struct BrowserSurface {
@@ -82,6 +104,7 @@ pub struct BrowserSurface {
     platform: Platform,
     cursor: Arc<ScreenCursor>,
     perception: Perception,
+    settle: Settle,
     denoised: Arc<Mutex<Denoised>>,
 }
 
@@ -93,6 +116,7 @@ impl std::fmt::Debug for BrowserSurface {
             .field("platform", &self.platform)
             .field("cursor", &self.cursor)
             .field("perception", &self.perception)
+            .field("settle", &self.settle)
             .finish_non_exhaustive()
     }
 }
@@ -115,8 +139,17 @@ impl BrowserSurface {
             platform: Platform::current(),
             cursor: Arc::new(ScreenCursor::off()),
             perception: Perception::default(),
+            settle: Settle::default(),
             denoised: Arc::new(Mutex::new(Denoised::default())),
         }
+    }
+
+    /// The same surface, settling after an action with `settle`
+    /// ([`Settle::Steady`] unless told otherwise).
+    #[must_use]
+    pub fn with_settle(mut self, settle: Settle) -> Self {
+        self.settle = settle;
+        self
     }
 
     /// The same surface, reading pages with `perception`
@@ -135,6 +168,14 @@ impl BrowserSurface {
     pub fn with_cursor(mut self, cursor: Arc<ScreenCursor>) -> Self {
         self.cursor = cursor;
         self
+    }
+
+    /// Opens the session now, if it is not open yet, rather than at the first
+    /// call that needs it: a task that will run on the browser can open it
+    /// while its plan is drafted. Whether the session is open.
+    #[must_use]
+    pub fn open(&self) -> bool {
+        self.ensure_session().is_ok()
     }
 
     /// The session this surface drives, once one is open.

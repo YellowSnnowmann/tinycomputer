@@ -22,6 +22,11 @@
 //!   a string, or `{"value": "...", "secret": true}` to keep it secret; a
 //!   card number or passport number is secret anyway.
 //! - `FLOW_FILE` — optional: run this flow instead of planning one.
+//! - `TASK_PLAN` — optional: `in-task` hands the task to `StartTask` to plan,
+//!   as `OpenHuman` does, rather than planning it first with `PlanTask`; the
+//!   plan is printed and saved once the task stops.
+//! - `TINYCOMPUTER_BROWSER_PRELAUNCH` — optional: `1` opens a browser-only
+//!   task's browser while the task plans itself (with `TASK_PLAN=in-task`).
 //! - `TASK_OUT` — optional: where the plan, report, and final screenshot go
 //!   (default `target/task-live`).
 //! - `OUTPUT_FILE` — optional: a JSON `TaskOutput` (`instructions` and a
@@ -39,6 +44,8 @@
 //! - `TASK_MAX_MINUTES` — optional: cancel the task after this long (20).
 //! - `TASK_RESCUES` — optional: how many failed steps the reasoning model
 //!   may rescue (0 to 5, default 5; 0 turns rescues off).
+//! - `TINYCOMPUTER_PLAN_REASONING` — optional: `off` asks the planner's model
+//!   not to reason before it plans (the module's `planner.plan_reasoning`).
 //! - `TINYCOMPUTER_RESCUE_MODEL` — optional: the model that rescues them
 //!   (`openai/gpt-6-luna` by default on `OpenRouter`,
 //!   `openrouter/deepseek/deepseek-v4-flash` on Tiny Humans).
@@ -49,8 +56,10 @@
 //!   (`OPENROUTER_API_KEY`, or `TINYHUMANS_TOKEN`).
 //! - `TINYCOMPUTER_BROWSER_EXECUTABLE`, `TINYCOMPUTER_BROWSER_USER_AGENT`, and
 //!   `TINYCOMPUTER_BROWSER_ARGS` (space-separated) — how the browser
-//!   launches, and `TINYCOMPUTER_BROWSER_PERCEPTION` (`sight` or `tree`) how
-//!   pages are read; all passed as the module's `browser` configuration.
+//!   launches, `TINYCOMPUTER_BROWSER_PERCEPTION` (`sight` or `tree`) how
+//!   pages are read, and `TINYCOMPUTER_BROWSER_SETTLE` (`steady` or
+//!   `prompt`) how a page settles after an action; all passed as the
+//!   module's `browser` configuration.
 //! - `TASK_CURSOR` — optional: the agent's on-screen cursor pace (`off`,
 //!   `brisk`, `natural`, `calm`; default `natural`). It is drawn by the
 //!   `tinycomputer-cursor-overlay` helper, which the module finds beside
@@ -99,9 +108,13 @@ async fn main() -> Result<(), LabError> {
     let kind = surface_kind()?;
 
     let host = Host::load(&module_path(), module_config()?).await?;
+    // `TASK_PLAN=in-task` leaves planning to `StartTask`, as `OpenHuman` does,
+    // so the module can open the browser while it plans.
+    let in_task = std::env::var("TASK_PLAN").is_ok_and(|value| value.trim() == "in-task");
     let flow = match std::env::var("FLOW_FILE") {
-        Ok(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
-        Err(_) => plan(&host, &task, &facts, &secret_facts, kind, &out).await?,
+        Ok(path) => Some(serde_json::from_str(&std::fs::read_to_string(path)?)?),
+        Err(_) if in_task => None,
+        Err(_) => Some(plan(&host, &task, &facts, &secret_facts, kind, &out).await?),
     };
     // The task travels with the flow, so every Jev question is briefed on it.
     // Sessions open before the task are not its own, and `conclude` leaves
@@ -110,7 +123,7 @@ async fn main() -> Result<(), LabError> {
     let view = host
         .start_task(&StartTaskRequest {
             task: Some(task.clone()),
-            flow: Some(flow),
+            flow,
             facts,
             secret_facts,
             constraints: TaskConstraints {
@@ -146,6 +159,9 @@ async fn main() -> Result<(), LabError> {
         .then_some(&Terminal as &dyn Person);
     let view = follow(&host, view, &BTreeMap::new(), limit, person).await?;
     conclude(&host, &view, &before, &out).await?;
+    if in_task {
+        record_plan(&out)?;
+    }
     host.shutdown();
     if passed(&view.status) {
         println!(
@@ -171,10 +187,18 @@ fn module_config() -> Result<Value, LabError> {
             browser.insert(field.to_owned(), json!(value.trim()));
         }
     }
-    if let Some(perception) = optional("TINYCOMPUTER_BROWSER_PERCEPTION") {
-        let perception = perception.trim().to_ascii_lowercase();
-        if !perception.is_empty() {
-            browser.insert("perception".to_owned(), json!(perception));
+    if optional("TINYCOMPUTER_BROWSER_PRELAUNCH").is_some_and(|value| value.trim() == "1") {
+        browser.insert("prelaunch".to_owned(), json!(true));
+    }
+    for (variable, field) in [
+        ("TINYCOMPUTER_BROWSER_PERCEPTION", "perception"),
+        ("TINYCOMPUTER_BROWSER_SETTLE", "settle"),
+    ] {
+        if let Some(value) = optional(variable) {
+            let value = value.trim().to_ascii_lowercase();
+            if !value.is_empty() {
+                browser.insert(field.to_owned(), json!(value));
+            }
         }
     }
     if let Some(args) = optional("TINYCOMPUTER_BROWSER_ARGS") {
@@ -233,7 +257,7 @@ fn routes(var: &dyn Fn(&str) -> Option<String>) -> Result<(Value, Value), LabErr
             "rescue_model": model("TINYCOMPUTER_RESCUE_MODEL"),
             "output_model": model("TINYCOMPUTER_OUTPUT_MODEL"),
         });
-        return Ok((decisions(var, jev)?, planner));
+        return Ok((decisions(var, jev)?, plan_reasoning(var, planner)));
     }
     let key = var("OPENROUTER_API_KEY").ok_or_else(|| {
         std::io::Error::other("neither OPENROUTER_API_KEY nor TINYHUMANS_TOKEN is exported")
@@ -244,7 +268,22 @@ fn routes(var: &dyn Fn(&str) -> Option<String>) -> Result<(Value, Value), LabErr
         "rescue_model": var("TINYCOMPUTER_RESCUE_MODEL"),
         "output_model": var("TINYCOMPUTER_OUTPUT_MODEL"),
     });
-    Ok((decisions(var, jev_config(key, None)?)?, planner))
+    Ok((
+        decisions(var, jev_config(key, None)?)?,
+        plan_reasoning(var, planner),
+    ))
+}
+
+/// `planner` with `plan_reasoning` from `TINYCOMPUTER_PLAN_REASONING`
+/// (`off` plans without the model reasoning first), when it is set.
+fn plan_reasoning(var: &dyn Fn(&str) -> Option<String>, mut planner: Value) -> Value {
+    if let Some(reasoning) = var("TINYCOMPUTER_PLAN_REASONING")
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+    {
+        planner["plan_reasoning"] = json!(reasoning);
+    }
+    planner
 }
 
 /// Who takes the flow's decisions, as the module's `jev` configuration:
@@ -328,6 +367,18 @@ async fn plan(
     }
     std::fs::write(out.join("plan.json"), &text)?;
     Ok(plan.flow)
+}
+
+/// Writes the flow a task planned for itself (`TASK_PLAN=in-task`) to
+/// `plan.json` beside its report, as a plan drafted first would be.
+fn record_plan(out: &std::path::Path) -> Result<(), LabError> {
+    let report: Value = serde_json::from_str(&std::fs::read_to_string(out.join("report.json"))?)?;
+    if let Some(flow) = report.get("flow").filter(|flow| !flow.is_null()) {
+        let text = serde_json::to_string_pretty(flow)?;
+        println!("plan (drafted inside the task):\n{text}");
+        std::fs::write(out.join("plan.json"), text)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

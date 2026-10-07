@@ -187,3 +187,32 @@ fn each_model_reports_its_route_and_model_for_describe() {
         ))
     );
 }
+
+#[test]
+fn a_plan_may_ask_the_model_not_to_reason_first() {
+    use super::super::PlanReasoning;
+    use super::super::hosted::plan_options;
+
+    assert_eq!(
+        config(json!({"api_key": "k"})).plan_reasoning,
+        PlanReasoning::Default
+    );
+    assert_eq!(
+        config(json!({"api_key": "k", "plan_reasoning": "off"})).plan_reasoning,
+        PlanReasoning::Off
+    );
+    assert!(
+        serde_json::from_value::<PlannerConfig>(json!({"api_key": "k", "plan_reasoning": "brief"}))
+            .is_err(),
+        "an unknown setting is refused, not ignored"
+    );
+    assert_eq!(
+        plan_options(PlanReasoning::Default),
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        plan_options(PlanReasoning::Off),
+        json!({"reasoning": {"enabled": false}})
+    );
+    assert!(open_router(&config(json!({"api_key": "k", "plan_reasoning": "off"}))).is_ok());
+}

@@ -30,8 +30,8 @@ use tinycomputer_core::is_sensitive_name;
 
 #[cfg(feature = "planner")]
 pub use config::{
-    ModelRoute, OPEN_ROUTER_BASE_URL, OUTPUT_MODEL, PLANNER_MODEL, PlannerConfig, RESCUE_MODEL,
-    TINYHUMANS_BASE_URL,
+    ModelRoute, OPEN_ROUTER_BASE_URL, OUTPUT_MODEL, PLANNER_MODEL, PlanReasoning, PlannerConfig,
+    RESCUE_MODEL, TINYHUMANS_BASE_URL,
 };
 #[cfg(feature = "planner")]
 pub use hosted::{open_router, open_router_rescuer, open_router_shaper};

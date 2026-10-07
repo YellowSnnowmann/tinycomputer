@@ -55,9 +55,11 @@ against a scripted engine, so no browser is launched.
 The module takes its configuration from the loader as a JSON object, parsed into
 `Desktop` by `Desktop::from_config`: `session_id` and `trace_path` as strings,
 `trace_strict` and `headed` as booleans. `browser` sets how every browser
-launches — `executable`, `user_agent`, `args`, and a task's page
-`perception` — and `cursor` sets the agent's on-screen cursor: a pace
-(`off`, `brisk`, `natural`, `calm`) or `{pace, overlay}` with the overlay
+launches — `executable`, `user_agent`, `args`, a task's page
+`perception`, how a page `settle`s after an action, and whether to
+`prelaunch` a planned browser task's browser — and `cursor` sets the
+agent's on-screen cursor: a pace (`off`, `brisk`, `natural`, `calm`) or
+`{pace, overlay}` with the overlay
 helper's path. An optional `jev` object configures the
 provider, model, endpoint, and API key before the service is registered.
 TinyBus treats initial and replacement module configuration as sensitive

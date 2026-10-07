@@ -10,7 +10,7 @@ use tinycomputer_browser::{
 use tinycomputer_bus::DesktopResponse;
 use tinycomputer_bus::agent::{SurfaceKind, TaskConstraints, TaskId};
 use tinycomputer_engine::{
-    CaptureFuture, FlowFuture, FlowRunner, JevRuntime, TextFuture, Workspace,
+    CaptureFuture, FlowFuture, FlowRunner, JevRuntime, PrepareFuture, TextFuture, Workspace,
 };
 
 use super::config::BrowserDefaults;
@@ -71,6 +71,7 @@ impl WorkspaceRunner {
                 )
                 .with_cursor(self.cursor.clone())
                 .with_perception(self.defaults.perception)
+                .with_settle(self.defaults.settle)
             });
             (Workspace::new(desktop, browser.clone()), browser)
         };
@@ -136,6 +137,25 @@ impl FlowRunner for WorkspaceRunner {
                 .screenshot(&session?, ScreenshotRequest::default())
                 .await
                 .ok()
+        })
+    }
+
+    fn prepare(&self, task: &TaskId, constraints: &TaskConstraints) -> PrepareFuture {
+        if !self.defaults.prelaunch {
+            return Box::pin(async {});
+        }
+        let _workspace = self.workspace(task, constraints);
+        let browser = self.workspaces.lock().ok().and_then(|workspaces| {
+            workspaces
+                .get(task)
+                .and_then(|(_, browser)| browser.clone())
+        });
+        Box::pin(async move {
+            if let Some(browser) = browser {
+                // Opening the session is what the first step would wait for;
+                // one that fails here fails again, and is reported, there.
+                let _opened = tokio::task::spawn_blocking(move || browser.open()).await;
+            }
         })
     }
 

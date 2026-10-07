@@ -154,3 +154,75 @@ async fn plan_task_drafts_without_acting() {
     assert_eq!(plans[0].1["ok"], false);
     assert_eq!(plans[0].1["error"], "down");
 }
+
+#[tokio::test]
+async fn a_browser_only_task_gets_its_browser_ready_while_it_is_planned() {
+    use tinycomputer_bus::agent::{SurfaceKind, TaskConstraints};
+
+    let mail = r#"{"app": "browser", "steps": [{"browse": "https://mail.test"}]}"#;
+    let (tasks, script) = planned(
+        vec![finished_run(FlowStopReason::Completed, vec![], &[], None)],
+        Ok(mail),
+    );
+    let started = tasks
+        .start(&StartTaskRequest {
+            task: Some("open my mail".to_owned()),
+            constraints: TaskConstraints {
+                surfaces: vec![SurfaceKind::Browser],
+                ..TaskConstraints::default()
+            },
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    assert!(matches!(
+        settle(&tasks, &started.id).await.status,
+        TaskStatus::Done { .. }
+    ));
+    assert_eq!(
+        *script.prepared.lock().unwrap(),
+        std::slice::from_ref(&started.id)
+    );
+
+    // A task that may also use the desktop could be planned for either, so
+    // nothing is opened before the plan says which.
+    let (tasks, script) = planned(
+        vec![finished_run(FlowStopReason::Completed, vec![], &[], None)],
+        Ok(mail),
+    );
+    let started = tasks
+        .start(&StartTaskRequest {
+            task: Some("open my mail".to_owned()),
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    settle(&tasks, &started.id).await;
+    assert!(script.prepared.lock().unwrap().is_empty());
+
+    // A plan that fails lets go of what was made ready for it.
+    let (tasks, script) = planned(Vec::new(), Err("the model is down"));
+    let started = tasks
+        .start(&StartTaskRequest {
+            task: Some("open my mail".to_owned()),
+            constraints: TaskConstraints {
+                surfaces: vec![SurfaceKind::Browser],
+                ..TaskConstraints::default()
+            },
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    assert!(matches!(
+        settle(&tasks, &started.id).await.status,
+        TaskStatus::Failed { .. }
+    ));
+    assert_eq!(
+        *script.prepared.lock().unwrap(),
+        std::slice::from_ref(&started.id)
+    );
+    assert_eq!(
+        *script.released.lock().unwrap(),
+        std::slice::from_ref(&started.id)
+    );
+}

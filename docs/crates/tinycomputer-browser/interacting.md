@@ -172,6 +172,17 @@ milliseconds regardless, giving a banner or menu that is mid-animation time
 to finish closing. A page that polls constantly in the background never
 goes properly idle, so the network wait is a cap, not a guarantee.
 
+That is `Settle::Steady`, the default. The engine's `networkidle` wait
+starts counting its 500 ms of quiet only after a first 600 ms receive
+window, so even an idle page costs about 1.1 s plus the pause: about 1.6 s
+an action, live. `Settle::Prompt` (the module's `browser.settle`) waits for
+`networkquiet` instead, which counts the 500 ms from the start, and then
+only while the page is still changing: it resolves once no DOM change has
+happened for `STILL_MS` = 120 milliseconds and no finite CSS animation or
+transition is running (a menu fading out changes no DOM node), over at
+least two drawn frames, and after `SETTLE_MS` at most. An endless spinner
+is not waited for, and a busy page still waits for its requests.
+
 ## Going back
 
 `Surface::back` maps straight to `Action::Back`, which agent-browser

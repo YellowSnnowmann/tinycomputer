@@ -274,6 +274,13 @@ questions, which the task reports as `needs_input` before anything runs.
 `PlanTask` is the dry run: it returns the flow and the questions without
 starting anything, so a caller can inspect or edit the plan first.
 
+A `StartTask` with a `task` and no `flow` plans inside the task. When the
+task may run only on the browser, its runner is asked to get the browser
+ready meanwhile (`FlowRunner::prepare`); with the module's
+`browser.prelaunch` on, the session opens while the plan is drafted, so the
+first step does not wait for Chrome to start. The planner's model reasons
+before it plans unless `planner.plan_reasoning` is `off`.
+
 ## Rescues
 
 When a top-level step fails and no person is needed, the task asks a

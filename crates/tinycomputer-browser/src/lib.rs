@@ -47,6 +47,6 @@ pub use error::{Error, Result};
 pub use linked::AgentBrowser;
 pub use outputs::SWEEP_INTERVAL;
 pub use sessions::{Browser, MAX_SESSIONS};
-pub use surface::{BrowserSurface, Denoised, Perception};
+pub use surface::{BrowserSurface, Denoised, Perception, Settle};
 pub use tinycomputer_bus::browser::*;
 pub use tinycomputer_cursor::{CursorPace, ProcessOverlay, ScreenCursor};

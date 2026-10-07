@@ -114,12 +114,14 @@ they control.
 | Variable | Default | For |
 |---|---|---|
 | `FLOW_FILE` | unset | run this flow instead of asking the planner for one |
+| `TASK_PLAN` | unset | `in-task` hands the task to `StartTask` to plan, as OpenHuman does, rather than planning it first with `PlanTask`; the plan is printed and saved to `plan.json` when the task stops |
 | `TASK_OUT` | `target/task-live` | where the plan, report, and a final screenshot are written |
 | `TINYCOMPUTER_FLOW_STRATEGY` | `narrow` | `narrow` or `wide` asking; see [`specs/jev-wide-turns.md`](../../technical/specs/jev-wide-turns.md) |
 | `TINYCOMPUTER_FLOW_DELIBERATION` | `deep` | `deep`, `standard`, or `off` |
 | `TASK_MAX_MINUTES` | `20` | the task is cancelled after this long |
 | `TASK_RESCUES` | `5` | how many failed steps a reasoning model may rescue (`0` turns rescues off); see [rescue](../../rescue.md) |
 | `TINYCOMPUTER_RESCUE_MODEL` | `openai/gpt-6-luna` (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model that performs a rescue |
+| `TINYCOMPUTER_PLAN_REASONING` | unset | `off` asks the planner's model not to reason before it plans (the module's `planner.plan_reasoning`); live, a plan took about 3.5 s instead of 16 to 20 s |
 | `TINYCOMPUTER_PLANNER_MODEL` | the engine's default (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model asked to plan the flow |
 
 **Optional, the browser:**
@@ -130,6 +132,8 @@ they control.
 | `TINYCOMPUTER_BROWSER_USER_AGENT` | the user agent it announces |
 | `TINYCOMPUTER_BROWSER_ARGS` | space-separated extra launch arguments |
 | `TINYCOMPUTER_BROWSER_PERCEPTION` | `sight` (default) or `tree`: how pages are read |
+| `TINYCOMPUTER_BROWSER_PRELAUNCH` | `1` opens the browser while the task plans itself (with `TASK_PLAN=in-task`; the module's `browser.prelaunch`) |
+| `TINYCOMPUTER_BROWSER_SETTLE` | `steady` (default) or `prompt`: how long a page is let settle after an action (see the module's `browser.settle`) |
 | `TINYCOMPUTER_BROWSER_ENDPOINT` | attach to a running Chrome (e.g. `http://127.0.0.1:9222`) instead of launching one |
 | `TASK_HEADED` | `1` shows the browser the task launches instead of running it headless; a headed run needs a display, so it runs on the host |
 | `TASK_INTERACTIVE` | `1` waits for you at the terminal where only a person can go on, instead of ending the run: approve or decline an irreversible action, log in or solve a captcha in the browser and press Enter, type a detail the task lacks, finish on a payment page before the browser closes; end of input answers no |

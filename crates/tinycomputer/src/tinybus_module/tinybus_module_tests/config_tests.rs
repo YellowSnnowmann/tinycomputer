@@ -153,7 +153,7 @@ fn each_decision_model_is_selected_from_private_configuration() {
 #[test]
 fn the_browser_configuration_is_read_or_refused() {
     use crate::tinybus_module::config::BrowserDefaults;
-    use tinycomputer_browser::Perception;
+    use tinycomputer_browser::{Perception, Settle};
 
     assert_eq!(
         BrowserDefaults::from_config(&json!({})).unwrap(),
@@ -164,13 +164,27 @@ fn the_browser_configuration_is_read_or_refused() {
         "executable": "/usr/bin/chromium",
         "user_agent": "Mozilla/5.0",
         "args": ["--disable-blink-features=AutomationControlled"],
-        "perception": "tree"
+        "perception": "tree",
+        "settle": "prompt",
+        "prelaunch": true
     }}))
     .unwrap();
     assert_eq!(defaults.executable.as_deref(), Some("/usr/bin/chromium"));
     assert_eq!(defaults.user_agent.as_deref(), Some("Mozilla/5.0"));
     assert_eq!(defaults.args.len(), 1);
     assert_eq!(defaults.perception, Perception::Tree);
+    assert_eq!(defaults.settle, Settle::Prompt);
+    assert!(defaults.prelaunch);
+    assert!(
+        !BrowserDefaults::default().prelaunch,
+        "off unless asked for"
+    );
+    assert_eq!(
+        BrowserDefaults::from_config(&json!({"browser": {"settle": "steady"}}))
+            .unwrap()
+            .settle,
+        Settle::Steady
+    );
     for invalid in [
         json!({"browser": "chrome"}),
         json!({"browser": {"executable": 7}}),
@@ -178,6 +192,8 @@ fn the_browser_configuration_is_read_or_refused() {
         json!({"browser": {"args": "--headless"}}),
         json!({"browser": {"args": [1]}}),
         json!({"browser": {"perception": "vision"}}),
+        json!({"browser": {"settle": "fast"}}),
+        json!({"browser": {"prelaunch": "yes"}}),
         json!({"browser": {"useragent": "typo"}}),
     ] {
         assert!(BrowserDefaults::from_config(&invalid).is_err(), "{invalid}");

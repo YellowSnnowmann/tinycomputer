@@ -549,3 +549,50 @@ fn a_navigation_that_timed_out_on_a_drawn_page_is_taken_as_open() {
     let reply = blank.surface.navigate("https://shop.test/search?q=milk");
     assert!(!reply.ok, "nothing drawn yet: the timeout stands");
 }
+
+#[test]
+fn a_prompt_settle_counts_quiet_from_the_start_and_waits_only_while_the_page_changes() {
+    let Harness { fake, surface, .. } = harness("prompt-settle", page_fake());
+    let surface = surface.with_settle(crate::Settle::Prompt);
+    surface.settle();
+    let quiet = fake.last("waitforloadstate");
+    assert_eq!(
+        (quiet["state"].as_str(), quiet["timeout"].as_u64()),
+        (Some("networkquiet"), Some(2_000))
+    );
+    let still = fake.last("evaluate");
+    let script = still["script"].as_str().unwrap();
+    assert!(script.contains("MutationObserver"), "{script}");
+    assert!(
+        script.contains("setTimeout(done, 400)"),
+        "capped at SETTLE_MS: {script}"
+    );
+    assert!(script.contains(">= 120"), "still for STILL_MS: {script}");
+    assert!(
+        script.contains("getAnimations"),
+        "waits out CSS animations: {script}"
+    );
+    assert!(
+        !fake.actions().iter().any(|action| action == "wait"),
+        "no fixed pause: {:?}",
+        fake.actions()
+    );
+}
+
+#[test]
+fn a_surface_opens_its_session_when_asked_rather_than_at_first_use() {
+    let Harness { fake, surface, .. } = harness("open-early", page_fake());
+    assert!(surface.session().is_none());
+    assert!(surface.open());
+    assert!(surface.session().is_some());
+    assert!(fake.actions().iter().any(|action| action == "launch"));
+    let launches = fake.actions().len();
+    assert!(surface.open(), "already open");
+    assert_eq!(fake.actions().len(), launches, "nothing launched twice");
+
+    let refused = Fake::scripted(|command| {
+        (command["action"] == "launch").then(|| failure("Chrome not found"))
+    });
+    let Harness { surface, .. } = harness("open-refused", refused);
+    assert!(!surface.open());
+}

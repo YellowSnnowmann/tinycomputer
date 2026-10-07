@@ -55,6 +55,8 @@ struct Script {
     events: Mutex<Vec<&'static str>>,
     /// What the task journaled outside its flows, in order.
     journaled: Mutex<Vec<(Option<TaskId>, String, serde_json::Value)>>,
+    /// Tasks whose surfaces were got ready while they were planned.
+    prepared: Mutex<Vec<TaskId>>,
 }
 
 impl FlowRunner for Script {
@@ -91,6 +93,11 @@ impl FlowRunner for Script {
     fn release(&self, task: &TaskId) {
         self.events.lock().unwrap().push("release");
         self.released.lock().unwrap().push(task.clone());
+    }
+
+    fn prepare(&self, task: &TaskId, _constraints: &TaskConstraints) -> super::PrepareFuture {
+        self.prepared.lock().unwrap().push(task.clone());
+        Box::pin(async {})
     }
 
     fn journal(&self, task: Option<&TaskId>, event: &str, fields: serde_json::Value) {

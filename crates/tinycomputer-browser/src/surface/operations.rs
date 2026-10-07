@@ -14,7 +14,7 @@ use crate::error::Error;
 use super::envelope::{failure, not_a_text_field, reply};
 use super::sight;
 use super::{BrowserSurface, Perception};
-use super::{NETWORK_IDLE_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, tree};
+use super::{NETWORK_IDLE_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, STILL_MS, Settle, tree};
 
 impl Surface for BrowserSurface {
     fn observe(
@@ -236,6 +236,19 @@ impl Surface for BrowserSurface {
     }
 
     fn settle(&self) {
+        if self.settle == Settle::Prompt {
+            if let Ok(id) = self.ensure_session() {
+                let _quiet = self.block(self.browser.command(
+                    &id,
+                    json!({"action": "waitforloadstate", "state": "networkquiet", "timeout": NETWORK_IDLE_MS}),
+                ));
+                let _still = self.block(
+                    self.browser
+                        .command(&id, json!({"action": "evaluate", "script": still_script()})),
+                );
+            }
+            return;
+        }
         if let Ok(id) = self.ensure_session() {
             let _idle = self.block(self.browser.command(
                 &id,
@@ -327,4 +340,31 @@ pub(crate) fn browser_key(combo: &str, platform: Platform) -> String {
         })
         .collect::<Vec<_>>()
         .join("+")
+}
+
+/// A promise that resolves once the page has gone [`STILL_MS`] without a DOM
+/// change, has no finite CSS animation or transition running, and has drawn
+/// at least two frames, or after [`SETTLE_MS`] at most: a banner or menu
+/// fading out (which changes no DOM node) has time to finish, an unchanging
+/// page costs about two frames, and an endless spinner is not waited for.
+fn still_script() -> String {
+    format!(
+        r"new Promise(resolve => {{
+  let last = performance.now();
+  let frames = 0;
+  const watcher = new MutationObserver(() => {{ last = performance.now(); }});
+  const done = () => {{ watcher.disconnect(); clearTimeout(cap); resolve(true); }};
+  const cap = setTimeout(done, {SETTLE_MS});
+  watcher.observe(document, {{ subtree: true, childList: true, attributes: true, characterData: true }});
+  const moving = () => typeof document.getAnimations === 'function'
+    && document.getAnimations().some(animation => animation.playState === 'running'
+      && Number.isFinite(animation.effect?.getComputedTiming?.().endTime ?? Infinity));
+  const frame = () => {{
+    frames += 1;
+    if (frames >= 2 && performance.now() - last >= {STILL_MS} && !moving()) done();
+    else requestAnimationFrame(frame);
+  }};
+  requestAnimationFrame(frame);
+}})"
+    )
 }

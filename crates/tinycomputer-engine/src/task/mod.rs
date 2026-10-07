@@ -73,6 +73,10 @@ pub type TextFuture = Pin<Box<dyn Future<Output = Vec<String>> + Send>>;
 /// task's surface could take one.
 pub type CaptureFuture = Pin<Box<dyn Future<Output = Option<OutputRef>> + Send>>;
 
+/// The future [`FlowRunner::prepare`] returns, once the surfaces are ready
+/// or could not be made so; a task goes on either way.
+pub type PrepareFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
+
 /// Runs a task's flows, on surfaces that live as long as the task.
 pub trait FlowRunner: Send + Sync + 'static {
     /// Runs `request` for `task` within `constraints`, returning `RunFlow`'s
@@ -107,6 +111,13 @@ pub trait FlowRunner: Send + Sync + 'static {
 
     /// Lets go of whatever the task held, once it has ended.
     fn release(&self, _task: &TaskId) {}
+
+    /// Gets the task's surfaces ready while its plan is drafted, so its
+    /// first step does not wait for them: called alongside the planner for
+    /// a task that runs on the browser alone. Does nothing by default.
+    fn prepare(&self, _task: &TaskId, _constraints: &TaskConstraints) -> PrepareFuture {
+        Box::pin(async {})
+    }
 
     /// Writes an `event` of the time a task spends outside its flows
     /// (`plan`, `rescue`, `resume`) to the debug journal: the task's own,

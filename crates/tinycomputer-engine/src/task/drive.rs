@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tinycomputer_bus::agent::TaskStatus;
+use tinycomputer_bus::agent::{SurfaceKind, TaskConstraints, TaskStatus};
 
 use super::artifact::{capture, captured};
 use super::budget::{elapsed_budget_failed, run_request, stop_task};
@@ -25,21 +25,27 @@ pub(super) async fn plan_then_drive(
     task: String,
     surfaces: Vec<tinycomputer_bus::agent::SurfaceKind>,
 ) {
-    let (names, secrets) = cell.state.lock().map_or_else(
-        |_| (Vec::new(), Vec::new()),
+    let (names, secrets, constraints) = cell.state.lock().map_or_else(
+        |_| (Vec::new(), Vec::new(), TaskConstraints::default()),
         |state| {
             let owned = |names: Vec<&str>| names.into_iter().map(str::to_owned).collect::<Vec<_>>();
             (
                 owned(state.facts.names()),
                 owned(state.facts.secret_names()),
+                state.constraints.clone(),
             )
         },
     );
-    let started = Instant::now();
-    let (outcome, used) = planner
-        .plan_measured(&task, &names, &secrets, &surfaces)
-        .await;
     let id = cell.view.borrow().id.clone();
+    let started = Instant::now();
+    let planning = planner.plan_measured(&task, &names, &secrets, &surfaces);
+    // A browser-only task's browser opens while the plan is drafted, so the
+    // first step need not wait for it: whatever the plan says, it runs there.
+    let (outcome, used) = if constraints.surfaces == [SurfaceKind::Browser] {
+        tokio::join!(planning, runner.prepare(&id, &constraints)).0
+    } else {
+        planning.await
+    };
     runner.journal(
         Some(&id),
         "plan",
@@ -48,6 +54,9 @@ pub(super) async fn plan_then_drive(
     let plan = match outcome {
         Ok(plan) => plan,
         Err(reason) => {
+            // A browser opened while planning has nothing left to do; it is
+            // let go before the failure is told, as a finished task's is.
+            runner.release(&id);
             publish(
                 &cell,
                 TaskStatus::Failed {

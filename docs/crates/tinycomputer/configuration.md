@@ -159,6 +159,13 @@ configuration.
 covers the rescue mechanism itself. `output_model` (default
 `openai/gpt-6-luna`) shapes a finished task's answer the same way.
 
+`plan_reasoning` (`default` when absent) set to `off` asks the planner's
+model not to reason before it writes the flow, with OpenRouter's
+`"reasoning": {"enabled": false}`, which the Tiny Humans gateway passes on.
+Live, a plan on the default Tiny Humans model took 16 to 20 seconds, nearly
+all of it 1,600 to 2,000 reasoning tokens, and about 3.5 seconds without
+them. The rescuer and the shaper keep their brief reasoning either way.
+
 ### Routes: OpenRouter or Tiny Humans
 
 The planner, the rescuer, and the shaper call an OpenAI-compatible route.
@@ -216,7 +223,9 @@ never sent to a provider it was not given for:
     "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
     "args": ["--disable-blink-features=AutomationControlled"],
-    "perception": "sight"
+    "perception": "sight",
+    "settle": "steady",
+    "prelaunch": false
   }
 }
 ```
@@ -230,6 +239,8 @@ How the module launches every browser it opens — each task's, and each
 | `user_agent` | the `User-Agent` every launched browser sends; booking sites turn away a browser that announces itself as headless |
 | `args` | extra launch arguments, as an array of strings |
 | `perception` | how a task reads a page: `sight` (the default) reads the rendered page as a person sees it, `tree` the accessibility tree alone ([`browser-sight.md`](../../technical/specs/browser-sight.md)) |
+| `settle` | how a task lets a page settle after an action before reading it again: `steady` (the default) waits for the network to go idle, at least about 1.1 s, then 400 ms more; `prompt` counts the network's 500 ms of quiet from the start and then waits only while the page is still changing (at most 400 ms), so an idle page is read again after about 0.6 s |
+| `prelaunch` | `true` opens a browser-only task's browser while `StartTask` plans it (a `task` with no `flow`), so the first step does not wait for the launch; `false` (the default) opens it at the first step |
 
 Most installs never need any of this: leave `browser` out entirely and the
 linked `agent-browser` engine looks for Chrome itself. An unknown key under
