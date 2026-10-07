@@ -137,9 +137,10 @@ click on an answer it does not recognise, because a malformed or injected
 answer must fail closed rather than guess.
 
 After any action the backend reports as successful, the runtime waits for
-the surface to settle (network-idle on the browser, a short pause on the
-desktop) before looking again, so the next turn's screen reflects what the
-action actually did rather than the moment right before it took effect.
+the surface to settle (on the browser, until the requests that change the
+page end and it goes still; a short pause on the desktop) before looking
+again, so the next turn's screen reflects what the action actually did
+rather than the moment right before it took effect.
 
 ### Shortcuts
 

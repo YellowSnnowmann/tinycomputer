@@ -60,8 +60,8 @@ pub struct JevConfig {
     /// [`JevProvider::default_model`]. Sage takes no model selection and
     /// ignores it.
     pub model: Option<String>,
-    /// Per-attempt HTTP timeout. Absent means the client default. Ignored by
-    /// Sage.
+    /// Per-attempt HTTP timeout. Absent means the module's default: 10
+    /// seconds. Ignored by Sage.
     pub timeout_ms: Option<u64>,
     /// Additional transient retries. Absent means the module's default: four,
     /// waiting 1, 2, 4, then 8 seconds between attempts. Ignored by Sage.

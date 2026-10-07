@@ -37,7 +37,7 @@ The configuration (`JevConfig`, in `tinycomputer-bus`) names:
 | `api_key` | The credential for that provider. Never printed; `JevRuntime`'s `Debug` implementation shows `"[configured]"` in its place. |
 | `endpoint_url` | An exact endpoint to use instead of the provider's own route, checked against an allow-list (see below). |
 | `model` | The Jev model or alias to ask for. Defaults to the provider's `JevProvider::default_model()`: `"jev-latest"`, `"openjev"` for OpenJEV, and the fixed `"levanto-sage"` for Sage. |
-| `timeout_ms` / `max_retries` | Per-attempt HTTP timeout and how many transient retries the client makes: four by default (`RETRY`), waiting 1, 2, 4, then 8 seconds, since live a gateway's brief 502s ended runs after the client's own 0.3 s of waiting. Sage ignores both. |
+| `timeout_ms` / `max_retries` | Per-attempt HTTP timeout (10 seconds by default, `ATTEMPT_TIMEOUT`) and how many transient retries the client makes: four by default (`RETRY`), waiting 1, 2, 4, then 8 seconds, since live a gateway's brief 502s ended runs after the client's own 0.3 s of waiting. Sage ignores both. |
 | `sdk_name` | Attribution sent only to the TinyHumans proxy, so it knows which host is calling. |
 | `fast` | Sage only: score each choice in one pass rather than one per option. |
 

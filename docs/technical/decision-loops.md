@@ -262,9 +262,9 @@ on an answer it does not recognise, because a malformed or injected answer must
 fail closed.
 
 After any action the backend reports as successful, the runtime calls the
-surface's `settle` before looking again — network-idle on the browser, a short
-pause on the desktop — so the next turn's screen reflects what the action did
-rather than the moment before it took effect.
+surface's `settle` before looking again — on the browser, until the requests
+that change the page end and it goes still; a short pause on the desktop — so
+the next turn's screen reflects what the action did, not the moment before.
 
 The shortcut list (`act/mod.rs::SHORTCUTS`) is short and safe: new item, new
 folder, find, reply, settings, back, next field, confirm (Return), and dismiss
@@ -354,9 +354,8 @@ the disagreement.
 
 ## `enter`: filling fields
 
-`enter` takes a map of slot to text, such as
-`{"recipient": "sam@example.com", "subject": "Friday"}`. It runs up to three
-rounds:
+`enter` takes a map of slot to text, such as `{"recipient": "sam@example.com",
+"subject": "Friday"}`. It runs up to three rounds:
 
 1. Look, and explore the cut-short subtrees if there are fewer editable fields
    than pending slots.
@@ -433,9 +432,8 @@ without knowing the site. Both surfaces label repeated containers with an
 ordinal (`listitem #3`), so every node inside one card shares that label in its
 path. The list is the parent under which the most same-role ordinal containers
 repeat. Each container becomes a record whose fields are its visible text in
-reading order, and whose primary control is the one that looks most like
-"open this" (select, book, choose, view, details, continue, reserve, deal,
-see).
+reading order, and whose primary control is the one that looks most like "open
+this" (select, book, choose, view, details, continue, reserve, deal, see).
 
 `pick` parses its `by` text into a `Criterion` when it can: lowest or highest
 price, earliest or latest time, fewest stops, shortest duration. The parsers in
