@@ -19,14 +19,16 @@ use super::{
 use crate::agentic::{JevRuntime, journal::millis, merge_metrics, provider_error};
 
 /// How long a framing runs before a copy of it is sent and the first answer
-/// of the two taken. Live, a call's p99 was 2.0 s, while one framing of a
-/// burst stalled 12–32 s (the gateway gave up after ~10 s, or nothing came
-/// back before the client's timeout) as its siblings answered in under 1 s.
-const HEDGE_AFTER: Duration = Duration::from_millis(2_500);
+/// of the two taken. Live, one framing of a burst stalled 12–32 s (the
+/// gateway gave up after ~10 s, or nothing came back before the client's
+/// timeout) as its siblings answered in under 1 s. Calls on a slow evening
+/// took up to 3.4 s and still answered: a copy sent at 2.5 s lost the race
+/// 15 times in 16, so copies wait for 4 s, past what a slow answer takes.
+const HEDGE_AFTER: Duration = Duration::from_millis(4_000);
 
 /// [`HEDGE_AFTER`] for a request of [`HEDGE_LARGE_BYTES`] or more, whose
-/// p99 was 3.1 s live.
-const HEDGE_AFTER_LARGE: Duration = Duration::from_millis(3_500);
+/// p99.9 was 3.9 s live.
+const HEDGE_AFTER_LARGE: Duration = Duration::from_millis(5_000);
 
 /// Size from which a request waits [`HEDGE_AFTER_LARGE`] for its first
 /// answer.

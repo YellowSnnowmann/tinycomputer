@@ -80,7 +80,7 @@ decisions to go through Tiny Humans uses `tiny_humans_open_router`.
 `sdk_name` is sent only to the Tiny Humans proxy.
 
 Each attempt may take `timeout_ms`, 10 seconds unless set: live, the slowest
-answer took 8.6 s. A framing that has not answered after 2.5 s (3.5 s for a
+answer took 8.6 s. A framing that has not answered after 4 s (5 s for a
 request of 32 KB or more) is also sent once more, and whichever copy answers
 first counts. A provider's server error (HTTP 5xx) or rate limit (429) is
 retried, waiting 1, 2, 4, then 8 seconds between attempts, or as long as the
