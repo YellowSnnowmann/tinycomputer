@@ -124,6 +124,10 @@ async fn a_place_box_whose_rows_come_late_is_looked_at_again_as_they_show() {
             "rows drawn after {late} waits"
         );
         assert_eq!(waits(&run), vec![String::new(); usize::from(late)]);
+        // A wait that saw the page change is settled, as any action is.
+        let trail = run.app.sim().trail.clone();
+        let watched = trail.iter().position(|call| *call == "changed").unwrap();
+        assert_eq!(trail.get(watched + 1), Some(&"settle"), "{trail:?}");
     }
 }
 
@@ -147,6 +151,10 @@ async fn a_place_box_on_a_page_that_stays_still_is_waited_on_once() {
     assert_eq!(run.app.sim().fields["Pickup location"], "Nowhere Lane");
     assert_eq!(waits(&run), ["nothing changed"]);
     assert!(!asked_for_a_suggestion(&run));
+    // A wait that saw the page stay still has nothing to settle.
+    let trail = run.app.sim().trail.clone();
+    let watched = trail.iter().position(|call| *call == "still").unwrap();
+    assert_ne!(trail.get(watched + 1), Some(&"settle"), "{trail:?}");
 }
 
 #[tokio::test]
