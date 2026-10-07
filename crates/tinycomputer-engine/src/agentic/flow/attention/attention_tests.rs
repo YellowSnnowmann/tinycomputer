@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{ESCAPED, MAX_DISTRACTION_SIZE, MAX_DISTRACTIONS, find::distractions};
+use super::{ESCAPED, MAX_DISTRACTION_SIZE, MAX_DISTRACTIONS, find::distractions, front_closer};
 use crate::agentic::flow::view::{Candidate, Screen, signature};
 
 fn button(name: &str, path: &[&str]) -> Candidate {
@@ -267,5 +267,75 @@ fn something_covering_what_the_step_needs_is_cleared_with_escape() {
             &tried
         )
         .is_empty()
+    );
+}
+
+#[test]
+fn a_covered_press_closes_a_layer_in_front_but_never_its_own() {
+    // A size popover the step works in, with a toast lying over its rows.
+    let sizes = ["main", "popover \"Sizes\""];
+    let toast = ["alert \"Saved to your wishlist\""];
+    let target = button("Size M", &sizes);
+    let mut candidates = content();
+    candidates.extend([target.clone(), button("Close", &sizes)]);
+    let with_toast = |mut candidates: Vec<Candidate>| {
+        candidates.push(button("Close", &toast));
+        screen(candidates)
+    };
+    let closer = front_closer(
+        &with_toast(candidates.clone()),
+        &target,
+        "choose size M",
+        &[],
+        &BTreeSet::new(),
+    )
+    .unwrap();
+    assert_eq!(closer.path, toast, "the toast's, not the popover's");
+
+    // With only the step's own layer in front, nothing is closed.
+    let own = front_closer(
+        &screen(candidates.clone()),
+        &target,
+        "choose size M",
+        &[],
+        &BTreeSet::new(),
+    );
+    assert!(own.is_none(), "{own:?}");
+
+    // Nor is the target itself, the toast's own button.
+    let close_toast = button("Close", &toast);
+    let itself = front_closer(
+        &with_toast(content()),
+        &close_toast,
+        "close the toast",
+        &[],
+        &BTreeSet::new(),
+    );
+    assert!(itself.is_none(), "{itself:?}");
+
+    // A layer the step names is the step's.
+    let mut candidates = content();
+    candidates.extend(consent().into_iter().map(|mut control| {
+        control.path = vec!["dialog \"Cookie consent\"".to_owned()];
+        control
+    }));
+    let named = front_closer(
+        &screen(candidates.clone()),
+        &candidates[0],
+        "accept the cookie consent",
+        &[],
+        &BTreeSet::new(),
+    );
+    assert!(named.is_none(), "{named:?}");
+    let other = front_closer(
+        &screen(candidates.clone()),
+        &candidates[0],
+        "search for flights",
+        &[],
+        &BTreeSet::new(),
+    );
+    assert_eq!(
+        other.and_then(|closer| closer.name).as_deref(),
+        Some("Reject all")
     );
 }

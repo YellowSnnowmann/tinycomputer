@@ -298,26 +298,22 @@ own link, so the link is "covered" by the card itself; the browser surface
 then clicks through at the link's position, but only when the exact target
 (matched by name, and on the page, by the one element under that point with
 that label) sits in the same card as the cover and no dialog is involved.
-Anything else comes back covered, and the runtime closes what lies over it
-and retries the *same* already-vetted target — in a `do` step's click and in
-`pick`'s alike. A layer in front with a control that closes it (a consent
-banner's "Allow Selection") is closed with its least committal one, as the
-attention pass would; otherwise the runtime presses Escape once. Live,
-Escape left a consent banner over "Add To Cart" and every press was refused.
-Neither chooses a new element for the step, so nothing exposed by
+Anything else comes back covered: a front layer's least committal control (a
+consent banner's "Allow Selection"; never the target's own layer or one the
+step names), or else Escape, is pressed once, and the *same* vetted target
+retried (`do` and `pick` alike), so nothing exposed by
 dismissing whatever covered the click is ever pressed without going through
 grounding and `is_destructive` again on a later turn.
 
 A dismissal the completion judge would otherwise never see ends the step
-immediately: when the last action pressed a control whose own words the
-step's intent names ("Accept Essential Only" for a step about accepting
-cookies), or the intent asks to dismiss, close, accept, decline, reject, or
-skip a banner, dialog, popup, cookie notice, modal, overlay, or prompt, and
-the screen has returned to the application's own window, the step ends as
-`Done` — a closed overlay leaves no trace afterward for the judge to read.
-The same check runs once more after the very last turn, so a dismissal that
-lands on the last permitted turn is not reported as failed for want of
-another look.
+immediately: when the last action pressed a control whose own words the step's
+intent names ("Accept Essential Only" for a step about accepting cookies), or
+the intent asks to dismiss, close, accept, decline, reject, or skip a banner,
+dialog, popup, cookie notice, modal, overlay, or prompt, and the screen has
+returned to the application's own window, the step ends as `Done` — a closed
+overlay leaves no trace afterward for the judge to read. The same check runs
+once more after the very last turn, so a dismissal that lands on the last
+permitted turn is not reported as failed for want of another look.
 
 After eight turns without an end, the runtime looks one last time. If the
 completion estimate reaches 0.75 the step is `Done`; otherwise it fails with
