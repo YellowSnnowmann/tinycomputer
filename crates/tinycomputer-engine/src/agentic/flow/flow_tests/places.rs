@@ -20,6 +20,13 @@ pub(super) const PLACES: [&str; 4] = [
 /// The heading a panel of suggestions opens with (`Places::panel`).
 const PANEL_HEADING: &str = "Select a pickup point Choose where your driver meets you";
 
+/// The rows a box lists of its own while its matches are fetched
+/// (`Places::starters`): none of them names a place typed.
+const STARTER_ROWS: [&str; 2] = [
+    "Allow location access It provides your pickup address",
+    "Search in a different city",
+];
+
 /// The ride form's state.
 #[derive(Debug, Default)]
 pub(super) struct Places {
@@ -36,6 +43,10 @@ pub(super) struct Places {
     pub(super) late: u8,
     /// Waits still to come before the open list shows its rows.
     pub(super) pending: u8,
+    /// Whether the open list shows rows of its own while its matches are
+    /// still to come, as a ride app's did live ("Allow location access",
+    /// "Search in a different city").
+    pub(super) starters: bool,
 }
 
 /// The places suggested for `typed`: each one that holds every typed word.
@@ -76,9 +87,14 @@ pub(super) fn places_widget(
         field.value = sim.fields.get(*name).map(|value| json!(value));
         candidates.push(field);
     }
+    let list = [root, "group \"Get a ride\"", "listbox \"Suggestions\""];
+    if places.starters && places.open.is_some() && places.pending > 0 {
+        for row in STARTER_ROWS {
+            candidates.push(node(row, "option", &["Click"], &list, 300.0));
+        }
+    }
     if let Some(open) = places.open.as_ref().filter(|_| places.pending == 0) {
         let typed = sim.fields.get(open).cloned().unwrap_or_default();
-        let list = [root, "group \"Get a ride\"", "listbox \"Suggestions\""];
         if places.panel {
             let rows = suggested(&typed);
             if !rows.is_empty() {

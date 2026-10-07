@@ -146,8 +146,9 @@ before the text was typed, it picks the one that matches it
   "blue light blocking glasses" became another product's name), so the text
   stays as typed;
 - a place box (a slot named for a place: pickup, drop, from, to, address,
-  city, …) is given up to two more looks when no row showed yet
-  (`LATE_LOOKS`), each after a wait that ends as soon as the page changes
+  city, …) is given up to two more looks when no row naming the text
+  showed yet, such as while it lists only rows of its own ("Allow location
+  access") (`LATE_LOOKS`), each after a wait that ends as soon as the page changes
   (`LATE_LOOK_MS`, 1 s at most); a page that stayed still through a wait
   lists nothing more, and is looked at once more only. There a row that was already showing still counts when
   it matches the text, as does a pressable box sharing at least half the

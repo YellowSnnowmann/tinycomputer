@@ -132,6 +132,39 @@ async fn a_place_box_whose_rows_come_late_is_looked_at_again_as_they_show() {
 }
 
 #[tokio::test]
+async fn a_place_box_waits_past_its_own_rows_for_the_place_typed() {
+    // Live, a ride app's pickup box first listed rows of its own ("Allow
+    // location access", "Search in a different city"), and a look made as
+    // soon as the page went still saw only those: no row named the place,
+    // none was picked, and the pickup was never set. The box is looked at
+    // again until a row names the place.
+    let run = run_with(
+        App::with(|sim| {
+            sim.places = Some(Places {
+                late: 1,
+                starters: true,
+                ..Places::default()
+            });
+        }),
+        json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Connaught Place"}}]}),
+        |_| {},
+        ride,
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert_eq!(
+        run.app.sim().fields["Pickup location"],
+        "Connaught Place New Delhi, Delhi, India"
+    );
+    assert_eq!(waits(&run), [""], "one wait, ended by the rows showing");
+}
+
+#[tokio::test]
 async fn a_place_box_on_a_page_that_stays_still_is_waited_on_once() {
     // Live, an address and a city box on a plain form waited twice each for
     // a list that never came. A page that stayed still lists nothing more.
