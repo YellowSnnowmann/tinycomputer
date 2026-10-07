@@ -131,8 +131,8 @@ they control.
 | `TINYCOMPUTER_BROWSER_USER_AGENT` | the user agent it announces |
 | `TINYCOMPUTER_BROWSER_ARGS` | space-separated extra launch arguments |
 | `TINYCOMPUTER_BROWSER_PERCEPTION` | `sight` (default) or `tree`: how pages are read |
-| `TINYCOMPUTER_BROWSER_PRELAUNCH` | `1` opens the browser while the task plans itself (with `TASK_PLAN=in-task`; the module's `browser.prelaunch`) |
-| `TINYCOMPUTER_BROWSER_SETTLE` | `steady` (default) or `prompt`: how long a page is let settle after an action (see the module's `browser.settle`) |
+| `TINYCOMPUTER_BROWSER_PRELAUNCH` | `0` opens the browser at the first step rather than while the task plans itself (with `TASK_PLAN=in-task`), as it does by default; `1` asks for the default (the module's `browser.prelaunch`) |
+| `TINYCOMPUTER_BROWSER_SETTLE` | `prompt` (default) or `steady`: how long a page is let settle after an action (see the module's `browser.settle`) |
 | `TINYCOMPUTER_BROWSER_ENDPOINT` | attach to a running Chrome (e.g. `http://127.0.0.1:9222`) instead of launching one |
 | `TASK_HEADED` | `1` shows the browser the task launches instead of running it headless; a headed run needs a display, so it runs on the host |
 | `TASK_INTERACTIVE` | `1` waits for you at the terminal where only a person can go on, instead of ending the run: approve or decline an irreversible action, log in or solve a captcha in the browser and press Enter, type a detail the task lacks, finish on a payment page before the browser closes; end of input answers no |

@@ -165,26 +165,27 @@ fn the_browser_configuration_is_read_or_refused() {
         "user_agent": "Mozilla/5.0",
         "args": ["--disable-blink-features=AutomationControlled"],
         "perception": "tree",
-        "settle": "prompt",
-        "prelaunch": true
+        "settle": "steady",
+        "prelaunch": false
     }}))
     .unwrap();
     assert_eq!(defaults.executable.as_deref(), Some("/usr/bin/chromium"));
     assert_eq!(defaults.user_agent.as_deref(), Some("Mozilla/5.0"));
     assert_eq!(defaults.args.len(), 1);
     assert_eq!(defaults.perception, Perception::Tree);
-    assert_eq!(defaults.settle, Settle::Prompt);
-    assert!(defaults.prelaunch);
-    assert!(
-        !BrowserDefaults::default().prelaunch,
-        "off unless asked for"
-    );
-    assert_eq!(
-        BrowserDefaults::from_config(&json!({"browser": {"settle": "steady"}}))
-            .unwrap()
-            .settle,
-        Settle::Steady
-    );
+    assert_eq!(defaults.settle, Settle::Steady);
+    assert!(!defaults.prelaunch);
+    // Settling promptly and opening the browser early are on unless turned
+    // off.
+    let unset = BrowserDefaults::default();
+    assert_eq!(unset.settle, Settle::Prompt);
+    assert!(unset.prelaunch);
+    let asked = BrowserDefaults::from_config(&json!({"browser": {
+        "settle": "prompt",
+        "prelaunch": true
+    }}))
+    .unwrap();
+    assert_eq!(asked, unset);
     for invalid in [
         json!({"browser": "chrome"}),
         json!({"browser": {"executable": 7}}),

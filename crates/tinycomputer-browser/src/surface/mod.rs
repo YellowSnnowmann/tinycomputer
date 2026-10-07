@@ -79,14 +79,15 @@ pub enum Settle {
     /// Wait for the network to go idle — 500 ms with nothing in flight,
     /// counted only after a first quiet receive window, so at least about
     /// 1.1 s — then pause [`SETTLE_MS`] more.
-    #[default]
     Steady,
     /// Wait for the network to go quiet, counting the 500 ms from the start,
     /// then only until the page stops changing: no DOM change for
     /// [`STILL_MS`] and no finite CSS animation running, over at least two
     /// drawn frames, at most [`SETTLE_MS`].
     /// An idle page is read again after about 0.6 s instead of 1.6 s; a busy
-    /// one still waits for its requests.
+    /// one still waits for its requests. The default: over 44 live runs it
+    /// cost no run its outcome.
+    #[default]
     Prompt,
 }
 
@@ -145,7 +146,7 @@ impl BrowserSurface {
     }
 
     /// The same surface, settling after an action with `settle`
-    /// ([`Settle::Steady`] unless told otherwise).
+    /// ([`Settle::Prompt`] unless told otherwise).
     #[must_use]
     pub fn with_settle(mut self, settle: Settle) -> Self {
         self.settle = settle;

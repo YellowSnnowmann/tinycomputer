@@ -25,8 +25,9 @@
 //! - `TASK_PLAN` — optional: `in-task` hands the task to `StartTask` to plan,
 //!   as `OpenHuman` does, rather than planning it first with `PlanTask`; the
 //!   plan is printed and saved once the task stops.
-//! - `TINYCOMPUTER_BROWSER_PRELAUNCH` — optional: `1` opens a browser-only
-//!   task's browser while the task plans itself (with `TASK_PLAN=in-task`).
+//! - `TINYCOMPUTER_BROWSER_PRELAUNCH` — optional: `0` opens a browser-only
+//!   task's browser at its first step rather than while the task plans
+//!   itself (with `TASK_PLAN=in-task`), as it does by default.
 //! - `TASK_OUT` — optional: where the plan, report, and final screenshot go
 //!   (default `target/task-live`).
 //! - `OUTPUT_FILE` — optional: a JSON `TaskOutput` (`instructions` and a
@@ -55,9 +56,9 @@
 //! - `TINYCOMPUTER_BROWSER_EXECUTABLE`, `TINYCOMPUTER_BROWSER_USER_AGENT`, and
 //!   `TINYCOMPUTER_BROWSER_ARGS` (space-separated) — how the browser
 //!   launches, `TINYCOMPUTER_BROWSER_PERCEPTION` (`sight` or `tree`) how
-//!   pages are read, and `TINYCOMPUTER_BROWSER_SETTLE` (`steady` or
-//!   `prompt`) how a page settles after an action; all passed as the
-//!   module's `browser` configuration.
+//!   pages are read, and `TINYCOMPUTER_BROWSER_SETTLE` (`prompt`, the
+//!   default, or `steady`) how a page settles after an action; all passed
+//!   as the module's `browser` configuration.
 //! - `TASK_CURSOR` — optional: the agent's on-screen cursor pace (`off`,
 //!   `brisk`, `natural`, `calm`; default `natural`). It is drawn by the
 //!   `tinycomputer-cursor-overlay` helper, which the module finds beside
@@ -185,8 +186,17 @@ fn module_config() -> Result<Value, LabError> {
             browser.insert(field.to_owned(), json!(value.trim()));
         }
     }
-    if optional("TINYCOMPUTER_BROWSER_PRELAUNCH").is_some_and(|value| value.trim() == "1") {
-        browser.insert("prelaunch".to_owned(), json!(true));
+    match optional("TINYCOMPUTER_BROWSER_PRELAUNCH")
+        .as_deref()
+        .map(str::trim)
+    {
+        Some("0") => {
+            browser.insert("prelaunch".to_owned(), json!(false));
+        }
+        Some("1") => {
+            browser.insert("prelaunch".to_owned(), json!(true));
+        }
+        _ => {}
     }
     for (variable, field) in [
         ("TINYCOMPUTER_BROWSER_PERCEPTION", "perception"),

@@ -165,23 +165,26 @@ appearing anywhere on the page, an element reaching a given state
 (`attached`, `detached`, `visible`, `hidden`), or a flat delay; `convert::
 wait_for` refuses if none of the three is given.
 
-`Surface::settle`, called before a decision loop reads the page again, does
-two things: waits (bounded, up to `NETWORK_IDLE_MS` = 2 seconds) for the
-page's network to go idle, then pauses an extra `SETTLE_MS` = 400
-milliseconds regardless, giving a banner or menu that is mid-animation time
-to finish closing. A page that polls constantly in the background never
-goes properly idle, so the network wait is a cap, not a guarantee.
+`Surface::settle`, called before a decision loop reads the page again,
+waits (bounded, up to `NETWORK_IDLE_MS` = 2 seconds) for the page's network
+to go quiet, then only while the page is still changing. A page that polls
+constantly in the background never goes properly quiet, so the network wait
+is a cap, not a guarantee.
 
-That is `Settle::Steady`, the default. The engine's `networkidle` wait
-starts counting its 500 ms of quiet only after a first 600 ms receive
-window, so even an idle page costs about 1.1 s plus the pause: about 1.6 s
-an action, live. `Settle::Prompt` (the module's `browser.settle`) waits for
-`networkquiet` instead, which counts the 500 ms from the start, and then
-only while the page is still changing: it resolves once no DOM change has
-happened for `STILL_MS` = 120 milliseconds and no finite CSS animation or
-transition is running (a menu fading out changes no DOM node), over at
-least two drawn frames, and after `SETTLE_MS` at most. An endless spinner
-is not waited for, and a busy page still waits for its requests.
+That is `Settle::Prompt`, the default (the module's `browser.settle`). It
+waits for the engine's `networkquiet`, which counts its 500 ms of quiet
+from the start, and then resolves once no DOM change has happened for
+`STILL_MS` = 120 milliseconds and no finite CSS animation or transition is
+running (a menu fading out changes no DOM node), over at least two drawn
+frames, and after `SETTLE_MS` = 400 milliseconds at most. An endless spinner
+is not waited for, and a busy page still waits for its requests: an idle
+page is read again after about 0.6 s.
+
+`Settle::Steady`, the earlier default, waits for `networkidle` instead,
+which starts counting its 500 ms of quiet only after a first 600 ms
+receive window, and then pauses `SETTLE_MS` regardless, giving a banner or
+menu that is mid-animation time to finish closing: about 1.6 s an action,
+live.
 
 ## Going back
 

@@ -229,7 +229,8 @@ fn pressing_launching_settling_and_navigating() {
     assert_eq!(surface.press("", "").error.unwrap().code, "INVALID_KEY");
     let launched = surface.launch("browser");
     assert_eq!(launched.data.unwrap()["running"], true);
-    surface.settle();
+    // Settling steadily, as a host may still ask for.
+    surface.clone().with_settle(crate::Settle::Steady).settle();
     let idle = fake.last("waitforloadstate");
     assert_eq!(
         (idle["state"].as_str(), idle["timeout"].as_u64()),
@@ -552,8 +553,8 @@ fn a_navigation_that_timed_out_on_a_drawn_page_is_taken_as_open() {
 
 #[test]
 fn a_prompt_settle_counts_quiet_from_the_start_and_waits_only_while_the_page_changes() {
+    // Prompt is how a surface settles unless told otherwise.
     let Harness { fake, surface, .. } = harness("prompt-settle", page_fake());
-    let surface = surface.with_settle(crate::Settle::Prompt);
     surface.settle();
     let quiet = fake.last("waitforloadstate");
     assert_eq!(

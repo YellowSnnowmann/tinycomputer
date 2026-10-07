@@ -63,9 +63,9 @@ is optional:
 - `browser`: how every browser launches — `executable` (the Chrome or
   Chromium binary), `user_agent`, `args` (an array of launch arguments),
   `perception` (`sight`, the default, or `tree`: how a task reads a page),
-  `settle` (`steady`, the default, or `prompt`: how long a page is let
-  settle after an action), and `prelaunch` (a boolean: open a browser-only
-  task's browser while it is planned).
+  `settle` (`prompt`, the default, or `steady`: how long a page is let
+  settle after an action), and `prelaunch` (a boolean, `true` by default:
+  open a browser-only task's browser while it is planned).
 
 Configuration is delivered as sensitive host-control traffic and is never
 shown to monitors.
