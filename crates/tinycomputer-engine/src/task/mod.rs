@@ -114,7 +114,10 @@ pub trait FlowRunner: Send + Sync + 'static {
 
     /// Gets the task's surfaces ready while its plan is drafted, so its
     /// first step does not wait for them: called alongside the planner for
-    /// a task that runs on the browser alone. Does nothing by default.
+    /// a task that runs on the browser alone. [`FlowRunner::release`] may
+    /// run while the future is in flight, or after it was dropped with a
+    /// cancelled task: what it opens then must be let go too. Does nothing
+    /// by default.
     fn prepare(&self, _task: &TaskId, _constraints: &TaskConstraints) -> PrepareFuture {
         Box::pin(async {})
     }

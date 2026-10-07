@@ -278,7 +278,10 @@ A `StartTask` with a `task` and no `flow` plans inside the task. When the
 task may run only on the browser, its runner is asked to get the browser
 ready meanwhile (`FlowRunner::prepare`); unless the module's
 `browser.prelaunch` is off, the session opens while the plan is drafted, so
-the first step does not wait for Chrome to start.
+the first step does not wait for Chrome to start. A plan that asks for
+values lets the browser go while the task waits (`needs_input`), and the
+run that follows opens it again; a task cancelled while its browser was
+still opening is left holding none.
 
 ## Rescues
 

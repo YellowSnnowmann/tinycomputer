@@ -85,6 +85,11 @@ async fn a_plan_that_needs_values_asks_and_a_failed_plan_says_so() {
     assert!(
         matches!(waiting.status, TaskStatus::NeedsInput { ref fields } if fields[0].name == "phone")
     );
+    assert_eq!(
+        *script.released.lock().unwrap(),
+        std::slice::from_ref(&started.id),
+        "a task waiting on a person holds no browser"
+    );
     assert!(
         tasks
             .continue_task(ContinueTaskRequest {

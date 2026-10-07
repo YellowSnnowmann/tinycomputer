@@ -698,4 +698,12 @@ fn a_surface_opens_its_session_when_asked_rather_than_at_first_use() {
     });
     let Harness { surface, .. } = harness("open-refused", refused);
     assert!(!surface.open());
+
+    // A surface let go before its early open began is not opened: a task
+    // cancelled while planning holds no browser.
+    let Harness { fake, surface, .. } = harness("open-closed", page_fake());
+    surface.close();
+    assert!(!surface.open());
+    assert!(surface.session().is_none());
+    assert!(fake.actions().is_empty(), "{:?}", fake.actions());
 }

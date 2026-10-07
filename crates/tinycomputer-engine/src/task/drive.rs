@@ -90,6 +90,10 @@ pub(super) async fn plan_then_drive(
         )
         .await;
     } else {
+        // A browser opened while planning is let go while the task waits on
+        // a person, who may take long or never answer; the run that follows
+        // opens one again.
+        runner.release(&id);
         publish(
             &cell,
             TaskStatus::NeedsInput {

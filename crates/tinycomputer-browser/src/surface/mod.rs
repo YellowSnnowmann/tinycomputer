@@ -26,6 +26,7 @@ mod watch;
 
 pub use sight::Denoised;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
@@ -119,6 +120,9 @@ pub struct BrowserSurface {
     perception: Perception,
     settle: Settle,
     denoised: Arc<Mutex<Denoised>>,
+    /// Set once the surface is let go ([`BrowserSurface::close`]): it is
+    /// then not opened early again.
+    closed: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for BrowserSurface {
@@ -154,6 +158,7 @@ impl BrowserSurface {
             perception: Perception::default(),
             settle: Settle::default(),
             denoised: Arc::new(Mutex::new(Denoised::default())),
+            closed: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -185,10 +190,13 @@ impl BrowserSurface {
 
     /// Opens the session now, if it is not open yet, rather than at the first
     /// call that needs it: a task that will run on the browser can open it
-    /// while its plan is drafted. Whether the session is open.
+    /// while its plan is drafted. Whether the session is open. A surface
+    /// already let go ([`BrowserSurface::close`]) is not opened: a task
+    /// cancelled while its browser was being opened early is left holding
+    /// none.
     #[must_use]
     pub fn open(&self) -> bool {
-        self.ensure_session().is_ok()
+        self.session_slot(true).is_ok()
     }
 
     /// The session this surface drives, once one is open.
@@ -211,6 +219,9 @@ impl BrowserSurface {
     /// Closes the session, if one is open, without waiting for it: safe to
     /// call from async code, where a blocking surface call is not.
     pub fn close(&self) {
+        // Before the slot is taken: an early open that has not begun yet
+        // finds it set, and one under way finishes first and is closed.
+        self.closed.store(true, Ordering::Release);
         let Some(id) = self
             .session
             .lock()
@@ -230,12 +241,22 @@ impl BrowserSurface {
     }
 
     fn ensure_session(&self) -> Result<SessionId> {
+        self.session_slot(false)
+    }
+
+    /// The open session, opening one if there is none; when `early`, not on
+    /// a surface already let go. `closed` is read under the slot's lock, so
+    /// an early open and a close cannot both miss each other.
+    fn session_slot(&self, early: bool) -> Result<SessionId> {
         let mut slot = self
             .session
             .lock()
             .map_err(|_| Error::failed("the browser surface was poisoned by a panic"))?;
         if let Some(id) = slot.as_ref() {
             return Ok(id.clone());
+        }
+        if early && self.closed.load(Ordering::Acquire) {
+            return Err(Error::failed("the browser surface was let go"));
         }
         let info = self.block(self.browser.open_session(self.options.clone()))?;
         *slot = Some(info.id.clone());
