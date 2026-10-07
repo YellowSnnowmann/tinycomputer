@@ -42,7 +42,9 @@ tradeoff rather than a smell.
 `Perception::Sight` (the default) or `Perception::Tree`. `observe` tries
 sight first when it is enabled, and only reads the accessibility tree
 snapshot when sight is turned off, fails outright, or hits something it
-cannot address (a shadow root, a large frame in front). See
+cannot address (two shadow roots showing controls, a large frame in front);
+one shadow root's controls are read from the tree under its host and added
+to sight's reading. See
 [sight.md](sight.md) for what each of those actually does.
 
 ## Executing an operation

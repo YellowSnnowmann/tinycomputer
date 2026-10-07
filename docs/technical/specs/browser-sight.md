@@ -40,7 +40,8 @@ a caret.
 - Vision: nothing reads pixels. An icon with no words, no alternative text,
   and no telling class stays unnamed.
 - Shadow roots and frames, which a CSS selector from the page cannot reach:
-  the tree is read instead (below).
+  one shadow root's controls are read from the tree under its host, beside
+  sight; otherwise the tree reads the page (below).
 - Changing agent-browser. Sight runs through its existing `evaluate` command,
   and acts through its existing CSS-selector targets.
 

@@ -77,23 +77,6 @@ async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::
     )
 }
 
-/// The accessibility tree of `html` written into a blank tab of a real
-/// browser, as the surface reads a page sight gives way on: `None` unless
-/// `TINYCOMPUTER_LIVE_BROWSER=1`.
-#[cfg(feature = "agent-browser")]
-async fn live_tree(html: &str) -> Option<String> {
-    let (browser, info) = live_page(html).await?;
-    let snapshot = browser
-        .snapshot(
-            &info.id,
-            tinycomputer_bus::browser::SnapshotRequest::default(),
-        )
-        .await
-        .expect("the fixture's tree is read");
-    browser.close_session(&info.id).await.unwrap();
-    Some(snapshot.tree)
-}
-
 /// The names of the controls and the words of the text a reading returned.
 #[cfg(feature = "agent-browser")]
 fn shown_names(reading: &serde_json::Value) -> Vec<String> {
@@ -309,7 +292,7 @@ async fn live_consent_banners_are_kept() {
 
 #[cfg(feature = "agent-browser")]
 #[tokio::test]
-async fn live_a_shadow_roots_shown_controls_give_way_to_the_tree_whatever_its_host_draws() {
+async fn live_a_shadow_root_that_shows_controls_is_handed_to_the_tree_under_its_layer() {
     // Live, a consent banner's host was drawn as `display: contents`, with
     // no box of its own, and its buttons went unread while the banner lay
     // over the page. A block host whose banner is fixed draws no box either.
@@ -324,26 +307,55 @@ async fn live_a_shadow_roots_shown_controls_give_way_to_the_tree_whatever_its_ho
             </script>"#
         )
     };
-    for (host, banner, unreachable) in [
-        ("display: contents", "", 1),
-        ("display: block", "", 1),
-        ("display: contents", "display: none", 0),
+    for (host, banner, shown) in [
+        ("display: contents", "", true),
+        ("display: block", "", true),
+        ("display: contents", "display: none", false),
     ] {
         let Some(reading) = live_reading(&page(host, banner)).await else {
             return;
         };
+        assert_eq!(reading["unreachable"], 0, "{reading}");
+        let shadows = reading["shadows"].as_array().unwrap();
         assert_eq!(
-            reading["unreachable"], unreachable,
+            shadows.len(),
+            usize::from(shown),
             "host {host:?}, banner {banner:?}: {reading}"
         );
+        if shown {
+            assert_eq!(
+                shadows[0]["label"], "popover \"We value your privacy\"",
+                "{reading}"
+            );
+        }
     }
-    // The tree the surface reads instead offers the banner's buttons.
-    let tree = live_tree(&page("display: contents", ""))
+    // The tree read under the host offers the banner's buttons, and only
+    // them.
+    let (browser, info) = live_page(&page("display: contents", ""))
         .await
-        .expect("a live run reads the tree too");
-    for button in ["Allow Selection", "Allow all", "Add To Cart"] {
-        assert!(tree.contains(button), "{button} in {tree}");
-    }
+        .expect("a live run opens the page");
+    let reading = browser
+        .command(
+            &info.id,
+            json!({"action": "evaluate", "script": script(None)}),
+        )
+        .await
+        .unwrap()["result"]
+        .clone();
+    let host = reading["shadows"][0]["id"].as_str().unwrap().to_owned();
+    let subtree = browser
+        .snapshot(
+            &info.id,
+            tinycomputer_bus::browser::SnapshotRequest {
+                selector: Some(format!("[data-tc-seen=\"{host}\"]")),
+                ..tinycomputer_bus::browser::SnapshotRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+    browser.close_session(&info.id).await.unwrap();
+    assert!(subtree.tree.contains("Allow Selection"), "{}", subtree.tree);
+    assert!(!subtree.tree.contains("Add To Cart"), "{}", subtree.tree);
 }
 
 #[cfg(feature = "agent-browser")]

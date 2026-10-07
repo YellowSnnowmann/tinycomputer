@@ -906,6 +906,28 @@
     const controls = host.shadowRoot.querySelectorAll('a[href], button, input, select, textarea, [role], [tabindex]');
     return controls.length > 0 && (shown(host) || [...controls].some(shown));
   };
+  // The shadow roots that show controls, each as its host's ref, which a
+  // selector can address, and the label of the layer it draws, if any: the
+  // controls the tree reads under the host keep the place they show in.
+  // Live, a consent banner was a fixed layer over the page.
+  const shadows = [];
+  const firstWords = (element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = squash(node.data);
+      if (text.split(' ').length >= 3 && node.parentElement && shown(node.parentElement)) return clip(text, 60);
+    }
+    return '';
+  };
+  const shadowLabel = (host) => {
+    for (const element of host.shadowRoot.querySelectorAll('*')) {
+      const floating = layer(element);
+      if (!floating) continue;
+      const named = labelOf(element) || heading(element) || firstWords(element);
+      return named ? `${floating} ${JSON.stringify(named)}` : floating;
+    }
+    return null;
+  };
   let texts = 0;
   const insideControl = (element) => {
     for (let parent = element.parentElement; parent; parent = parent.parentElement) {
@@ -1001,7 +1023,7 @@
     }
     if (element.shadowRoot && showsShadowControls(element)) {
       if (dropped) tally(dropped);
-      else unreachable += 1;
+      else shadows.push({ id: mark(element), label: shadowLabel(element) });
     }
     if (tag(element) === 'iframe' && shown(element) && !offscreen(element) && inFront(element)) {
       const rect = box(element);
@@ -1095,5 +1117,5 @@
     if (floating === 'alertdialog') { surface = 'alert'; break; }
     if (floating === 'dialog') { surface = 'sheet'; break; }
   }
-  return { ok: true, title: document.title, surface, unreachable, nodes, denoised };
+  return { ok: true, title: document.title, surface, unreachable, shadows, nodes, denoised };
 })

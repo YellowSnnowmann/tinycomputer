@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 use tinycomputer_bus::DesktopResponse;
-use tinycomputer_bus::browser::{Action, SessionId, SessionOptions};
+use tinycomputer_bus::browser::{Action, SessionId, SessionOptions, SnapshotRequest};
 use tinycomputer_core::Platform;
 use tinycomputer_core::surface::Screen;
 use tinycomputer_cursor::ScreenCursor;
@@ -255,9 +255,64 @@ impl BrowserSurface {
             .ok()?
             .ok()?;
         let result = reply.get("result")?;
-        let screen = sight::screen(result)?;
+        let mut screen = sight::screen(result)?;
         self.keep_denoised(sight::denoised(result));
+        match sight::shadows(result).as_slice() {
+            [] => {}
+            [shadow] => self.read_shadow(&id, shadow, &mut screen)?,
+            // A tree snapshot's refs last until the next one: one host's
+            // subtree can be read beside sight, not two.
+            _ => return None,
+        }
         Some(screen)
+    }
+
+    /// Adds to `screen` what the tree reads under `shadow`'s host: the
+    /// controls a selector cannot reach, under the label of the layer they
+    /// draw, after everything sight read. `None` when the subtree cannot be
+    /// read, so the tree reads the whole page instead.
+    fn read_shadow(
+        &self,
+        id: &SessionId,
+        shadow: &sight::Shadow,
+        screen: &mut Screen,
+    ) -> Option<()> {
+        let request = SnapshotRequest {
+            selector: Some(sight::selector(&shadow.host)),
+            ..SnapshotRequest::default()
+        };
+        let reading = self.browser.snapshot(id, request);
+        let snapshot = self
+            .block(async { tokio::time::timeout(READ_TIMEOUT, reading).await })
+            .ok()?
+            .ok()?;
+        let part = tree::screen(&snapshot.tree, &snapshot.title);
+        let after = screen
+            .candidates
+            .iter()
+            .chain(&screen.text_nodes)
+            .map(|node| node.order + 1)
+            .max()
+            .unwrap_or_default();
+        let placed = |mut node: tinycomputer_core::surface::Candidate| {
+            if let Some(label) = &shadow.label {
+                node.path.insert(0, label.clone());
+            }
+            node.order += after;
+            node
+        };
+        screen
+            .candidates
+            .extend(part.candidates.into_iter().map(placed));
+        screen
+            .text_nodes
+            .extend(part.text_nodes.into_iter().map(placed));
+        for line in part.context {
+            if !screen.context.contains(&line) {
+                screen.context.push(line);
+            }
+        }
+        Some(())
     }
 
     fn keep_denoised(&self, denoised: Denoised) {
