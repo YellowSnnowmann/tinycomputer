@@ -121,7 +121,6 @@ they control.
 | `TASK_MAX_MINUTES` | `20` | the task is cancelled after this long |
 | `TASK_RESCUES` | `5` | how many failed steps a reasoning model may rescue (`0` turns rescues off); see [rescue](../../rescue.md) |
 | `TINYCOMPUTER_RESCUE_MODEL` | `openai/gpt-6-luna` (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model that performs a rescue |
-| `TINYCOMPUTER_PLAN_REASONING` | unset | `off` asks the planner's model not to reason before it plans (the module's `planner.plan_reasoning`); live, a plan took about 3.5 s instead of 16 to 20 s |
 | `TINYCOMPUTER_PLANNER_MODEL` | the engine's default (`openrouter/deepseek/deepseek-v4-flash` with `TINYHUMANS_TOKEN`) | the model asked to plan the flow |
 
 **Optional, the browser:**

@@ -44,8 +44,6 @@
 //! - `TASK_MAX_MINUTES` — optional: cancel the task after this long (20).
 //! - `TASK_RESCUES` — optional: how many failed steps the reasoning model
 //!   may rescue (0 to 5, default 5; 0 turns rescues off).
-//! - `TINYCOMPUTER_PLAN_REASONING` — optional: `off` asks the planner's model
-//!   not to reason before it plans (the module's `planner.plan_reasoning`).
 //! - `TINYCOMPUTER_RESCUE_MODEL` — optional: the model that rescues them
 //!   (`openai/gpt-6-luna` by default on `OpenRouter`,
 //!   `openrouter/deepseek/deepseek-v4-flash` on Tiny Humans).
@@ -257,7 +255,7 @@ fn routes(var: &dyn Fn(&str) -> Option<String>) -> Result<(Value, Value), LabErr
             "rescue_model": model("TINYCOMPUTER_RESCUE_MODEL"),
             "output_model": model("TINYCOMPUTER_OUTPUT_MODEL"),
         });
-        return Ok((decisions(var, jev)?, plan_reasoning(var, planner)));
+        return Ok((decisions(var, jev)?, planner));
     }
     let key = var("OPENROUTER_API_KEY").ok_or_else(|| {
         std::io::Error::other("neither OPENROUTER_API_KEY nor TINYHUMANS_TOKEN is exported")
@@ -268,22 +266,7 @@ fn routes(var: &dyn Fn(&str) -> Option<String>) -> Result<(Value, Value), LabErr
         "rescue_model": var("TINYCOMPUTER_RESCUE_MODEL"),
         "output_model": var("TINYCOMPUTER_OUTPUT_MODEL"),
     });
-    Ok((
-        decisions(var, jev_config(key, None)?)?,
-        plan_reasoning(var, planner),
-    ))
-}
-
-/// `planner` with `plan_reasoning` from `TINYCOMPUTER_PLAN_REASONING`
-/// (`off` plans without the model reasoning first), when it is set.
-fn plan_reasoning(var: &dyn Fn(&str) -> Option<String>, mut planner: Value) -> Value {
-    if let Some(reasoning) = var("TINYCOMPUTER_PLAN_REASONING")
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
-    {
-        planner["plan_reasoning"] = json!(reasoning);
-    }
-    planner
+    Ok((decisions(var, jev_config(key, None)?)?, planner))
 }
 
 /// Who takes the flow's decisions, as the module's `jev` configuration:

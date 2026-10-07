@@ -28,19 +28,6 @@ pub const OPEN_ROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 /// `tiny_humans` route accepts.
 pub const TINYHUMANS_BASE_URL: &str = "https://api.tinyhumans.ai/openai/v1";
 
-/// Whether the planner's model reasons before it writes the flow.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PlanReasoning {
-    /// As the model does unasked.
-    #[default]
-    Default,
-    /// Not at all: the request asks `"reasoning": {"enabled": false}`. Live,
-    /// a plan on the default Tiny Humans model took 16 to 20 s, nearly all
-    /// of it 1,600 to 2,000 reasoning tokens, and about 3.5 s without them.
-    Off,
-}
-
 /// The module's private `planner` configuration.
 ///
 /// Its route fields (`api_key`, `provider`, `endpoint_url`, `sdk_name`) sit
@@ -68,10 +55,6 @@ pub struct PlannerConfig {
     /// inherited from the planner's route: it is a complete route of its own.
     #[serde(default)]
     pub rescue_route: Option<ModelRoute>,
-    /// Whether the planner's model reasons before it plans;
-    /// [`PlanReasoning::Default`] when absent.
-    #[serde(default)]
-    pub plan_reasoning: PlanReasoning,
 }
 
 impl PlannerConfig {
@@ -92,7 +75,6 @@ impl std::fmt::Debug for PlannerConfig {
             .field("rescue_model", &self.rescue_model)
             .field("output_model", &self.output_model)
             .field("rescue_route", &self.rescue_route)
-            .field("plan_reasoning", &self.plan_reasoning)
             .finish()
     }
 }

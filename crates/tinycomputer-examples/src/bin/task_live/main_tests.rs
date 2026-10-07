@@ -89,28 +89,3 @@ fn sage_takes_the_decisions_on_either_route() -> Result<(), LabError> {
     );
     Ok(())
 }
-
-#[test]
-fn plan_reasoning_reaches_the_planner_on_either_route() -> Result<(), LabError> {
-    let (_, planner) = routes(&lookup(&[
-        ("TINYHUMANS_TOKEN", "th-bearer"),
-        ("TINYCOMPUTER_PLAN_REASONING", " OFF "),
-    ]))?;
-    assert_eq!(planner["plan_reasoning"], "off");
-    let (_, planner) = routes(&lookup(&[
-        ("OPENROUTER_API_KEY", "sk-or-key"),
-        ("TINYCOMPUTER_PLAN_REASONING", "off"),
-    ]))?;
-    assert_eq!(planner["plan_reasoning"], "off");
-    let (_, planner) = routes(&lookup(&[("TINYHUMANS_TOKEN", "th-bearer")]))?;
-    assert!(
-        planner.get("plan_reasoning").is_none(),
-        "unset leaves the default"
-    );
-    let (_, planner) = routes(&lookup(&[
-        ("TINYHUMANS_TOKEN", "th-bearer"),
-        ("TINYCOMPUTER_PLAN_REASONING", "  "),
-    ]))?;
-    assert!(planner.get("plan_reasoning").is_none(), "blank is unset");
-    Ok(())
-}

@@ -8,8 +8,6 @@
 
 use std::sync::Arc;
 
-use serde_json::Value;
-
 use tinycomputer_bus::agent::LanguageModelProvider;
 use tinyinference_llm::model::{
     ReasoningConfig, ReasoningEffort, ResponseFormat, collect_model_stream,
@@ -17,9 +15,7 @@ use tinyinference_llm::model::{
 use tinyinference_llm::providers::openai::OpenAiModel;
 use tinyinference_llm::{ChatModel, Message, ModelRequest, ProviderKind, ProviderSpec};
 
-use super::config::{
-    ModelRoute, OUTPUT_MODEL, PLANNER_MODEL, PlanReasoning, PlannerConfig, RESCUE_MODEL,
-};
+use super::config::{ModelRoute, OUTPUT_MODEL, PLANNER_MODEL, PlannerConfig, RESCUE_MODEL};
 use super::{Completion, LanguageModel, Planner, Role, Turn};
 use crate::rescue::Rescuer;
 use crate::shape::Shaper;
@@ -38,7 +34,6 @@ pub fn open_router(config: &PlannerConfig) -> Result<Planner, String> {
         model: chat,
         temperature: Some(0.2),
         reasoning: None,
-        options: plan_options(config.plan_reasoning),
         max_tokens: 4_000,
     }))
     .with_configuration(config.route.describe(&model)))
@@ -61,7 +56,6 @@ pub fn open_router_rescuer(config: &PlannerConfig) -> Result<Rescuer, String> {
         // Reasoning models take no sampling temperature.
         temperature: None,
         reasoning: Some(ReasoningEffort::Low),
-        options: Value::Null,
         max_tokens: 8_000,
     }))
     .with_configuration(route.describe(&model)))
@@ -83,7 +77,6 @@ pub fn open_router_shaper(config: &PlannerConfig) -> Result<Shaper, String> {
         // Reasoning models take no sampling temperature.
         temperature: None,
         reasoning: Some(ReasoningEffort::Low),
-        options: Value::Null,
         // Room for a result built from many records.
         max_tokens: 16_000,
     }))
@@ -117,23 +110,10 @@ pub(super) fn chat_model(route: &ModelRoute, model: &str) -> Result<Arc<OpenAiMo
     Ok(Arc::new(chat))
 }
 
-/// The provider options a plan asks for: none by default, and with
-/// [`PlanReasoning::Off`], `OpenRouter`'s switch for reasoning, which the Tiny
-/// Humans gateway passes on. `reasoning_effort` and `thinking` were tried
-/// live and ignored by the default model.
-pub(super) fn plan_options(reasoning: PlanReasoning) -> Value {
-    match reasoning {
-        PlanReasoning::Default => Value::Null,
-        PlanReasoning::Off => serde_json::json!({"reasoning": {"enabled": false}}),
-    }
-}
-
 struct Hosted {
     model: Arc<OpenAiModel>,
     temperature: Option<f64>,
     reasoning: Option<ReasoningEffort>,
-    /// Fields added to the request body as they are (`provider_options`).
-    options: Value,
     max_tokens: u32,
 }
 
@@ -154,7 +134,6 @@ impl LanguageModel for Hosted {
             temperature: self.temperature,
             max_tokens: Some(self.max_tokens),
             reasoning: self.reasoning.map(ReasoningConfig::effort),
-            provider_options: self.options.clone(),
             ..ModelRequest::default()
         };
         Box::pin(async move {

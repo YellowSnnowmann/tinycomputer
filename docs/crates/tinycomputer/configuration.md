@@ -159,13 +159,6 @@ configuration.
 covers the rescue mechanism itself. `output_model` (default
 `openai/gpt-6-luna`) shapes a finished task's answer the same way.
 
-`plan_reasoning` (`default` when absent) set to `off` asks the planner's
-model not to reason before it writes the flow, with OpenRouter's
-`"reasoning": {"enabled": false}`, which the Tiny Humans gateway passes on.
-Live, a plan on the default Tiny Humans model took 16 to 20 seconds, nearly
-all of it 1,600 to 2,000 reasoning tokens, and about 3.5 seconds without
-them. The rescuer and the shaper keep their brief reasoning either way.
-
 ### Routes: OpenRouter or Tiny Humans
 
 The planner, the rescuer, and the shaper call an OpenAI-compatible route.

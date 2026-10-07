@@ -217,7 +217,6 @@ async fn the_open_router_planner_needs_a_key_and_never_prints_it() {
         rescue_model: None,
         output_model: None,
         rescue_route: None,
-        plan_reasoning: super::PlanReasoning::Default,
     };
     assert!(open_router(&empty).unwrap_err().contains("api_key"));
     assert!(
