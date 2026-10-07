@@ -5,7 +5,7 @@ use std::{
     collections::HashMap,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::AtomicUsize},
     time::Duration,
 };
 
@@ -41,6 +41,9 @@ pub struct JevRuntime {
     pub(super) configuration: JevConfiguration,
     pub(super) pending: Arc<Mutex<HashMap<String, PendingRun>>>,
     pub(super) journal: Journal,
+    /// Hedged copies of framings in flight, shared by every flow run on
+    /// this runtime.
+    pub(super) copies: Arc<AtomicUsize>,
 }
 
 impl std::fmt::Debug for JevRuntime {
@@ -51,6 +54,7 @@ impl std::fmt::Debug for JevRuntime {
             .field("configuration", &self.configuration)
             .field("pending", &"[redacted]")
             .field("journal", &self.journal)
+            .field("copies", &self.copies)
             .finish()
     }
 }
@@ -96,6 +100,7 @@ impl JevRuntime {
             },
             pending: Arc::new(Mutex::new(HashMap::new())),
             journal: Journal::from_env(),
+            copies: Arc::default(),
         })
     }
 
@@ -138,6 +143,7 @@ impl JevRuntime {
             },
             pending: Arc::new(Mutex::new(HashMap::new())),
             journal: Journal::from_env(),
+            copies: Arc::default(),
         })
     }
 

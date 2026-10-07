@@ -155,11 +155,11 @@ round trip's *slowest* framing, plus the action, plus settling. The levers:
 | Lever | Effect on latency | Effect on accuracy |
 |---|---|---|
 | `strategy` | `wide` asks one request per `do` turn instead of two to seven in sequence | the digest, survey, and memory show more of what matters; measure with the lab's `--strategy` |
-| `votes` | a decision waits for its slowest framing: more framings, longer tail; a framing slower than 4 s (5 s at 32 KB or more) gets a copy, and the first answer counts | more framings average out position and phrasing bias |
+| `votes` | a decision waits for its slowest framing: more framings, longer tail; a framing slower than 4 s (5 s at 32 KB or more) gets a copy, and the first answer counts (no copy on Sage, and two in flight at most) | more framings average out position and phrasing bias |
 | request size | Jev's latency grows with input tokens; a big element list is the usual cause | trimming can drop the element that was needed |
 | grounding memory | a remembered element is confirmed with one Noul instead of narrowing | none when the hint is right |
 | `disabled_loops` | each loop off removes a question or a whole decision | measure it before shipping it off |
-| `settle` | fixed per action on the desktop, network-idle on the browser | too short and the next look sees the old screen |
+| `settle` | fixed per action on the desktop; on the browser, `prompt` (the default) waits at most 1 s for the requests that change the page, then ≤ 400 ms for it to go still, and `steady` for network idle (≤ 2 s) and 400 ms more | too short and the next look sees the old screen |
 | observation | an accessibility snapshot of a large window is slow; `explore` adds more | a budgeted view can miss the target |
 
 Measure before changing any of them. The debug journal

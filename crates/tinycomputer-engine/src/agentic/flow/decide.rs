@@ -1,38 +1,17 @@
 //! Asking Jev: every request is briefed, masked, fitted to size, and voted
 //! on through one door.
 
-use std::{
-    collections::BTreeMap,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, time::Instant};
 
 use serde_json::{Value, json};
 use tinycomputer_bus::{FlowLoop, FlowStopReason, JevExchange};
 use tinycomputer_core::Facts;
-use tinyinference_decisions::{
-    Answer, EvaluationFailure, EvaluationRequest, EvaluationResult, Question,
-};
+use tinyinference_decisions::{Answer, EvaluationRequest, Question};
 
 use super::{
-    FlowRun, Halt, MAX_REQUEST_BYTES, StepLog, ask, backend::AgentBackend, brief::clip, vote,
+    FlowRun, Halt, MAX_REQUEST_BYTES, StepLog, ask, backend::AgentBackend, brief::clip, hedge, vote,
 };
-use crate::agentic::{JevRuntime, journal::millis, merge_metrics, provider_error};
-
-/// How long a framing runs before a copy of it is sent and the first answer
-/// of the two taken. Live, one framing of a burst stalled 12–32 s (the
-/// gateway gave up after ~10 s, or nothing came back before the client's
-/// timeout) as its siblings answered in under 1 s. Calls on a slow evening
-/// took up to 3.4 s and still answered: a copy sent at 2.5 s lost the race
-/// 15 times in 16, so copies wait for 4 s, past what a slow answer takes.
-const HEDGE_AFTER: Duration = Duration::from_millis(4_000);
-
-/// [`HEDGE_AFTER`] for a request of [`HEDGE_LARGE_BYTES`] or more, whose
-/// p99.9 was 3.9 s live.
-const HEDGE_AFTER_LARGE: Duration = Duration::from_millis(5_000);
-
-/// Size from which a request waits [`HEDGE_AFTER_LARGE`] for its first
-/// answer.
-const HEDGE_LARGE_BYTES: usize = 32 * 1024;
+use crate::agentic::{journal::millis, merge_metrics, provider_error};
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// Asks Jev one request, charging it to the run and the step.
@@ -220,7 +199,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             .collect()
     }
 
-    /// Sends every framing to Jev at once, each one [`hedged`].
+    /// Sends every framing to Jev at once, each one [`hedged`](hedge::hedged).
     pub(super) fn spawn(
         &self,
         framings: &[vote::Framing],
@@ -238,7 +217,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 let runtime = self.runtime.clone();
                 let step = self.step.clone();
                 let request = framing.request.clone();
-                tokio::spawn(async move { hedged(&runtime, &step, &request).await })
+                tokio::spawn(async move { hedge::hedged(&runtime, &step, &request).await })
             })
             .collect()
     }
@@ -278,56 +257,6 @@ type Sent = (
 
 /// The id of the page-kind question a request on a web page carries.
 pub(super) const PAGE_KIND: &str = "page_kind";
-
-/// Asks `request` once, and once more when no answer has come within its
-/// hedge delay ([`HEDGE_AFTER`], or [`HEDGE_AFTER_LARGE`] for a large
-/// request), taking whichever copy answers first. A copy that fails gives
-/// way to the other; when both fail, the first failure is returned. The
-/// answer that counts carries the extra attempt, and the journal records a
-/// `hedge` event.
-pub(in crate::agentic::flow) async fn hedged(
-    runtime: &JevRuntime,
-    step: &str,
-    request: &EvaluationRequest,
-) -> Result<EvaluationResult, EvaluationFailure> {
-    let delay = if bytes(request) >= HEDGE_LARGE_BYTES {
-        HEDGE_AFTER_LARGE
-    } else {
-        HEDGE_AFTER
-    };
-    let first = runtime.evaluate(Some(step), request);
-    tokio::pin!(first);
-    if let Ok(outcome) = tokio::time::timeout(delay, &mut first).await {
-        return outcome;
-    }
-    let sent = Instant::now();
-    let copy = runtime.evaluate(Some(step), request);
-    tokio::pin!(copy);
-    let (outcome, copy_won) = tokio::select! {
-        outcome = &mut first => (outcome, false),
-        outcome = &mut copy => (outcome, true),
-    };
-    let outcome = match outcome {
-        Ok(evaluation) => Ok(evaluation),
-        Err(failure) => {
-            let other = if copy_won { first.await } else { copy.await };
-            other.or(Err(failure))
-        }
-    };
-    runtime.journal.record("hedge", || {
-        json!({
-            "step": step,
-            "after_ms": millis(delay),
-            "won": if copy_won { "copy" } else { "first" },
-            "ok": outcome.is_ok(),
-            "wall_ms": millis(delay + sent.elapsed()),
-        })
-    });
-    outcome.map(|mut evaluation| {
-        evaluation.attempts = evaluation.attempts.saturating_add(1);
-        evaluation
-    })
-}
 
 /// `request` cut by its questions into requests of at most `limit` bytes of
 /// JSON, each carrying the whole state and as many of the questions, in
@@ -402,7 +331,7 @@ pub(in crate::agentic::flow) fn largest(parts: &[EvaluationRequest]) -> usize {
 }
 
 /// The size of `request`, in bytes of JSON.
-fn bytes(request: &EvaluationRequest) -> usize {
+pub(super) fn bytes(request: &EvaluationRequest) -> usize {
     serde_json::to_vec(request).map_or(0, |json| json.len())
 }
 

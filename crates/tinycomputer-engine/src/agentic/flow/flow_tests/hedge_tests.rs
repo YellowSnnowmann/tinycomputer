@@ -2,7 +2,7 @@
 //! and the first answer of the two counts.
 
 use super::*;
-use crate::agentic::flow::decide::hedged;
+use crate::agentic::flow::hedge::hedged;
 
 /// A Jev that answers each call after the wait scripted for it, in call
 /// order, or fails it.
@@ -47,6 +47,13 @@ impl Evaluator for Paced {
 }
 
 fn paced(script: &[(u64, bool)]) -> (JevRuntime, Arc<Paced>) {
+    paced_as(tinycomputer_bus::JevProvider::OpenRouter, script)
+}
+
+fn paced_as(
+    provider: tinycomputer_bus::JevProvider,
+    script: &[(u64, bool)],
+) -> (JevRuntime, Arc<Paced>) {
     let paced = Arc::new(Paced {
         calls: Mutex::new(0),
         script: script
@@ -57,13 +64,14 @@ fn paced(script: &[(u64, bool)]) -> (JevRuntime, Arc<Paced>) {
     let runtime = JevRuntime {
         client: paced.clone(),
         configuration: tinycomputer_bus::JevConfiguration {
-            provider: tinycomputer_bus::JevProvider::OpenRouter,
+            provider,
             model: "jev-latest".to_owned(),
             endpoint_url: None,
             fast: false,
         },
         pending: Arc::default(),
         journal: crate::agentic::journal::Journal::default(),
+        copies: Arc::default(),
     };
     (runtime, paced)
 }
@@ -127,4 +135,92 @@ async fn a_failed_copy_gives_way_and_two_failures_fail() {
 
     let (runtime, _) = paced(&[(4_500, true), (1_000, true)]);
     assert!(hedged(&runtime, "1", &request(1_000)).await.is_err());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sage_framing_gets_no_copy() {
+    // Sage's calls take 5–6 s as a rule: a copy would double them.
+    let (runtime, paced) = paced_as(
+        tinycomputer_bus::JevProvider::Sage,
+        &[(6_000, false), (600, false)],
+    );
+    let started = tokio::time::Instant::now();
+    let answer = hedged(&runtime, "1", &request(1_000)).await.unwrap();
+    assert_eq!(
+        (answer.response.model.as_str(), answer.attempts),
+        ("call 0", 1)
+    );
+    assert_eq!(started.elapsed(), Duration::from_millis(6_000));
+    assert_eq!(*paced.calls.lock().unwrap(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn no_more_than_two_copies_are_in_flight() {
+    // Three framings stall together, as on a slow gateway: two get a copy,
+    // the third waits for its own answer.
+    let (runtime, paced) = paced(&[
+        (30_000, false),
+        (30_000, false),
+        (30_000, false),
+        (600, false),
+        (600, false),
+    ]);
+    let asked = request(1_000);
+    let ask = || hedged(&runtime, "1", &asked);
+    let (one, two, three) = tokio::join!(ask(), ask(), ask());
+    let mut attempts = [one, two, three].map(|answer| answer.unwrap().attempts);
+    // Which framing's delay ends first is the timer's to say.
+    attempts.sort_unstable();
+    assert_eq!(attempts, [1, 2, 2]);
+    assert_eq!(*paced.calls.lock().unwrap(), 5);
+    assert_eq!(
+        runtime.copies.load(std::sync::atomic::Ordering::Acquire),
+        0,
+        "every place given back"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_journal_names_the_answer_that_counted() {
+    let scratch = std::env::temp_dir().join(format!(
+        "tinycomputer-hedge-journal-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let won = |script: &[(u64, bool)]| {
+        let (mut runtime, _) = paced(script);
+        runtime.journal = crate::agentic::journal::Journal::at(&scratch).fresh("hedge");
+        let dir = runtime.journal.run_dir().unwrap();
+        async move {
+            let _ = hedged(&runtime, "1", &request(1_000)).await;
+            let journal = std::fs::read_to_string(dir.join(crate::JOURNAL_FILE)).unwrap();
+            let event: Value = journal
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .find(|event| event["event"] == "hedge")
+                .unwrap();
+            (
+                event["won"].as_str().unwrap().to_owned(),
+                event["ok"].as_bool().unwrap(),
+            )
+        }
+    };
+    // The first finished first, failing; the copy's answer counted.
+    assert_eq!(
+        won(&[(4_500, true), (1_000, false)]).await,
+        ("copy".to_owned(), true)
+    );
+    // The copy failed at once; the first's answer counted.
+    assert_eq!(
+        won(&[(6_000, false), (0, true)]).await,
+        ("first".to_owned(), true)
+    );
+    assert_eq!(
+        won(&[(4_500, true), (1_000, true)]).await,
+        ("neither".to_owned(), false)
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
 }

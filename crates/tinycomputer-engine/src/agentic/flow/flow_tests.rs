@@ -92,6 +92,7 @@ fn runtime(oracle: Oracle) -> JevRuntime {
         },
         pending: Arc::default(),
         journal: crate::agentic::journal::Journal::default(),
+        copies: Arc::default(),
     }
 }
 
@@ -123,6 +124,7 @@ async fn run_with(
         },
         pending: Arc::default(),
         journal: crate::agentic::journal::Journal::default(),
+        copies: Arc::default(),
     };
     // One framing per decision, so every test that counts requests counts
     // decisions; voting has its own tests.
