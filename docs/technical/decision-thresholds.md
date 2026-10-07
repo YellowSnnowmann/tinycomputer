@@ -51,7 +51,8 @@ Change a constant and its row together.
 | `LAYER_COVERS` | 3 | `front.rs` | controls something drawn over the window must cover, beyond what was covered before the press that opened it, on the same page, before it counts as a dialog the task opened (`surface` `layer`); a step that pressed inside such a dialog hands it back at the next step, and opening an address forgets it |
 | `FRONT_CONTROLS` | 8 | `act/turns.rs` | most controls of the task's dialog in front a failed step's note names, so a rescue answers with one of them |
 | `STEADY_HOLD` / `STEADY_CHECKS` | 0.65 / 3 | `steps/mod.rs` | belief a `wait_for` condition must keep, on checks in a row of one unchanged screen, to be taken as held under `DONE` |
-| `LATE_LOOKS` | 2 | `steps/suggestion.rs` | looks again, a wait apart, for the suggestions a place or search box lists late, before its text is left as typed |
+| `LATE_LOOKS` | 2 | `steps/suggestion.rs` | looks again, after a wait for the page to change, for the suggestions a place box lists late, before its text is left as typed; a page that stayed still through a wait lists nothing more |
+| `LATE_LOOK_MS` | 1000 ms | `steps/suggestion.rs` | longest one of those waits: it ends as soon as the page changes (`Surface::await_change`) |
 | `BARE_CHARS` | 3 | `tinycomputer-core` `surface/groups.rs` | most letters and digits each field of a card may show for a list of such cards to be bare markers (carousel dots, size chips, page numbers), never results |
 | `CARD_LINK_CHARS` | 20 | `tinycomputer-core` `surface/groups.rs` | least characters (with a word in them) a link, option, radio, or button must show for a run of three or more under one parent to be a list of cards that are one control each |
 

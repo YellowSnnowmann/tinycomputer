@@ -581,6 +581,51 @@ fn a_prompt_settle_counts_quiet_from_the_start_and_waits_only_while_the_page_cha
 }
 
 #[test]
+fn a_wait_for_a_change_ends_at_the_pages_first_change_or_its_time() {
+    let Harness { fake, surface, .. } = harness("await-change", page_fake());
+    assert!(surface.await_change(1_000), "the page changed");
+    let watch = fake.last("evaluate");
+    let script = watch["script"].as_str().unwrap();
+    assert!(script.contains("MutationObserver"), "{script}");
+    assert!(
+        script.contains("done(false), 1000"),
+        "still once the time given passes: {script}"
+    );
+    assert!(
+        script.contains("'data-tc-'"),
+        "sight's own marks are no change: {script}"
+    );
+    assert!(
+        !fake.actions().iter().any(|action| action == "wait"),
+        "no fixed pause: {:?}",
+        fake.actions()
+    );
+
+    let still = harness(
+        "await-still",
+        Fake::scripted(|command| {
+            (command["action"] == "evaluate").then(|| ok(&json!({"result": false})))
+        }),
+    );
+    assert!(!still.surface.await_change(1_000), "the page stayed still");
+
+    // A watch that cannot run says the page may have changed, so a caller
+    // looks again as it would after a pause.
+    let unwatched = harness("await-unwatched", Fake::new());
+    assert!(
+        unwatched.surface.await_change(1_000),
+        "no answer of its own"
+    );
+    let closed = harness(
+        "await-closed",
+        Fake::scripted(|command| {
+            (command["action"] == "launch").then(|| failure("Chrome not found"))
+        }),
+    );
+    assert!(closed.surface.await_change(1_000), "no session to watch");
+}
+
+#[test]
 fn a_surface_opens_its_session_when_asked_rather_than_at_first_use() {
     let Harness { fake, surface, .. } = harness("open-early", page_fake());
     assert!(surface.session().is_none());

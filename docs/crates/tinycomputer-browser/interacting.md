@@ -186,6 +186,14 @@ receive window, and then pauses `SETTLE_MS` regardless, giving a banner or
 menu that is mid-animation time to finish closing: about 1.6 s an action,
 live.
 
+`Surface::await_change(ms)` watches the page rather than pausing: one
+`evaluate` whose `MutationObserver` resolves `true` at the page's first change
+of its own (an element or words added, removed, or rewritten, or an
+element's look changed, never a `data-tc-` mark sight leaves), or `false`
+once `ms` pass with none. A flow waiting for a place box's late suggestions
+settles and looks again as soon as the page changes, and stops waiting once
+it stays still; a watch that cannot run says the page may have changed.
+
 ## Going back
 
 `Surface::back` maps straight to `Action::Back`, which agent-browser

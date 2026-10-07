@@ -43,6 +43,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
         let note = match (&reply.error, &reply.data) {
             (Some(error), _) => error.code.clone(),
+            (None, Some(_)) if still(&reply) => "nothing changed".to_owned(),
             (None, Some(data)) => data
                 .get("path")
                 .and_then(serde_json::Value::as_str)
@@ -63,7 +64,9 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             note,
         });
         let settle_started = Instant::now();
-        if reply.ok {
+        // A wait that saw the surface stay still has nothing to settle.
+        let settles = reply.ok && !still(&reply);
+        if settles {
             // Let the surface finish reacting, so the next look sees what the
             // action did rather than the moment before it took effect.
             self.backend_call(|backend| {
@@ -81,10 +84,28 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 "ok": reply.ok,
                 "note": record.map(|record| record.note.as_str()),
                 "wall_ms": acted_ms,
-                "settle_ms": if reply.ok { millis(settle_started.elapsed()) } else { 0 },
+                "settle_ms": if settles { millis(settle_started.elapsed()) } else { 0 },
             })
         });
         Ok(reply)
+    }
+
+    /// Waits up to `ms` for the surface to change by itself
+    /// (`Surface::await_change`), as one `wait` action charged to the budget
+    /// and the step log: settled when the surface changed, and `false` when
+    /// it stayed still, so a caller watching for something to appear stops.
+    pub(in crate::agentic::flow) async fn await_change(
+        &mut self,
+        log: &mut StepLog,
+        ms: u64,
+    ) -> Result<bool, Halt> {
+        let reply = self
+            .act(log, "wait", None, move |backend| {
+                let changed = backend.await_change(ms);
+                DesktopResponse::ok("wait", json!({ "still": !changed }))
+            })
+            .await?;
+        Ok(!still(&reply))
     }
 
     async fn backend_call<F>(&self, call: F) -> DesktopResponse
@@ -93,4 +114,14 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     {
         blocking(self.backend.clone(), call).await
     }
+}
+
+/// Whether `reply` is a wait's that saw the surface stay still.
+fn still(reply: &DesktopResponse) -> bool {
+    reply
+        .data
+        .as_ref()
+        .and_then(|data| data.get("still"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }

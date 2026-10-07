@@ -258,6 +258,19 @@ impl Surface for BrowserSurface {
         let _settled = self.perform("wait", pause(SETTLE_MS));
     }
 
+    fn await_change(&self, ms: u64) -> bool {
+        let Ok(id) = self.ensure_session() else {
+            return true;
+        };
+        self.block(self.browser.command(
+            &id,
+            json!({"action": "evaluate", "script": change_script(ms)}),
+        ))
+        .ok()
+        .and_then(|data| data.get("result").and_then(Value::as_bool))
+        .unwrap_or(true)
+    }
+
     fn navigate(&self, url: &str) -> DesktopResponse {
         let page = self
             .ensure_session()
@@ -340,6 +353,23 @@ pub(crate) fn browser_key(combo: &str, platform: Platform) -> String {
         })
         .collect::<Vec<_>>()
         .join("+")
+}
+
+/// A promise that resolves `true` at the page's first change of its own —
+/// an element or words added, removed, or rewritten, or an element's look
+/// changed, but never a `data-tc-` mark sight leaves — or `false` once `ms`
+/// pass with none: a list a box fetches for the text typed shows as soon as
+/// it is drawn, and a still page costs `ms` once.
+fn change_script(ms: u64) -> String {
+    format!(
+        r"new Promise(resolve => {{
+  const pages = record => record.type !== 'attributes' || !String(record.attributeName).startsWith('data-tc-');
+  const watcher = new MutationObserver(records => {{ if (records.some(pages)) done(true); }});
+  const done = changed => {{ watcher.disconnect(); clearTimeout(cap); resolve(changed); }};
+  const cap = setTimeout(() => done(false), {ms});
+  watcher.observe(document, {{ subtree: true, childList: true, attributes: true, characterData: true }});
+}})"
+    )
 }
 
 /// A promise that resolves once the page has gone [`STILL_MS`] without a DOM

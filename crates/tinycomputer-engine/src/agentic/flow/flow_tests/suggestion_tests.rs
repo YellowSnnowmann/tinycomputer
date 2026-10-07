@@ -85,6 +85,70 @@ async fn enter_picks_the_suggestion_an_autocomplete_box_lists_for_the_typed_text
     assert!(asked_for_a_suggestion(&run));
 }
 
+/// The notes of a step's waits, in order.
+fn waits(run: &Run) -> Vec<String> {
+    run.result.steps[0]
+        .actions
+        .iter()
+        .filter(|action| action.action == "wait")
+        .map(|action| action.note.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_place_box_whose_rows_come_late_is_looked_at_again_as_they_show() {
+    // Live, a ride app's rows came after the first look. Each wait ends as
+    // the page changes, and the rows are picked once drawn.
+    for late in [1, 2] {
+        let run = run_with(
+            App::with(|sim| {
+                sim.places = Some(Places {
+                    late,
+                    ..Places::default()
+                });
+            }),
+            json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Connaught Place"}}]}),
+            |_| {},
+            ride,
+        )
+        .await;
+        assert_eq!(
+            run.result.stop,
+            FlowStopReason::Completed,
+            "{:?}",
+            run.result.steps
+        );
+        assert_eq!(
+            run.app.sim().fields["Pickup location"],
+            "Connaught Place New Delhi, Delhi, India",
+            "rows drawn after {late} waits"
+        );
+        assert_eq!(waits(&run), vec![String::new(); usize::from(late)]);
+    }
+}
+
+#[tokio::test]
+async fn a_place_box_on_a_page_that_stays_still_is_waited_on_once() {
+    // Live, an address and a city box on a plain form waited twice each for
+    // a list that never came. A page that stayed still lists nothing more.
+    let run = run_with(
+        App::with(|sim| sim.places = Some(Places::default())),
+        json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Nowhere Lane"}}]}),
+        |_| {},
+        ride,
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert_eq!(run.app.sim().fields["Pickup location"], "Nowhere Lane");
+    assert_eq!(waits(&run), ["nothing changed"]);
+    assert!(!asked_for_a_suggestion(&run));
+}
+
 #[tokio::test]
 async fn a_place_box_asks_again_for_the_row_naming_its_place_in_other_words() {
     // An unsure pick (0.45) is not pressed as such. A place box, though,

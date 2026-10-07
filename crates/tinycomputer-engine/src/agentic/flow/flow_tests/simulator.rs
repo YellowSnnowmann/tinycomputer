@@ -394,6 +394,10 @@ impl AgentBackend for App {
         Some(self.sim().fields.get(&name).cloned().unwrap_or_default())
     }
 
+    fn await_change(&self, _ms: u64) -> bool {
+        await_place_rows(&mut self.sim())
+    }
+
     fn paste(&self, _app: &str, target: &Candidate, text: &str) -> DesktopResponse {
         if is_city_row(Some(target)) {
             return not_a_text_field();

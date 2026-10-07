@@ -31,6 +31,11 @@ pub(super) struct Places {
     /// button, its rows unread and its name stringing them all together, as
     /// a store's delivery-area popover was read live.
     pub(super) panel: bool,
+    /// Waits for a change a box's list takes to show once typed into, as a
+    /// page that fetches its rows draws them late.
+    pub(super) late: u8,
+    /// Waits still to come before the open list shows its rows.
+    pub(super) pending: u8,
 }
 
 /// The places suggested for `typed`: each one that holds every typed word.
@@ -71,7 +76,7 @@ pub(super) fn places_widget(
         field.value = sim.fields.get(*name).map(|value| json!(value));
         candidates.push(field);
     }
-    if let Some(open) = &places.open {
+    if let Some(open) = places.open.as_ref().filter(|_| places.pending == 0) {
         let typed = sim.fields.get(open).cloned().unwrap_or_default();
         let list = [root, "group \"Get a ride\"", "listbox \"Suggestions\""];
         if places.panel {
@@ -107,9 +112,22 @@ fn type_place(sim: &mut Sim, name: &str, text: String) {
     if let Some(places) = sim.places.as_mut() {
         places.open = Some(name.to_owned());
         places.picked.remove(name);
+        places.pending = places.late;
     }
     sim.focused = Some(name.to_owned());
     sim.fields.insert(name.to_owned(), text);
+}
+
+/// A wait for the page to change: the open list draws its rows one wait
+/// nearer; nothing else on the ride form changes by itself.
+pub(super) fn await_place_rows(sim: &mut Sim) -> bool {
+    match sim.places.as_mut() {
+        Some(places) if places.open.is_some() && places.pending > 0 => {
+            places.pending -= 1;
+            true
+        }
+        _ => false,
+    }
 }
 
 /// Closes the open list, dropping its box's text unless a suggestion was
