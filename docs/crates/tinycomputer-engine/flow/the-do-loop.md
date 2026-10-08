@@ -28,9 +28,13 @@ refs, the ids each snapshot mints fresh: a fingerprint that included them
 would look different on every single turn, and stall detection would never
 fire. If nothing changed, the element that was just pressed is banned for
 the rest of the step, so the loop does not click the same dead button
-twice. Three turns in a row with no change (`STALL_TURNS`) fail the step
-outright, with the note "the last three actions changed nothing on
-screen."
+twice. After three turns in a row with no change (`STALL_TURNS`), one
+question (unless the run turned the completion loop off) asks whether the
+screen already shows the result the step is meant to bring about (a search box that listed results as it was typed in
+leaves "press search" nothing to do). If it clearly does (`DONE`), the step
+ends `AlreadyDone`; otherwise it fails with the note "the last three actions
+changed nothing on screen". Live, 25 of a day's 189 rescues found such a
+step's work already done, each ~18 s later.
 
 ### 2. Judge
 
@@ -133,9 +137,11 @@ click on an answer it does not recognise, because a malformed or injected
 answer must fail closed rather than guess.
 
 After any action the backend reports as successful, the runtime waits for
-the surface to settle (network-idle on the browser, a short pause on the
-desktop) before looking again, so the next turn's screen reflects what the
-action actually did rather than the moment right before it took effect.
+the surface to settle (on the browser, until the requests that change the
+page end and it goes still, or only until it is still after a launch or
+Escape, which fetch nothing; a short pause on the desktop) before looking
+again, so the next turn's screen reflects what the action actually did
+rather than the moment right before it took effect.
 
 ### Shortcuts
 

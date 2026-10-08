@@ -114,7 +114,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             return Ok(self.picked_as_selected(&picked, &from, &by, &summary, groups.len()));
         }
         let reply = self
-            .press_uncovering(log, "click", &primary, JevOperation::Click)
+            .press_uncovering(log, "click", &primary, JevOperation::Click, &from)
             .await?;
         if !reply.ok {
             let why = reply.error.as_ref().map_or_else(

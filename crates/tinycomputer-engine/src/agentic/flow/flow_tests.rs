@@ -27,9 +27,11 @@ mod do_loop_tests;
 mod end_to_end_tests;
 mod enter_tests;
 mod grounding_tests;
+mod hedge_tests;
 mod helpers_tests;
 mod journal_tests;
 mod pick_tests;
+mod quorum_tests;
 mod reflection_tests;
 mod split_tests;
 mod step_kinds_tests;
@@ -80,9 +82,9 @@ use super::{
     vote, wide,
 };
 
-fn runtime(oracle: Oracle) -> JevRuntime {
+fn runtime(client: impl Evaluator + 'static) -> JevRuntime {
     JevRuntime {
-        client: Arc::new(oracle),
+        client: Arc::new(client),
         configuration: tinycomputer_bus::JevConfiguration {
             provider: tinycomputer_bus::JevProvider::OpenRouter,
             model: "jev-latest".to_owned(),
@@ -91,6 +93,7 @@ fn runtime(oracle: Oracle) -> JevRuntime {
         },
         pending: Arc::default(),
         journal: crate::agentic::journal::Journal::default(),
+        copies: Arc::default(),
     }
 }
 
@@ -122,6 +125,7 @@ async fn run_with(
         },
         pending: Arc::default(),
         journal: crate::agentic::journal::Journal::default(),
+        copies: Arc::default(),
     };
     // One framing per decision, so every test that counts requests counts
     // decisions; voting has its own tests.

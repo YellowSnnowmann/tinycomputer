@@ -55,9 +55,11 @@ mod evidence;
 mod expect;
 mod front;
 mod ground;
+mod hedge;
 mod ledger;
 mod look;
 mod memory;
+mod quorum;
 mod reflect;
 mod run;
 mod steps;
@@ -68,6 +70,7 @@ mod vote;
 mod wide;
 
 pub(crate) use validate::{check as check_flow, missing_inputs};
+pub(in crate::agentic) use vote::MAX_VOTES;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -289,6 +292,11 @@ pub(super) struct FlowRun<'r, B> {
     /// keys, from the latest decision that asked it: the evidence a
     /// deliberating decision reads (`evidence/`) and widens (`escalate`).
     ballots: BTreeMap<String, Vec<tinyinference_decisions::Answer>>,
+    /// How many framings each question was asked in, by the latest decision
+    /// that asked it and any widening since. A decision ended on a quorum
+    /// holds fewer answers than that, and `escalate` must widen past every
+    /// framing asked, not only those in the ballot.
+    asked: BTreeMap<String, usize>,
     /// The address the surface last reported, on a surface that has them:
     /// a checkpoint's location, and how a navigation is noticed.
     pub(super) location: Option<String>,

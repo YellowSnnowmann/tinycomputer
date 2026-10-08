@@ -37,7 +37,7 @@ The configuration (`JevConfig`, in `tinycomputer-bus`) names:
 | `api_key` | The credential for that provider. Never printed; `JevRuntime`'s `Debug` implementation shows `"[configured]"` in its place. |
 | `endpoint_url` | An exact endpoint to use instead of the provider's own route, checked against an allow-list (see below). |
 | `model` | The Jev model or alias to ask for. Defaults to the provider's `JevProvider::default_model()`: `"jev-latest"`, `"openjev"` for OpenJEV, and the fixed `"levanto-sage"` for Sage. |
-| `timeout_ms` / `max_retries` | Per-attempt HTTP timeout and how many transient retries the client makes: four by default (`RETRY`), waiting 1, 2, 4, then 8 seconds, since live a gateway's brief 502s ended runs after the client's own 0.3 s of waiting. Sage ignores both. |
+| `timeout_ms` / `max_retries` | Per-attempt HTTP timeout (10 seconds by default, `ATTEMPT_TIMEOUT`) and how many transient retries the client makes: four by default (`RETRY`), waiting 1, 2, 4, then 8 seconds, since live a gateway's brief 502s ended runs after the client's own 0.3 s of waiting. Sage ignores both. |
 | `sdk_name` | Attribution sent only to the TinyHumans proxy, so it knows which host is calling. |
 | `fast` | Sage only: score each choice in one pass rather than one per option. |
 
@@ -125,6 +125,28 @@ somehow bypassed `evaluate` (there is no supported way to) would also bypass
 the journal. That is the enforcement mechanism for "one door": there is
 exactly one function in this crate that can produce a Jev answer, and it
 always logs.
+
+## Warming connections
+
+A decision asks its framings all at once, each on an HTTP/1.1 connection of
+its own, and opening one to the gateway costs a handshake: live, a task's
+first decision took 330 ms more a call (the median over 84 runs) than the
+task's later decisions of the same size. `JevRuntime::warm(votes)` opens them
+ahead of time. A step's first turn asks its judging and grounding's opening
+together (`FIRST_TURN`, 2), each in `votes` framings (at most 9,
+`MAX_VOTES`), so the warm-up sends one small evaluation for each of those
+calls, all at once: a single yes/no question about a one-line state, through
+`evaluate` like any other call, so each is journaled under the step
+`warm-up`. The answers are dropped, calls still out after 10 s
+(`WARM_TIMEOUT`) are given up on, and Sage, whose calls take seconds, is not
+warmed. Idle connections stay in the client's pool for 90 s, longer than a
+plan takes to draft.
+
+The task controller warms while a task's plan is drafted
+(`FlowRunner::warm`), so its first turn finds the connections open; the task
+never waits for the warm-up. A task whose budget caps its Jev calls
+(`max_model_calls`) is not warmed: the warm-up's calls would not count
+against the cap.
 
 ## Run identity and the journal
 

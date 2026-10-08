@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
-use tinycomputer_bus::agent::{Rescue, RescueOutcome, TaskStatus};
+use tinycomputer_bus::agent::{Rescue, RescueOutcome, TaskId, TaskStatus};
 use tinycomputer_bus::{Flow, FlowStep, StepOutcome, StepReport};
 use tinycomputer_core::Facts;
 
@@ -12,8 +12,9 @@ use super::brief::brief;
 use super::names::{fact_names, known_names};
 use super::publish::publish;
 use super::store::{Cell, Run};
+use super::timing;
 use super::{FlowRunner, RESCUE_TIMEOUT_MS};
-use crate::rescue::{Briefing, Guidance, MAX_RESCUES, resumed};
+use crate::rescue::{Briefing, Guidance, MAX_RESCUES, Rescuer, resumed};
 
 /// A recoverable failure of a top-level step is first rescued: `Err` holds
 /// the run the guidance makes, to run next. Anything else, or a rescue that
@@ -159,13 +160,9 @@ pub(super) async fn rescue(
             failed + 1
         ),
     );
-    let started = Instant::now();
     let wait = time_left.map_or(RESCUE_TIMEOUT_MS, |left| left.min(RESCUE_TIMEOUT_MS));
-    let answer = tokio::time::timeout(Duration::from_millis(wait), rescuer.guide(&briefing))
-        .await
-        .unwrap_or_else(|_| Err("the rescuer took too long".to_owned()));
-    let spent_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let (record, guided) = record(failed, briefing.failure.clone(), answer);
+    let (record, guided, spent_ms) =
+        ask(runner, &id, &rescuer, &briefing, wait, (attempt, limit)).await;
     let guided = guided.map(|steps| resumed(&briefing, steps, record.covers));
     let reason = facts.redact(&record.reason);
     let index = {
@@ -189,6 +186,45 @@ pub(super) async fn rescue(
         allow_destructive: run.allow_destructive,
         rescue: Some(index),
     })
+}
+
+/// Asks `rescuer` about `briefing`, waiting at most `wait` ms, journals how
+/// it went as rescue `attempt` of `limit`, and records it: the record, the
+/// guidance's steps when it gave any, and the milliseconds asking took.
+async fn ask(
+    runner: &dyn FlowRunner,
+    id: &TaskId,
+    rescuer: &Rescuer,
+    briefing: &Briefing,
+    wait: u64,
+    (attempt, limit): (usize, u32),
+) -> (Rescue, Option<Vec<FlowStep>>, u64) {
+    let started = Instant::now();
+    let (answer, used) = match tokio::time::timeout(
+        Duration::from_millis(wait),
+        rescuer.guide_measured(briefing),
+    )
+    .await
+    {
+        Ok((answer, used)) => (answer, Some(used)),
+        Err(_) => (Err("the rescuer took too long".to_owned()), None),
+    };
+    let took = started.elapsed();
+    let outcome = timing::answered(&answer, used.is_none());
+    let (record, guided) = record(briefing.failed, briefing.failure.clone(), answer);
+    runner.journal(Some(id), "rescue", &|| {
+        timing::rescued(&timing::Rescued {
+            attempt,
+            limit,
+            took,
+            used,
+            outcome,
+            record: &record,
+            model: rescuer.configuration(),
+        })
+    });
+    let spent_ms = u64::try_from(took.as_millis()).unwrap_or(u64::MAX);
+    (record, guided, spent_ms)
 }
 
 /// The record of a rescue of step `failed`, and the guidance's steps when

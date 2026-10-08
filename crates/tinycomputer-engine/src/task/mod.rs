@@ -46,10 +46,12 @@ mod errors;
 mod human;
 mod interpret;
 mod names;
+mod page;
 mod publish;
 mod recovery;
 mod resume;
 mod store;
+mod timing;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -71,6 +73,10 @@ pub type TextFuture = Pin<Box<dyn Future<Output = Vec<String>> + Send>>;
 /// The future [`FlowRunner::capture`] returns: a held screenshot, if the
 /// task's surface could take one.
 pub type CaptureFuture = Pin<Box<dyn Future<Output = Option<OutputRef>> + Send>>;
+
+/// The future [`FlowRunner::prepare`] returns, once the surfaces are ready
+/// or could not be made so; a task goes on either way.
+pub type PrepareFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /// Runs a task's flows, on surfaces that live as long as the task.
 pub trait FlowRunner: Send + Sync + 'static {
@@ -106,6 +112,46 @@ pub trait FlowRunner: Send + Sync + 'static {
 
     /// Lets go of whatever the task held, once it has ended.
     fn release(&self, _task: &TaskId) {}
+
+    /// Gets the task's surfaces ready while its plan is drafted, so its
+    /// first step does not wait for them: called alongside the planner for
+    /// a task that runs on the browser alone. [`FlowRunner::release`] may
+    /// run while the future is in flight, or after it was dropped with a
+    /// cancelled task: what it opens then must be let go too. Does nothing
+    /// by default.
+    fn prepare(&self, _task: &TaskId, _constraints: &TaskConstraints) -> PrepareFuture {
+        Box::pin(async {})
+    }
+
+    /// Loads `url`, the one web page the task's text names, in the browser
+    /// [`FlowRunner::prepare`] got ready, while the plan is drafted: a first
+    /// step that browses there finds it loaded. Called after `prepare`, in
+    /// the same wait, for a task that runs on the browser alone. Does
+    /// nothing by default.
+    fn open_page(&self, _task: &TaskId, _url: &str) -> PrepareFuture {
+        Box::pin(async {})
+    }
+
+    /// Opens the connections the task's first decision, asked `votes` ways,
+    /// will use, while its plan is drafted (`JevRuntime::warm`). Started
+    /// with the planner for every task and never waited for: the task goes
+    /// on whether it finishes or not. Does nothing by default.
+    fn warm(&self, _task: &TaskId, _votes: u32) -> PrepareFuture {
+        Box::pin(async {})
+    }
+
+    /// Writes an `event` of the time a task spends outside its flows
+    /// (`plan`, `rescue`, `resume`) to the debug journal: the task's own,
+    /// or for `PlanTask`, which plans before any task exists (`task` is
+    /// `None`), a run of its own. `fields` is only called when the event is
+    /// written: nothing is built by default, or when the journal is off.
+    fn journal(
+        &self,
+        _task: Option<&TaskId>,
+        _event: &str,
+        _fields: &dyn Fn() -> serde_json::Value,
+    ) {
+    }
 }
 
 /// How many tasks the controller holds; finished ones are dropped first.

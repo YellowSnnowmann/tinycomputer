@@ -5,16 +5,17 @@ use std::{
     collections::HashMap,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::AtomicUsize},
     time::Duration,
 };
 
 use tinycomputer_bus::{DesktopError, JevConfig, JevConfiguration, JevProvider};
 use tinyinference_decisions::{
     Client, ClientConfig, Error as JevError, EvaluationFailure, EvaluationRequest,
-    EvaluationResult, RetryPolicy,
+    EvaluationResult, Noul, Question, RetryPolicy,
 };
 
+use super::flow::MAX_VOTES;
 use super::journal::Journal;
 use super::pending::PendingRun;
 use super::sage;
@@ -29,6 +30,20 @@ pub(super) const RETRY: RetryPolicy = RetryPolicy {
     max_backoff: Duration::from_secs(8),
 };
 
+/// How long one Jev attempt may take when the configuration does not say.
+/// Live, the slowest answer took 8.6 s, and a request nothing came back for
+/// waited the client's own 30 s before its retry answered in under 1 s.
+pub(super) const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The longest [`JevRuntime::warm`] waits for its answers before it gives
+/// its calls up.
+pub(super) const WARM_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Requests a step's first turn asks at once, each in every framing: its
+/// judging, and grounding's opening for the move it almost always makes
+/// (`flow::act::judge`).
+pub(super) const FIRST_TURN: u32 = 2;
+
 /// Configured Jev transport and non-secret policy metadata.
 #[derive(Clone)]
 pub struct JevRuntime {
@@ -36,6 +51,9 @@ pub struct JevRuntime {
     pub(super) configuration: JevConfiguration,
     pub(super) pending: Arc<Mutex<HashMap<String, PendingRun>>>,
     pub(super) journal: Journal,
+    /// Hedged copies of framings in flight, shared by every flow run on
+    /// this runtime.
+    pub(super) copies: Arc<AtomicUsize>,
 }
 
 impl std::fmt::Debug for JevRuntime {
@@ -46,6 +64,7 @@ impl std::fmt::Debug for JevRuntime {
             .field("configuration", &self.configuration)
             .field("pending", &"[redacted]")
             .field("journal", &self.journal)
+            .field("copies", &self.copies)
             .finish()
     }
 }
@@ -91,6 +110,7 @@ impl JevRuntime {
             },
             pending: Arc::new(Mutex::new(HashMap::new())),
             journal: Journal::from_env(),
+            copies: Arc::default(),
         })
     }
 
@@ -133,6 +153,7 @@ impl JevRuntime {
             },
             pending: Arc::new(Mutex::new(HashMap::new())),
             journal: Journal::from_env(),
+            copies: Arc::default(),
         })
     }
 
@@ -166,6 +187,31 @@ impl JevRuntime {
         }
     }
 
+    /// Writes one event of `kind` with `fields` to the debug journal: into
+    /// this runtime's open run (see [`JevRuntime::journaled_as`]), or, with
+    /// none open, into a new run named for the time and `kind`. It is for
+    /// time a task spends outside its flows, such as planning, a rescue, or
+    /// waiting on a person, so the task's journal accounts for all of its
+    /// time. `fields` is only built when recording: nothing is, and no run
+    /// is opened, when the journal is off.
+    pub fn journal_event(&self, kind: &str, fields: impl FnOnce() -> serde_json::Value) {
+        if !self.journaling() {
+            return;
+        }
+        let journal = if self.journal.is_open() {
+            self.journal.clone()
+        } else {
+            self.journal.fresh(kind)
+        };
+        journal.record(kind, fields);
+    }
+
+    /// Whether this runtime's debug journal is on.
+    #[must_use]
+    pub fn journaling(&self) -> bool {
+        self.journal.is_on()
+    }
+
     /// The directory this runtime's current run journal is written to, if
     /// the journal is on and a run has begun.
     #[must_use]
@@ -186,6 +232,32 @@ impl JevRuntime {
         }
     }
 
+    /// Opens connections to Jev for the decisions to come, while a task's
+    /// plan is drafted: one for each call of a step's first turn, which asks
+    /// its judging and grounding's opening together (`FIRST_TURN`), each in
+    /// `votes` framings (at most 9, `MAX_VOTES`). Each connection is opened
+    /// with a one-question evaluation, all at once, journaled as `warm-up`;
+    /// its answer is dropped, and those still out after 10 s
+    /// (`WARM_TIMEOUT`) are given up on. A decision asks its framings all
+    /// at once, each on a connection of its own; live, a task's first
+    /// decision took 330 ms more a call than its later ones, opening them.
+    /// Sage, whose calls take seconds, is not warmed.
+    pub async fn warm(&self, votes: u32) {
+        if self.configuration.provider == JevProvider::Sage {
+            return;
+        }
+        let request = Arc::new(warm_up(&self.configuration.model));
+        let mut calls = tokio::task::JoinSet::new();
+        for _ in 0..votes.clamp(1, MAX_VOTES).saturating_mul(FIRST_TURN) {
+            let (runtime, request) = (self.clone(), Arc::clone(&request));
+            calls.spawn(async move {
+                let _answer = runtime.evaluate(Some("warm-up"), &request).await;
+            });
+        }
+        // Calls still out when the time is up are dropped with the set.
+        let _warmed = tokio::time::timeout(WARM_TIMEOUT, calls.join_all()).await;
+    }
+
     /// Asks Jev one request, journaling the exchange against `step`.
     pub(super) async fn evaluate(
         &self,
@@ -195,6 +267,23 @@ impl JevRuntime {
         let outcome = self.client.evaluate(request).await;
         self.journal.exchange(step, request, outcome.as_ref());
         outcome
+    }
+}
+
+/// The smallest request `model` answers: one yes/no question about nothing
+/// on any screen.
+fn warm_up(model: &str) -> EvaluationRequest {
+    EvaluationRequest {
+        state: serde_json::json!("A connection check."),
+        model: model.to_owned(),
+        questions: [(
+            "ready".to_owned(),
+            Question::Noul(Noul {
+                instructions: serde_json::json!("The state is a connection check."),
+                criteria: None,
+            }),
+        )]
+        .into(),
     }
 }
 
@@ -270,8 +359,9 @@ pub(super) fn trusted_endpoint(provider: JevProvider, endpoint: &str) -> bool {
 }
 
 /// The HTTP client configuration for a Jev `request`: its provider's
-/// route, endpoint, timeout, and attribution, retrying as [`RETRY`] unless
-/// the request sets its own number of retries.
+/// route, endpoint, timeout ([`ATTEMPT_TIMEOUT`] unless the request sets
+/// one), and attribution, retrying as [`RETRY`] unless the request sets its
+/// own number of retries.
 pub(super) fn client_config(request: &JevConfig) -> ClientConfig {
     let mut config = match request.provider {
         JevProvider::TypeSafe => ClientConfig::new(request.api_key()),
@@ -283,9 +373,9 @@ pub(super) fn client_config(request: &JevConfig) -> ClientConfig {
     if let Some(endpoint) = &request.endpoint_url {
         config = config.with_endpoint_url(endpoint);
     }
-    if let Some(timeout_ms) = request.timeout_ms {
-        config.timeout = Duration::from_millis(timeout_ms);
-    }
+    config.timeout = request
+        .timeout_ms
+        .map_or(ATTEMPT_TIMEOUT, Duration::from_millis);
     config.retry = RETRY;
     if let Some(max_retries) = request.max_retries {
         config.retry.max_retries = max_retries;

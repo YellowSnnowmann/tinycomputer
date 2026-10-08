@@ -61,8 +61,12 @@ is optional:
   base URL; and `rescue_route` (`api_key`, `provider`, `endpoint_url`,
   `sdk_name`) gives the rescuer a route and key of its own;
 - `browser`: how every browser launches — `executable` (the Chrome or
-  Chromium binary), `user_agent`, `args` (an array of launch arguments), and
-  `perception` (`sight`, the default, or `tree`: how a task reads a page).
+  Chromium binary), `user_agent`, `args` (an array of launch arguments),
+  `perception` (`sight`, the default, or `tree`: how a task reads a page),
+  `settle` (`prompt`, the default, or `steady`: how long a page is let
+  settle after an action), and `prelaunch` (a boolean, `true` by default:
+  open a browser-only task's browser while it is planned, at the one web
+  address the task's text names, if it names one).
 
 Configuration is delivered as sensitive host-control traffic and is never
 shown to monitors.

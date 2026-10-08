@@ -21,8 +21,8 @@
 //! a screen that returns to where it was two turns ago bans both presses.
 //!
 //! The loop's pieces: `turns` runs it, `judge` reads each turn's screen,
-//! `moves` makes the chosen move, and `recover` undoes a turn that went
-//! wrong. This root holds the thresholds and the state they share.
+//! `moves` makes the chosen move, `uncover` presses again a target the page
+//! refused as covered, and `recover` undoes a turn that went wrong. This root holds the thresholds and the state they share.
 
 mod copies;
 mod dialog;
@@ -33,6 +33,7 @@ mod judge;
 mod moves;
 mod recover;
 mod turns;
+mod uncover;
 
 pub(super) use judge::Judgement;
 

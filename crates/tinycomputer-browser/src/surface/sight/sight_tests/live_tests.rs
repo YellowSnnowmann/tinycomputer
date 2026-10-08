@@ -18,11 +18,15 @@ async fn live_reading(html: &str) -> Option<serde_json::Value> {
         .map(|mut results| results.remove(0))
 }
 
-/// Writes `html` into a blank tab of a real browser, as [`live_reading`]
-/// does, and runs each of `scripts` on it in turn: their results, or `None`
-/// unless `TINYCOMPUTER_LIVE_BROWSER=1`.
+/// A blank tab of a real browser with `html` written into it: `None`
+/// unless `TINYCOMPUTER_LIVE_BROWSER=1`, since CI has no browser to launch.
 #[cfg(feature = "agent-browser")]
-async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::Value>> {
+async fn live_page(
+    html: &str,
+) -> Option<(
+    crate::sessions::Browser,
+    tinycomputer_bus::browser::SessionInfo,
+)> {
     use std::sync::Arc;
 
     use tinycomputer_bus::browser::SessionOptions;
@@ -47,6 +51,15 @@ async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::
         .command(&info.id, json!({"action": "evaluate", "script": write}))
         .await
         .expect("the fixture is written");
+    Some((browser, info))
+}
+
+/// Writes `html` into a blank tab of a real browser, as [`live_reading`]
+/// does, and runs each of `scripts` on it in turn: their results, or `None`
+/// unless `TINYCOMPUTER_LIVE_BROWSER=1`.
+#[cfg(feature = "agent-browser")]
+async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::Value>> {
+    let (browser, info) = live_page(html).await?;
     let mut replies = Vec::new();
     for script in scripts {
         replies.push(
@@ -274,6 +287,133 @@ async fn live_consent_banners_are_kept() {
         "We and our advertising partners use cookies",
     ] {
         assert!(names.iter().any(|name| name == kept), "{kept} in {names:?}");
+    }
+}
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_a_shadow_root_that_shows_controls_is_handed_to_the_tree_under_its_layer() {
+    // Live, a consent banner's host was drawn as `display: contents`, with
+    // no box of its own, and its buttons went unread while the banner lay
+    // over the page. A block host whose banner is fixed draws no box either.
+    // Its shadow root holds a stylesheet beside the banner, as live: the tree
+    // read under the host then finds the banner only through the shadow
+    // root.
+    let page = |host: &str, banner: &str| {
+        format!(
+            r#"<main><button>Add To Cart</button></main>
+            <div id="host" style="{host}"></div>
+            <script>
+              document.getElementById('host').attachShadow({{ mode: 'open' }}).innerHTML =
+                '<style>p {{ margin: 0 }}</style>'
+                + '<div style="position: fixed; right: 0; bottom: 0; width: 400px; height: 200px; {banner}">'
+                + '<p>We value your privacy</p><button>Allow Selection</button><button>Allow all</button></div>';
+            </script>"#
+        )
+    };
+    for (host, banner, shown) in [
+        ("display: contents", "", true),
+        ("display: block", "", true),
+        ("display: contents", "display: none", false),
+    ] {
+        let Some(reading) = live_reading(&page(host, banner)).await else {
+            return;
+        };
+        assert_eq!(reading["unreachable"], 0, "{reading}");
+        let shadows = reading["shadows"].as_array().unwrap();
+        assert_eq!(
+            shadows.len(),
+            usize::from(shown),
+            "host {host:?}, banner {banner:?}: {reading}"
+        );
+        if shown {
+            assert_eq!(
+                shadows[0]["label"], "popover \"We value your privacy\"",
+                "{reading}"
+            );
+        }
+    }
+    // The tree read under the host offers the banner's buttons, and only
+    // them.
+    let (browser, info) = live_page(&page("display: contents", ""))
+        .await
+        .expect("a live run opens the page");
+    let reading = browser
+        .command(
+            &info.id,
+            json!({"action": "evaluate", "script": script(None)}),
+        )
+        .await
+        .unwrap()["result"]
+        .clone();
+    let host = reading["shadows"][0]["id"].as_str().unwrap().to_owned();
+    let subtree = browser
+        .snapshot(
+            &info.id,
+            tinycomputer_bus::browser::SnapshotRequest {
+                selector: Some(format!("[data-tc-seen=\"{host}\"]")),
+                ..tinycomputer_bus::browser::SnapshotRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+    browser.close_session(&info.id).await.unwrap();
+    assert!(subtree.tree.contains("Allow Selection"), "{}", subtree.tree);
+    assert!(!subtree.tree.contains("Add To Cart"), "{}", subtree.tree);
+}
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_what_a_shadow_host_slots_is_left_to_the_tree() {
+    // The tree read under a host holds the host and what the page puts in
+    // its slots: sight reads neither, or each would be offered twice. A
+    // hidden dialog in the shadow root names no layer, and the banner's
+    // `aria-labelledby` resolves inside the shadow root.
+    let page = r#"<main><button>Add To Cart</button></main>
+        <div id="host"><button>Slotted choice</button></div>
+        <script>
+          document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML =
+            '<div role="dialog" style="display: none">Old template</div>'
+            + '<div aria-labelledby="title" style="position: fixed; right: 0; bottom: 0; width: 400px; height: 200px">'
+            + '<p id="title">Cookie choices</p><button>Allow Selection</button><slot></slot></div>';
+        </script>"#;
+    let Some((browser, info)) = live_page(page).await else {
+        return;
+    };
+    let reading = browser
+        .command(
+            &info.id,
+            json!({"action": "evaluate", "script": script(None)}),
+        )
+        .await
+        .unwrap()["result"]
+        .clone();
+    let names = shown_names(&reading);
+    assert!(names.iter().any(|name| name == "Add To Cart"), "{names:?}");
+    assert!(
+        !names.iter().any(|name| name == "Slotted choice"),
+        "{names:?}"
+    );
+    let shadows = reading["shadows"].as_array().unwrap();
+    assert_eq!(shadows.len(), 1, "{reading}");
+    assert_eq!(
+        shadows[0]["label"], "popover \"Cookie choices\"",
+        "{reading}"
+    );
+    let host = shadows[0]["id"].as_str().unwrap().to_owned();
+    let subtree = browser
+        .snapshot(
+            &info.id,
+            tinycomputer_bus::browser::SnapshotRequest {
+                selector: Some(format!("[data-tc-seen=\"{host}\"]")),
+                ..tinycomputer_bus::browser::SnapshotRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+    browser.close_session(&info.id).await.unwrap();
+    for read in ["Allow Selection", "Slotted choice"] {
+        assert!(subtree.tree.contains(read), "{read}: {}", subtree.tree);
     }
 }
 

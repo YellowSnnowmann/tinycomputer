@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use tinycomputer_bus::agent::{InputKind, SurfaceKind};
 
-use super::{Completion, LanguageModel, Planner, REPAIRS, Role, Turn};
+use super::{Completion, LanguageModel, ModelUse, Planner, REPAIRS, Role, Turn};
 
 /// Answers from a queue and records every conversation it was shown.
 #[derive(Default)]
@@ -173,6 +173,36 @@ async fn a_plan_that_never_validates_or_a_failed_model_is_an_error() {
     assert!(planner.plan("x", &[], &[], &[]).await.is_err());
 }
 
+#[tokio::test]
+async fn a_measured_plan_counts_each_call_and_what_the_first_one_sent() {
+    let (planner, model) = scripted(&[
+        Ok("I would search for flights."),
+        Ok(r#"{"app": "Mail", "steps": ["start a new email message"]}"#),
+    ]);
+    let (plan, used) = planner.plan_measured("write an email", &[], &[], &[]).await;
+    assert_eq!(plan.unwrap().flow.app, "Mail");
+    let first = model.seen.lock().unwrap()[0].clone();
+    assert_eq!(
+        used,
+        ModelUse {
+            calls: 2,
+            sent_bytes: first.iter().map(|turn| turn.text.len()).sum(),
+        },
+        "one repair after the refused answer"
+    );
+
+    let (planner, _) = scripted(&[Ok("{"), Err("rate limited")]);
+    let (plan, used) = planner.plan_measured("x", &[], &[], &[]).await;
+    assert_eq!(plan.unwrap_err(), "rate limited");
+    assert_eq!(used.calls, 2, "a failed call still counts");
+
+    let never = [Ok(r#"{"app": "", "steps": []}"#); REPAIRS + 1];
+    let (planner, _) = scripted(&never);
+    let (plan, used) = planner.plan_measured("x", &[], &[], &[]).await;
+    assert!(plan.is_err());
+    assert_eq!(used.calls, u32::try_from(REPAIRS).unwrap() + 1);
+}
+
 #[cfg(feature = "planner")]
 #[tokio::test]
 async fn the_open_router_planner_needs_a_key_and_never_prints_it() {
@@ -237,5 +267,7 @@ async fn the_open_router_planner_needs_a_key_and_never_prints_it() {
     assert!(!failed.contains("secret-key"));
 }
 
+#[cfg(feature = "planner")]
+mod retry_tests;
 #[cfg(feature = "planner")]
 mod route_tests;

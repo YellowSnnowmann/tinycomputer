@@ -142,7 +142,9 @@ pub enum PaymentMode {
 pub struct TaskBudget {
     /// Actions across every surface.
     pub max_actions: Option<u32>,
-    /// Jev evaluations. Every framing of a voted decision counts as one.
+    /// Jev evaluations. Every framing of a voted decision counts as one. A
+    /// task given this cap does not warm Jev's connections while it is
+    /// planned, as warming them would spend calls the cap does not count.
     pub max_model_calls: Option<u32>,
     /// How many ways each decision is asked before its answers are averaged;
     /// the module's default when unset.

@@ -421,6 +421,20 @@ pub(super) fn overlays(sim: &Sim, root: &str, candidates: &mut Vec<Candidate>) {
         candidates.push(node("Close", "button", &["Click"], &toast, 700.0));
         candidates.push(node("Learn more", "link", &["Click"], &toast, 720.0));
     }
+    if sim.has(Quirk::ConsentBanner) {
+        for candidate in candidates.iter_mut() {
+            candidate.states = vec!["covered".to_owned()];
+        }
+        let banner = [root, "popover \"We value your privacy\""];
+        candidates.push(node(
+            "Allow Selection",
+            "button",
+            &["Click"],
+            &banner,
+            740.0,
+        ));
+        candidates.push(node("Allow all", "button", &["Click"], &banner, 760.0));
+    }
 }
 
 /// The inbox's search behind its "Search mail" link, beside a "Contact us"

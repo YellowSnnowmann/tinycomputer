@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tinycomputer_bus::agent::TaskStatus;
+use tinycomputer_bus::agent::{SurfaceKind, TaskConstraints, TaskStatus};
 
 use super::artifact::{capture, captured};
 use super::budget::{elapsed_budget_failed, run_request, stop_task};
@@ -14,7 +14,7 @@ use super::interpret::{Next, finished, run_outcome};
 use super::publish::{publish, records, stopped_summary};
 use super::recovery::{rescue_outcome, rescued};
 use super::store::{Cell, Run};
-use super::{FlowRunner, SHAPE_TIMEOUT_MS};
+use super::{DEFAULT_VOTES, FlowRunner, SHAPE_TIMEOUT_MS};
 use crate::shape::Harvest;
 
 /// Plans the task, then runs the plan — or asks for what it needs first.
@@ -25,19 +25,68 @@ pub(super) async fn plan_then_drive(
     task: String,
     surfaces: Vec<tinycomputer_bus::agent::SurfaceKind>,
 ) {
-    let (names, secrets) = cell.state.lock().map_or_else(
-        |_| (Vec::new(), Vec::new()),
+    let (names, secrets, constraints, votes, capped) = cell.state.lock().map_or_else(
+        |_| {
+            (
+                Vec::new(),
+                Vec::new(),
+                TaskConstraints::default(),
+                DEFAULT_VOTES,
+                false,
+            )
+        },
         |state| {
             let owned = |names: Vec<&str>| names.into_iter().map(str::to_owned).collect::<Vec<_>>();
             (
                 owned(state.facts.names()),
                 owned(state.facts.secret_names()),
+                state.constraints.clone(),
+                state.budget.votes.unwrap_or(DEFAULT_VOTES),
+                state.budget.max_model_calls.is_some(),
             )
         },
     );
-    let plan = match planner.plan(&task, &names, &secrets, &surfaces).await {
+    let id = cell.view.borrow().id.clone();
+    // Jev's connections open while the plan is drafted, so the first
+    // decision need not open them; nothing waits for this. A budget that
+    // caps the task's Jev calls is not spent on calls it does not count.
+    if !capped {
+        tokio::spawn(runner.warm(&id, votes));
+    }
+    let started = Instant::now();
+    // Timed on its own: a browser slower to open than the plan is to draft
+    // is not planning time.
+    let planning = async {
+        let drafted = planner
+            .plan_measured(&task, &names, &secrets, &surfaces)
+            .await;
+        (drafted, started.elapsed())
+    };
+    // A browser-only task's browser opens while the plan is drafted, so the
+    // first step need not wait for it: whatever the plan says, it runs there.
+    // The one page the task names loads in it meanwhile, for a first step
+    // that browses there.
+    let ((outcome, used), drafting) = if constraints.surfaces == [SurfaceKind::Browser] {
+        let page = super::page::named_page(&task);
+        let preparing = async {
+            runner.prepare(&id, &constraints).await;
+            if let Some(page) = &page {
+                runner.open_page(&id, page).await;
+            }
+        };
+        tokio::join!(planning, preparing).0
+    } else {
+        planning.await
+    };
+    runner.journal(Some(&id), "plan", &|| {
+        super::timing::planned(&outcome, used, drafting, planner.configuration())
+    });
+    let plan = match outcome {
         Ok(plan) => plan,
         Err(reason) => {
+            // A browser opened while planning has nothing left to do; it is
+            // let go before the failure is told, as a finished task's is.
+            runner.release(&id);
             publish(
                 &cell,
                 TaskStatus::Failed {
@@ -71,6 +120,10 @@ pub(super) async fn plan_then_drive(
         )
         .await;
     } else {
+        // A browser opened while planning is let go while the task waits on
+        // a person, who may take long or never answer; the run that follows
+        // opens one again.
+        runner.release(&id);
         publish(
             &cell,
             TaskStatus::NeedsInput {

@@ -218,6 +218,7 @@ pub(in crate::agentic::flow) fn distractions(
                     .map(|(_, member)| label(member))
                     .collect(),
                 closer: Some(closer.clone()),
+                front,
             },
         ));
     }
@@ -305,6 +306,7 @@ fn covering(screen: &Screen, intent: &[String], cleared: &BTreeSet<String>) -> O
         name: "something open over the page".to_owned(),
         shows: needed.into_iter().chain(front).take(6).collect(),
         closer: None,
+        front: true,
     })
 }
 

@@ -35,6 +35,10 @@ pub(super) enum Quirk {
     DisabledArchive,
     /// A promo toast with a Close button sits over the page until closed.
     PromoToast,
+    /// A consent banner lies over the page as a popover: every other click
+    /// is refused as covered, Escape leaves it, and its "Allow Selection"
+    /// or "Allow all" closes it.
+    ConsentBanner,
     /// Text typed with no target lands at the end of the field typed into
     /// last, as a browser keeps the focus there.
     FocusStays,
@@ -95,6 +99,9 @@ pub(super) struct Sim {
     /// The field typed or pasted into last: where the focus stays.
     pub(super) focused: Option<String>,
     pub(super) quirks: BTreeSet<Quirk>,
+    /// The calls that touch no element, in order: each `settle` and `settle
+    /// briefly`, and each `await_change` as `changed` or `still`.
+    pub(super) trail: Vec<&'static str>,
 }
 
 impl Sim {
@@ -252,6 +259,40 @@ impl App {
     }
 }
 
+/// The reply to a click on `name` that something on the simulated page
+/// refuses or takes over, or `None` when the click goes through: an
+/// unclickable page, a consent banner whose own buttons close it, or a
+/// drawer over everything.
+fn refused_click(sim: &mut Sim, name: &str) -> Option<DesktopResponse> {
+    let covered = |by: &str| {
+        DesktopResponse::err(
+            "click",
+            tinycomputer_bus::DesktopError::new(
+                "NOT_ACTIONABLE",
+                format!("Element '@s:{name}' is covered by <div.{by}> at its click point"),
+            ),
+        )
+    };
+    if sim.has(Quirk::Unclickable) {
+        return Some(DesktopResponse::err(
+            "click",
+            tinycomputer_bus::DesktopError::new(
+                "NOT_ACTIONABLE",
+                "Element exists but is not visible.",
+            ),
+        ));
+    }
+    if sim.has(Quirk::ConsentBanner) {
+        if name.starts_with("Allow ") {
+            sim.clicks.push(name.to_owned());
+            sim.quirks.remove(&Quirk::ConsentBanner);
+            return Some(DesktopResponse::ok("click", json!({})));
+        }
+        return Some(covered("consent"));
+    }
+    sim.has(Quirk::Drawer).then(|| covered("drawer"))
+}
+
 impl AgentBackend for App {
     fn observe(
         &self,
@@ -298,23 +339,10 @@ impl AgentBackend for App {
             .as_ref()
             .and_then(|target| target.name.clone())
             .unwrap_or_default();
-        if sim.has(Quirk::Unclickable) && operation == JevOperation::Click {
-            return DesktopResponse::err(
-                "click",
-                tinycomputer_bus::DesktopError::new(
-                    "NOT_ACTIONABLE",
-                    "Element exists but is not visible.",
-                ),
-            );
-        }
-        if sim.has(Quirk::Drawer) && operation == JevOperation::Click {
-            return DesktopResponse::err(
-                "click",
-                tinycomputer_bus::DesktopError::new(
-                    "NOT_ACTIONABLE",
-                    format!("Element '@s:{name}' is covered by <div.drawer> at its click point"),
-                ),
-            );
+        if operation == JevOperation::Click
+            && let Some(reply) = refused_click(&mut sim, &name)
+        {
+            return reply;
         }
         if is_city_row(target.as_ref()) && operation == JevOperation::TypeText {
             return not_a_text_field();
@@ -392,6 +420,21 @@ impl AgentBackend for App {
     fn read_value(&self, target: &Candidate) -> Option<String> {
         let name = target.name.clone().unwrap_or_default();
         Some(self.sim().fields.get(&name).cloned().unwrap_or_default())
+    }
+
+    fn await_change(&self, _ms: u64) -> bool {
+        let mut sim = self.sim();
+        let changed = await_place_rows(&mut sim);
+        sim.trail.push(if changed { "changed" } else { "still" });
+        changed
+    }
+
+    fn settle(&self) {
+        self.sim().trail.push("settle");
+    }
+
+    fn settle_briefly(&self) {
+        self.sim().trail.push("settle briefly");
     }
 
     fn paste(&self, _app: &str, target: &Candidate, text: &str) -> DesktopResponse {

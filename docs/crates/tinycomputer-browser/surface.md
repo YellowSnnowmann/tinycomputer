@@ -42,7 +42,9 @@ tradeoff rather than a smell.
 `Perception::Sight` (the default) or `Perception::Tree`. `observe` tries
 sight first when it is enabled, and only reads the accessibility tree
 snapshot when sight is turned off, fails outright, or hits something it
-cannot address (a shadow root, a large frame in front). See
+cannot address (two shadow roots showing controls, a large frame in front);
+one shadow root's controls are read from the tree under its host and added
+to sight's reading. See
 [sight.md](sight.md) for what each of those actually does.
 
 ## Executing an operation
@@ -127,8 +129,22 @@ of unopened submenus the way a desktop tree does).
 `Surface::navigate` sends `NavigateRequest::new(url)` through
 `Browser::navigate`, defaulting to `WaitUntil::Load`. `Surface::settle`,
 called before a flow reads the page again after an action, waits, bounded,
-for the network to go quiet, then pauses a further beat regardless, as
-described in [interacting.md](interacting.md#scrolling-and-waiting).
+for the requests that change the page to end, then only while the page is
+still changing (`Settle::Prompt`; `Settle::Steady` waits for the network to
+go idle, then pauses a further beat regardless). `Surface::settle_briefly`,
+after a launch or Escape, skips the network wait under `Settle::Prompt`; both
+are described in [interacting.md](interacting.md#scrolling-and-waiting).
+
+`BrowserSurface::open_at(url)` opens the session early, as `open` does, and
+loads `url` in it: the page a task names, loaded while its plan is drafted,
+waiting for its `load` event at most 10 s (`EARLY_LOAD_MS`, beyond nine in
+ten live first pages). Until the page is first read (`observe`) or another
+address is loaded, a `navigate` to the same place, in the same session,
+finds it already there and loads nothing, answering with the page's address
+and title as they stand (read within `READ_TIMEOUT`); "the same place" is
+`tabs::place`'s, which ignores the scheme, a leading `www.`, the fragment
+and a trailing slash. A page not yet drawn, or a surface let go meanwhile,
+is loaded as asked.
 
 ## Cross-links
 

@@ -157,3 +157,202 @@ async fn a_task_report_request_is_one_a_confidential_call_can_carry() -> tinybus
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn the_runner_journals_time_outside_a_tasks_flows_into_its_journal() {
+    use tinycomputer_bus::agent::TaskId;
+    use tinycomputer_engine::{FlowRunner, JOURNAL_FILE, JevRuntime};
+
+    let scratch = std::env::temp_dir().join(format!(
+        "tinycomputer-runner-journal-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let browser = || {
+        std::sync::Arc::new(tinycomputer_browser::Browser::new(std::sync::Arc::new(
+            tinycomputer_browser::AgentBrowser,
+        )))
+    };
+    let jev = JevRuntime::sage("test-key", false)
+        .unwrap()
+        .with_journal(&scratch);
+    let runner = crate::tinybus_module::runner::WorkspaceRunner::new(
+        crate::Desktop::new(),
+        Some(jev),
+        browser(),
+    );
+    runner.journal(
+        Some(&TaskId::new("t-1")),
+        "rescue",
+        &|| json!({"wall_ms": 7}),
+    );
+    runner.journal(None, "plan", &|| json!({"wall_ms": 9}));
+
+    let task = std::fs::read_to_string(scratch.join("task-t-1").join(JOURNAL_FILE)).unwrap();
+    assert!(task.contains(r#""event":"rescue""#), "{task}");
+    let plan = std::fs::read_dir(&scratch)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.to_string_lossy().contains("-plan-"))
+        .expect("a plan before any task gets a run of its own");
+    assert!(
+        std::fs::read_to_string(plan.join(JOURNAL_FILE))
+            .unwrap()
+            .contains(r#""wall_ms":9"#)
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
+
+    // With no Jev runtime there is no journal to write to.
+    crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser())
+        .journal(None, "plan", &|| json!({}));
+}
+
+#[tokio::test]
+async fn the_runner_opens_no_browser_early_once_prelaunch_is_off() {
+    use tinycomputer_bus::agent::{TaskConstraints, TaskId};
+    use tinycomputer_engine::FlowRunner;
+
+    let browser = std::sync::Arc::new(tinycomputer_browser::Browser::new(std::sync::Arc::new(
+        tinycomputer_browser::AgentBrowser,
+    )));
+    let mut runner =
+        crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser);
+    assert!(runner.defaults.prelaunch, "on unless turned off");
+    runner.defaults.prelaunch = false;
+    runner
+        .prepare(&TaskId::new("t-1"), &TaskConstraints::default())
+        .await;
+    assert!(
+        runner.workspaces.lock().unwrap().is_empty(),
+        "nothing is made ready once browser.prelaunch is off"
+    );
+
+    // On, it makes the task's workspace ready; one without a browser has
+    // none to open.
+    runner.defaults.prelaunch = true;
+    runner
+        .prepare(
+            &TaskId::new("t-2"),
+            &TaskConstraints {
+                surfaces: vec![tinycomputer_bus::agent::SurfaceKind::Desktop],
+                ..TaskConstraints::default()
+            },
+        )
+        .await;
+    assert_eq!(runner.workspaces.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn the_runner_warms_its_jev_runtime_for_a_task() {
+    use tinycomputer_bus::agent::TaskId;
+    use tinycomputer_engine::{FlowRunner, JevRuntime};
+
+    let browser = || {
+        std::sync::Arc::new(tinycomputer_browser::Browser::new(std::sync::Arc::new(
+            tinycomputer_browser::AgentBrowser,
+        )))
+    };
+    // A runtime whose every call gives up within a millisecond, before any
+    // request can reach Jev: each is journaled with the task all the same.
+    let dir = std::env::temp_dir().join(format!("tinycomputer-runner-warm-{}", std::process::id()));
+    let mut config = tinycomputer_bus::JevConfig::new("test-key");
+    config.timeout_ms = Some(1);
+    config.max_retries = Some(0);
+    let jev = JevRuntime::configure(&config).unwrap().with_journal(&dir);
+    crate::tinybus_module::runner::WorkspaceRunner::new(
+        crate::Desktop::new(),
+        Some(jev),
+        browser(),
+    )
+    .warm(&TaskId::new("t-1"), 7)
+    .await;
+    let journal = std::fs::read_to_string(dir.join("task-t-1").join("journal.jsonl")).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let warmed = journal
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .filter(|event| event["event"] == "exchange" && event["step"] == "warm-up")
+        .count();
+    assert_eq!(warmed, 14, "every framing of a first turn's two requests");
+
+    // Sage's calls take seconds and are not warmed; with no Jev runtime
+    // there is nothing to warm.
+    let sage = JevRuntime::sage("test-key", false).unwrap();
+    crate::tinybus_module::runner::WorkspaceRunner::new(
+        crate::Desktop::new(),
+        Some(sage),
+        browser(),
+    )
+    .warm(&TaskId::new("t-1"), 7)
+    .await;
+    crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser())
+        .warm(&TaskId::new("t-1"), 7)
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_runner_loads_the_page_a_browser_task_names_in_its_early_browser() {
+    use tinycomputer_bus::agent::{SurfaceKind, TaskConstraints, TaskId};
+    use tinycomputer_engine::FlowRunner;
+
+    let scratch =
+        std::env::temp_dir().join(format!("tinycomputer-runner-page-{}", std::process::id()));
+    let sent = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let browser = std::sync::Arc::new(tinycomputer_browser::Browser::with_scratch(
+        std::sync::Arc::new(super::browser_tests::ScriptedLauncher(sent.clone())),
+        scratch.clone(),
+    ));
+    // Journaled, with the task's flows.
+    let jev = tinycomputer_engine::JevRuntime::sage("test-key", false)
+        .unwrap()
+        .with_journal(scratch.join("journal"));
+    let mut runner = crate::tinybus_module::runner::WorkspaceRunner::new(
+        crate::Desktop::new(),
+        Some(jev),
+        browser,
+    );
+    let navigated = |sent: &std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>| {
+        sent.lock()
+            .unwrap()
+            .iter()
+            .filter(|command| command["action"] == "navigate")
+            .map(|command| command["url"].clone())
+            .collect::<Vec<_>>()
+    };
+    let browser_only = TaskConstraints {
+        surfaces: vec![SurfaceKind::Browser],
+        ..TaskConstraints::default()
+    };
+    let task = TaskId::new("t-1");
+    runner.prepare(&task, &browser_only).await;
+    runner.open_page(&task, "https://example.com").await;
+    assert_eq!(navigated(&sent), [json!("https://example.com")]);
+    let journal = std::fs::read_to_string(
+        scratch
+            .join("journal")
+            .join("task-t-1")
+            .join("journal.jsonl"),
+    )
+    .unwrap();
+    let opened = journal
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .find(|event| event["event"] == "open_page")
+        .unwrap();
+    assert_eq!(opened["loaded"], true, "{opened}");
+    assert!(opened["wall_ms"].is_u64(), "{opened}");
+
+    // A task whose browser was never made ready loads nothing, nor does one
+    // once prelaunch is off.
+    runner
+        .open_page(&TaskId::new("t-2"), "https://example.com")
+        .await;
+    runner.defaults.prelaunch = false;
+    runner.open_page(&task, "https://example.com").await;
+    assert_eq!(navigated(&sent).len(), 1);
+    runner.release(&task);
+    let _ = std::fs::remove_dir_all(&scratch);
+}

@@ -25,7 +25,22 @@ pub(super) fn stopped_summary(status: &TaskStatus) -> String {
 
 /// Updates a task's view: status, summary, progress, step, and next calls.
 pub(super) fn publish(cell: &Cell, status: TaskStatus, summary: &str) {
-    let (progress, step) = cell.state.lock().map_or((0.0, None), |state| {
+    let waits = matches!(
+        status,
+        TaskStatus::NeedsInput { .. }
+            | TaskStatus::NeedsApproval { .. }
+            | TaskStatus::NeedsHuman { .. }
+    );
+    let (progress, step) = cell.state.lock().map_or((0.0, None), |mut state| {
+        // The wait starts when the task first asks; publishing the same
+        // pause again does not restart it.
+        state.waiting_since = if waits {
+            state
+                .waiting_since
+                .or_else(|| Some(std::time::Instant::now()))
+        } else {
+            None
+        };
         let total = state.flow.steps.len().max(1);
         let fraction = |count: usize| f32::from(u16::try_from(count).unwrap_or(u16::MAX));
         let progress = fraction(state.finished.min(total)) / fraction(total);

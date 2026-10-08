@@ -68,11 +68,32 @@ pub trait Surface: Clone + Send + 'static {
     /// Launches `app`, or brings it forward when it is already running.
     fn launch(&self, app: &str) -> DesktopResponse;
 
-    /// Gives the application a moment to finish reacting: after every action,
-    /// before the next look, and before a value is read back — a page that
-    /// closes a banner a beat after the click, or a token field turning an
-    /// address into a token.
+    /// Gives the application a moment to finish reacting: after an action
+    /// (one that fetches nothing settles briefly instead,
+    /// [`Surface::settle_briefly`]), before the next look, and before a value
+    /// is read back — a page that closes a banner a beat after the click, or
+    /// a token field turning an address into a token.
     fn settle(&self) {}
+
+    /// Settles after an action that fetches nothing — launching what is
+    /// already open, Escape closing a layer — so only the application's
+    /// own movement is waited out. A surface that cannot tell such an
+    /// action apart settles as after any other.
+    fn settle_briefly(&self) {
+        self.settle();
+    }
+
+    /// Waits, for up to the given milliseconds, for the application to
+    /// change by itself — a list of suggestions a box fetches for the text
+    /// just typed, the rest of a page arriving — and says whether it did, so
+    /// a caller watching for something to appear stops once nothing moves.
+    ///
+    /// A surface that cannot watch for a change pauses as a `Wait` does,
+    /// however long it was given, and says it may have changed.
+    fn await_change(&self, _ms: u64) -> bool {
+        let _paused = self.execute(JevOperation::Wait, None, None);
+        true
+    }
 
     /// Loads `url`, for a surface that has addresses.
     ///

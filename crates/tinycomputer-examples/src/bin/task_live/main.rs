@@ -22,6 +22,13 @@
 //!   a string, or `{"value": "...", "secret": true}` to keep it secret; a
 //!   card number or passport number is secret anyway.
 //! - `FLOW_FILE` — optional: run this flow instead of planning one.
+//! - `TASK_PLAN` — optional: `in-task` hands the task to `StartTask` to plan,
+//!   as `OpenHuman` does, rather than planning it first with `PlanTask`; the
+//!   plan is printed and saved once the task stops.
+//! - `TINYCOMPUTER_BROWSER_PRELAUNCH` — optional: `0` opens a browser-only
+//!   task's browser at its first step rather than while the task plans
+//!   itself (with `TASK_PLAN=in-task`), at the address the task names, as
+//!   it does by default.
 //! - `TASK_OUT` — optional: where the plan, report, and final screenshot go
 //!   (default `target/task-live`).
 //! - `OUTPUT_FILE` — optional: a JSON `TaskOutput` (`instructions` and a
@@ -49,8 +56,10 @@
 //!   (`OPENROUTER_API_KEY`, or `TINYHUMANS_TOKEN`).
 //! - `TINYCOMPUTER_BROWSER_EXECUTABLE`, `TINYCOMPUTER_BROWSER_USER_AGENT`, and
 //!   `TINYCOMPUTER_BROWSER_ARGS` (space-separated) — how the browser
-//!   launches, and `TINYCOMPUTER_BROWSER_PERCEPTION` (`sight` or `tree`) how
-//!   pages are read; all passed as the module's `browser` configuration.
+//!   launches, `TINYCOMPUTER_BROWSER_PERCEPTION` (`sight` or `tree`) how
+//!   pages are read, and `TINYCOMPUTER_BROWSER_SETTLE` (`prompt`, the
+//!   default, or `steady`) how a page settles after an action; all passed
+//!   as the module's `browser` configuration.
 //! - `TASK_CURSOR` — optional: the agent's on-screen cursor pace (`off`,
 //!   `brisk`, `natural`, `calm`; default `natural`). It is drawn by the
 //!   `tinycomputer-cursor-overlay` helper, which the module finds beside
@@ -61,6 +70,11 @@
 //!   approve or decline an irreversible action, get past a login or captcha
 //!   in the browser window and press Enter, type a detail the task lacks,
 //!   and finish on a payment page before the browser closes.
+//! - `TASK_MEMORY` — optional: a JSON file of grounding hints. The task
+//!   starts with the elements earlier runs learned there (`StartTask`'s
+//!   `memory`), so a remembered one is confirmed with a yes or no instead of
+//!   searched for, and what this run learns is saved back, newer hints
+//!   replacing older ones for the same element.
 //! - `TASK_HEADED` — optional: `1` shows the browser the task launches
 //!   instead of running it headless. A headed browser needs a display, so
 //!   such a run is on the host.
@@ -85,6 +99,10 @@ use tinycomputer_bus::agent::{
 use tinycomputer_examples::host::{Host, LabError, jev_config, module_path};
 use tinycomputer_examples::task::{Person, Terminal, conclude, follow, passed};
 
+mod saved;
+
+use saved::{read_memory, record_plan, remember};
+
 #[tokio::main]
 async fn main() -> Result<(), LabError> {
     let task = std::fs::read_to_string(env("TASK_FILE")?)?;
@@ -98,19 +116,30 @@ async fn main() -> Result<(), LabError> {
     };
     let kind = surface_kind()?;
 
+    // `TASK_PLAN=in-task` leaves planning to `StartTask`, as `OpenHuman` does,
+    // so the module can open the browser while it plans.
+    let in_task = in_task(std::env::var("TASK_PLAN").ok().as_deref())?;
     let host = Host::load(&module_path(), module_config()?).await?;
     let flow = match std::env::var("FLOW_FILE") {
-        Ok(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
-        Err(_) => plan(&host, &task, &facts, &secret_facts, kind, &out).await?,
+        Ok(path) => Some(serde_json::from_str(&std::fs::read_to_string(path)?)?),
+        Err(_) if in_task => None,
+        Err(_) => Some(plan(&host, &task, &facts, &secret_facts, kind, &out).await?),
     };
+    // A given flow is no plan the task drafted.
+    let drafted_in_task = flow.is_none();
     // The task travels with the flow, so every Jev question is briefed on it.
     // Sessions open before the task are not its own, and `conclude` leaves
     // them alone.
     let before = host.browser_sessions().await?;
+    let memory_file = std::env::var("TASK_MEMORY").ok().map(PathBuf::from);
+    let memory = match &memory_file {
+        Some(path) => read_memory(path)?,
+        None => Vec::new(),
+    };
     let view = host
         .start_task(&StartTaskRequest {
             task: Some(task.clone()),
-            flow: Some(flow),
+            flow,
             facts,
             secret_facts,
             constraints: TaskConstraints {
@@ -131,7 +160,7 @@ async fn main() -> Result<(), LabError> {
             },
             trace: true,
             output,
-            ..StartTaskRequest::default()
+            memory,
         })
         .await?;
     let limit = Duration::from_secs(
@@ -146,6 +175,12 @@ async fn main() -> Result<(), LabError> {
         .then_some(&Terminal as &dyn Person);
     let view = follow(&host, view, &BTreeMap::new(), limit, person).await?;
     conclude(&host, &view, &before, &out).await?;
+    if drafted_in_task {
+        record_plan(&out)?;
+    }
+    if let Some(path) = &memory_file {
+        remember(&out, path)?;
+    }
     host.shutdown();
     if passed(&view.status) {
         println!(
@@ -171,10 +206,18 @@ fn module_config() -> Result<Value, LabError> {
             browser.insert(field.to_owned(), json!(value.trim()));
         }
     }
-    if let Some(perception) = optional("TINYCOMPUTER_BROWSER_PERCEPTION") {
-        let perception = perception.trim().to_ascii_lowercase();
-        if !perception.is_empty() {
-            browser.insert("perception".to_owned(), json!(perception));
+    if let Some(prelaunch) = prelaunch(optional("TINYCOMPUTER_BROWSER_PRELAUNCH").as_deref())? {
+        browser.insert("prelaunch".to_owned(), json!(prelaunch));
+    }
+    for (variable, field) in [
+        ("TINYCOMPUTER_BROWSER_PERCEPTION", "perception"),
+        ("TINYCOMPUTER_BROWSER_SETTLE", "settle"),
+    ] {
+        if let Some(value) = optional(variable) {
+            let value = value.trim().to_ascii_lowercase();
+            if !value.is_empty() {
+                browser.insert(field.to_owned(), json!(value));
+            }
         }
     }
     if let Some(args) = optional("TINYCOMPUTER_BROWSER_ARGS") {
@@ -294,6 +337,29 @@ fn read_facts(text: &str) -> Result<(BTreeMap<String, String>, Vec<String>), Lab
         facts.insert(name, text);
     }
     Ok((facts, secret))
+}
+
+/// Whether `TASK_PLAN`'s `value` leaves planning to the task: `in-task`
+/// does, and no value does not.
+fn in_task(value: Option<&str>) -> Result<bool, LabError> {
+    match value.map(str::trim) {
+        None | Some("") => Ok(false),
+        Some("in-task") => Ok(true),
+        Some(other) => Err(format!("TASK_PLAN must be `in-task`, not `{other}`").into()),
+    }
+}
+
+/// The module's `prelaunch` from `TINYCOMPUTER_BROWSER_PRELAUNCH`'s `value`:
+/// `0` or `1`, or the module's own default when unset.
+fn prelaunch(value: Option<&str>) -> Result<Option<bool>, LabError> {
+    match value.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some("0") => Ok(Some(false)),
+        Some("1") => Ok(Some(true)),
+        Some(other) => {
+            Err(format!("TINYCOMPUTER_BROWSER_PRELAUNCH must be `0` or `1`, not `{other}`").into())
+        }
+    }
 }
 
 fn env(name: &str) -> Result<String, String> {

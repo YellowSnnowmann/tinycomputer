@@ -54,7 +54,7 @@ controls the *browser's* visibility for that one task.
     "provider": "open_router",
     "model": "jev-latest",
     "endpoint_url": null,
-    "timeout_ms": 30000,
+    "timeout_ms": 10000,
     "max_retries": 2,
     "sdk_name": "my-host"
   }
@@ -79,8 +79,12 @@ OpenJEV and Sage have no Tiny Humans proxy route, so a host that wants its
 decisions to go through Tiny Humans uses `tiny_humans_open_router`.
 `sdk_name` is sent only to the Tiny Humans proxy.
 
-A provider's server error (HTTP 5xx) or rate limit (429) is retried, waiting
-1, 2, 4, then 8 seconds between attempts, or as long as the provider asks.
+Each attempt may take `timeout_ms`, 10 seconds unless set: live, the slowest
+answer took 8.6 s. A framing that has not answered after 4 s (5 s for a
+request of 32 KB or more) is also sent once more, and whichever copy answers
+first counts. A provider's server error (HTTP 5xx) or rate limit (429) is
+retried, waiting 1, 2, 4, then 8 seconds between attempts, or as long as the
+provider asks.
 `max_retries` sets how many retries follow the first attempt; it defaults to
 four, about 15 seconds in all, so a gateway's brief outage does not end a
 run.
@@ -216,7 +220,9 @@ never sent to a provider it was not given for:
     "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
     "args": ["--disable-blink-features=AutomationControlled"],
-    "perception": "sight"
+    "perception": "sight",
+    "settle": "prompt",
+    "prelaunch": true
   }
 }
 ```
@@ -230,6 +236,8 @@ How the module launches every browser it opens — each task's, and each
 | `user_agent` | the `User-Agent` every launched browser sends; booking sites turn away a browser that announces itself as headless |
 | `args` | extra launch arguments, as an array of strings |
 | `perception` | how a task reads a page: `sight` (the default) reads the rendered page as a person sees it, `tree` the accessibility tree alone ([`browser-sight.md`](../../technical/specs/browser-sight.md)) |
+| `settle` | how a task lets a page settle after an action before reading it again: `prompt` (the default) counts the network's 500 ms of quiet from the start, counting only requests that can change the page and for at most 1 s, and then waits only while the page is still changing (at most 400 ms), so an idle page is read again after about 0.6 s; `steady` waits for the network to go idle, at least about 1.1 s, then 400 ms more |
+| `prelaunch` | `true` (the default) opens a browser-only task's browser while `StartTask` plans it (a `task` with no `flow`), so the first step does not wait for the launch, and loads in it the one web address the task's text names, if it names one, so a first step that browses there does not wait for the page either; `false` opens it at the first step |
 
 Most installs never need any of this: leave `browser` out entirely and the
 linked `agent-browser` engine looks for Chrome itself. An unknown key under

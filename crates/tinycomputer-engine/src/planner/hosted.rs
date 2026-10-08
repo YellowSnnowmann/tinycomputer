@@ -6,14 +6,19 @@
 //! feature. The keys arrive in the module's private configuration and never
 //! leave this adapter.
 
+use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tinycomputer_bus::agent::LanguageModelProvider;
 use tinyinference_llm::model::{
     ReasoningConfig, ReasoningEffort, ResponseFormat, collect_model_stream,
 };
 use tinyinference_llm::providers::openai::OpenAiModel;
-use tinyinference_llm::{ChatModel, Message, ModelRequest, ProviderKind, ProviderSpec};
+use tinyinference_llm::{
+    ChatModel, Error, Message, ModelRequest, ProviderKind, ProviderSpec, classify_provider_error,
+    classify_provider_failure,
+};
 
 use super::config::{ModelRoute, OUTPUT_MODEL, PLANNER_MODEL, PlannerConfig, RESCUE_MODEL};
 use super::{Completion, LanguageModel, Planner, Role, Turn};
@@ -142,14 +147,54 @@ impl LanguageModel for Hosted {
             // for 60 seconds, and a reasoning model's whole reply can take
             // longer. A route that ignores streaming still answers in one
             // piece.
-            let stream = model
-                .stream(&(), request)
-                .await
-                .map_err(|error| error.to_string())?;
-            let response = collect_model_stream(stream)
-                .await
-                .map_err(|error| error.to_string())?;
-            Ok(Message::Assistant(response.message).text())
+            with_retries(|| {
+                let model = model.clone();
+                let request = request.clone();
+                async move {
+                    let stream = model.stream(&(), request).await?;
+                    let response = collect_model_stream(stream).await?;
+                    Ok(Message::Assistant(response.message).text())
+                }
+            })
+            .await
+            .map_err(|error| error.to_string())
         })
+    }
+}
+
+/// How many times one model call is tried when it fails in passing — a
+/// gateway's 502, a rate limit, a dropped connection — waiting 1, 2, then 4
+/// seconds between tries. Live, one 502 from Tiny Humans' gateway ended a
+/// task at its plan, 3 s in.
+const MODEL_TRIES: u32 = 4;
+
+/// Runs `call` until it answers, fails in a way another try cannot mend, or
+/// has failed [`MODEL_TRIES`] times.
+pub(super) async fn with_retries<T, C, F>(mut call: C) -> Result<T, Error>
+where
+    C: FnMut() -> F,
+    F: Future<Output = Result<T, Error>>,
+{
+    let mut tries = 1;
+    loop {
+        match call().await {
+            Err(error) if tries < MODEL_TRIES && passing(&error) => {
+                tokio::time::sleep(Duration::from_secs(1 << (tries - 1))).await;
+                tries += 1;
+            }
+            outcome => return outcome,
+        }
+    }
+}
+
+/// Whether `error` may pass on another try: a server error, a rate limit
+/// that is not a spending cap, or a dropped connection, but never a
+/// refused key, a request the route rejects, or a reply that would not
+/// parse.
+pub(super) fn passing(error: &Error) -> bool {
+    match error {
+        Error::Provider(provider) => classify_provider_error(provider).is_retryable(),
+        Error::Model(message) => classify_provider_failure(None, None, message).is_retryable(),
+        _ => false,
     }
 }

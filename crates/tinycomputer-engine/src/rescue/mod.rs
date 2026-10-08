@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tinycomputer_bus::agent::{LanguageModelConfiguration, Rescue};
 use tinycomputer_bus::{FLOW_GUIDE, Flow, FlowStep, StepReport};
 
-use crate::planner::{LanguageModel, REPAIRS, Role, Turn};
+use crate::planner::{LanguageModel, ModelUse, REPAIRS, Role, Turn};
 use judge::judge;
 pub(crate) use judge::resumed;
 use render::render;
@@ -181,16 +181,30 @@ impl Rescuer {
     /// Why no guidance came back: the model failed, or its answer stayed
     /// invalid after [`REPAIRS`] repairs.
     pub async fn guide(&self, briefing: &Briefing) -> Result<Guidance, String> {
+        self.guide_measured(briefing).await.0
+    }
+
+    /// [`Rescuer::guide`], with what it used of its model, whether or not
+    /// guidance came back: a call refused as invalid guidance costs a repair.
+    pub async fn guide_measured(
+        &self,
+        briefing: &Briefing,
+    ) -> (Result<Guidance, String>, ModelUse) {
         let mut turns = vec![
             Turn::new(Role::System, format!("{PROTOCOL}\n\n{FLOW_GUIDE}")),
             Turn::new(Role::User, render(briefing)),
         ];
+        let mut used = ModelUse::starting(&turns);
         let mut last = String::new();
         for _ in 0..=REPAIRS {
-            let reply = self.model.complete(&turns).await?;
+            used.calls += 1;
+            let reply = match self.model.complete(&turns).await {
+                Ok(reply) => reply,
+                Err(error) => return (Err(error), used),
+            };
             turns.push(Turn::new(Role::Assistant, reply.clone()));
             let problem = match judge(&reply, briefing) {
-                Ok(guidance) => return Ok(guidance),
+                Ok(guidance) => return (Ok(guidance), used),
                 Err(problem) => problem,
             };
             last.clone_from(&problem);
@@ -199,7 +213,10 @@ impl Rescuer {
                 format!("{problem}\nReply with the corrected answer only, as one JSON object."),
             ));
         }
-        Err(format!("the rescuer gave no valid guidance: {last}"))
+        (
+            Err(format!("the rescuer gave no valid guidance: {last}")),
+            used,
+        )
     }
 }
 

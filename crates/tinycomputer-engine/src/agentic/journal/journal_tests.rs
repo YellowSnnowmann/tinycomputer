@@ -220,3 +220,24 @@ fn millis_saturate() {
     assert_eq!(millis(Duration::from_micros(2500)), 2);
     assert_eq!(millis(Duration::MAX), u64::MAX);
 }
+
+#[test]
+fn a_fresh_run_is_named_for_its_kind_and_opened_only_when_the_journal_is_on() {
+    let scratch = Scratch::new("fresh");
+    let root = Journal::at(&scratch.0);
+    assert!(!root.is_open(), "a root is no run");
+    let plan = root.fresh("plan");
+    assert!(plan.is_open());
+    let dir = plan.run_dir().unwrap();
+    assert!(
+        dir.file_name()
+            .unwrap()
+            .to_string_lossy()
+            .contains("Z-plan-"),
+        "{}",
+        dir.display()
+    );
+    plan.record("plan", || json!({"wall_ms": 12}));
+    assert_eq!(events(&dir)[0]["wall_ms"], 12);
+    assert!(!Journal::default().fresh("plan").is_open(), "off stays off");
+}

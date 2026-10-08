@@ -165,13 +165,17 @@ pub enum JevStopReason {
 /// Aggregate provider measurements for one result.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JevMetrics {
-    /// Jev evaluations performed.
+    /// Jev evaluations performed. A decision ended on a quorum counts the
+    /// framings it did not wait for too: they still run, and are charged.
     pub calls: u32,
-    /// HTTP attempts including retries.
+    /// HTTP attempts including retries, of the evaluations waited for.
     pub attempts: u32,
-    /// Total provider latency in milliseconds.
+    /// Total provider latency in milliseconds, of the evaluations waited
+    /// for.
     pub latency_ms: u64,
-    /// Provider-reported input tokens.
+    /// Provider-reported input tokens, of the evaluations waited for. Those
+    /// of framings a quorum did not wait for end after their decision, and
+    /// only the journal records them.
     pub input_tokens: u64,
     /// Provider-reported output tokens.
     pub output_tokens: u64,

@@ -1,11 +1,12 @@
-//! Tests for the `task_live` binary: which routes Jev and the planner take.
+//! Tests for the `task_live` binary: which routes Jev and the planner take,
+//! and how its switches are read.
 
 use std::collections::BTreeMap;
 
 use serde_json::json;
 use tinycomputer_examples::host::LabError;
 
-use super::{TINY_HUMANS_MODEL, routes};
+use super::{TINY_HUMANS_MODEL, in_task, prelaunch, routes};
 
 /// A variable lookup over `pairs`, in place of the process environment.
 fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
@@ -86,6 +87,26 @@ fn sage_takes_the_decisions_on_either_route() -> Result<(), LabError> {
             ("TINYCOMPUTER_DECISIONS", "sage"),
         ]))
         .is_err_and(|error| error.to_string().contains("SAGE_API_KEY"))
+    );
+    Ok(())
+}
+
+#[test]
+fn task_plan_and_prelaunch_take_only_the_values_they_name() -> Result<(), LabError> {
+    assert!(!in_task(None)?);
+    assert!(!in_task(Some(" "))?);
+    assert!(in_task(Some(" in-task\n"))?);
+    assert!(in_task(Some("first")).is_err(), "a typo is not ignored");
+    assert_eq!(prelaunch(None)?, None);
+    assert_eq!(prelaunch(Some("0"))?, Some(false));
+    assert_eq!(prelaunch(Some(" 1 "))?, Some(true));
+    let refused = match prelaunch(Some("false")) {
+        Ok(value) => return Err(format!("`false` was read as {value:?}").into()),
+        Err(error) => error.to_string(),
+    };
+    assert!(
+        refused.contains("TINYCOMPUTER_BROWSER_PRELAUNCH"),
+        "{refused}"
     );
     Ok(())
 }

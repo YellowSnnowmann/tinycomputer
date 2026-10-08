@@ -107,6 +107,15 @@ impl Surface for Recorder {
         self.note("settle");
     }
 
+    fn settle_briefly(&self) {
+        self.note("settle_briefly");
+    }
+
+    fn await_change(&self, _ms: u64) -> bool {
+        self.note("await_change");
+        true
+    }
+
     fn navigate(&self, _url: &str) -> DesktopResponse {
         self.note("navigate")
     }
@@ -187,6 +196,42 @@ fn unnamed_calls_follow_the_side_last_observed_or_opened() {
             "desktop:execute"
         ]
     );
+}
+
+#[test]
+fn a_wait_for_a_change_watches_the_active_side() {
+    let (workspace, calls) = workspace(true);
+    assert!(workspace.await_change(1_000));
+    workspace.navigate("https://flights.test");
+    assert!(workspace.await_change(1_000));
+    assert_eq!(
+        drain(&calls),
+        [
+            "desktop:await_change",
+            "browser:navigate",
+            "browser:await_change"
+        ]
+    );
+    let bare: Workspace<Recorder, Recorder> = Workspace::new(None, None);
+    assert!(!bare.await_change(1_000), "nothing to change");
+}
+
+#[test]
+fn a_brief_settle_settles_the_active_side() {
+    let (workspace, calls) = workspace(true);
+    workspace.settle_briefly();
+    workspace.navigate("https://flights.test");
+    workspace.settle_briefly();
+    assert_eq!(
+        drain(&calls),
+        [
+            "desktop:settle_briefly",
+            "browser:navigate",
+            "browser:settle_briefly"
+        ]
+    );
+    let bare: Workspace<Recorder, Recorder> = Workspace::new(None, None);
+    bare.settle_briefly();
 }
 
 #[test]

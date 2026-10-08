@@ -85,6 +85,31 @@ pub fn events(dir: &Path) -> std::io::Result<Vec<Value>> {
         .collect())
 }
 
+/// Every event of the task journaled at `path`: a run directory, or a
+/// folder of run directories read as one story, oldest run first. A
+/// `task_live` run journaling to its own folder
+/// (`TINYCOMPUTER_JEV_JOURNAL=$TASK_OUT/journal`) writes such a folder: the
+/// plan, journaled before the task existed, and the task's own runs.
+///
+/// # Errors
+///
+/// Returns the I/O error when a journal cannot be read, or `NotFound` when
+/// `path` holds none.
+pub fn story(path: &Path) -> std::io::Result<Vec<Value>> {
+    if path.join(JOURNAL_FILE).is_file() {
+        return events(path);
+    }
+    let runs = runs(path)?;
+    if runs.is_empty() {
+        return Err(not_found(format!("no journal in {}", path.display())));
+    }
+    let mut all = Vec::new();
+    for run in runs {
+        all.extend(events(&run)?);
+    }
+    Ok(all)
+}
+
 fn not_found(message: String) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::NotFound, message)
 }

@@ -39,7 +39,7 @@ do.
 | `do` | `{"do": "start a new note"}` | Same as a plain string. |
 | `enter` | `{"enter": {"subject": "Hi"}}` | Put each text into the field its key describes; a box that suggests matches as you type (a location, a city) has the matching suggestion picked. |
 | `choose` | `{"choose": {"what": "the font list", "option": "Helvetica"}}` | Pick an option in a list, menu, or popup, or in a group of option buttons (a size, a colour, a quantity, a day in a strip of dates). |
-| `read` | `{"read": {"what": "the newest message's subject", "into": "subject"}}` | Store visible text in a variable. |
+| `read` | `{"read": {"what": "the newest message's subject", "into": "subject"}}` | Store visible text in a variable. Read the price of one item before any step raises its count: after that, its line and the cart show the total for all of them. |
 | `extract` | `{"extract": {"what": "the flight results", "into": "flights"}}` | Store every item of a list, as JSON rows of their text, in a variable. |
 | `pick` | `{"pick": {"from": "the flight results", "by": "lowest price", "into": "flight"}}` | Choose the best of a list of results (cards or rows, each an item to open) and open it; `into` stores its text. Prices, times, durations, and stops are compared exactly. |
 | `verify` | `{"verify": "the draft shows a recipient"}` | Fail the flow unless this holds. |
@@ -155,7 +155,9 @@ do.
    buttons only once the item is in the cart, so to buy more than one,
    add the item first and raise its count in the next step; a − count +
    stepper where the add button was means the item is in the cart with
-   that count. A
+   that count. To report the price of one, `read` it before raising the
+   count: after that, the item's line and the cart show the total for all
+   of them, and a cart often shows no price for one. A
    `pick` opens a whole result card; to press one of several buttons inside
    the cards (a time or a slot listed under each place), use a plain step
    that names it ("press the earliest time listed"). A dialog's headings

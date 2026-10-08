@@ -85,6 +85,111 @@ async fn enter_picks_the_suggestion_an_autocomplete_box_lists_for_the_typed_text
     assert!(asked_for_a_suggestion(&run));
 }
 
+/// The notes of a step's waits, in order.
+fn waits(run: &Run) -> Vec<String> {
+    run.result.steps[0]
+        .actions
+        .iter()
+        .filter(|action| action.action == "wait")
+        .map(|action| action.note.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_place_box_whose_rows_come_late_is_looked_at_again_as_they_show() {
+    // Live, a ride app's rows came after the first look. Each wait ends as
+    // the page changes, and the rows are picked once drawn.
+    for late in [1, 2] {
+        let run = run_with(
+            App::with(|sim| {
+                sim.places = Some(Places {
+                    late,
+                    ..Places::default()
+                });
+            }),
+            json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Connaught Place"}}]}),
+            |_| {},
+            ride,
+        )
+        .await;
+        assert_eq!(
+            run.result.stop,
+            FlowStopReason::Completed,
+            "{:?}",
+            run.result.steps
+        );
+        assert_eq!(
+            run.app.sim().fields["Pickup location"],
+            "Connaught Place New Delhi, Delhi, India",
+            "rows drawn after {late} waits"
+        );
+        assert_eq!(waits(&run), vec![String::new(); usize::from(late)]);
+        // A wait that saw the page change is settled, as any action is.
+        let trail = run.app.sim().trail.clone();
+        let watched = trail.iter().position(|call| *call == "changed").unwrap();
+        assert_eq!(trail.get(watched + 1), Some(&"settle"), "{trail:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_place_box_waits_past_its_own_rows_for_the_place_typed() {
+    // Live, a ride app's pickup box first listed rows of its own ("Allow
+    // location access", "Search in a different city"), and a look made as
+    // soon as the page went still saw only those: no row named the place,
+    // none was picked, and the pickup was never set. The box is looked at
+    // again until a row names the place.
+    let run = run_with(
+        App::with(|sim| {
+            sim.places = Some(Places {
+                late: 1,
+                starters: true,
+                ..Places::default()
+            });
+        }),
+        json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Connaught Place"}}]}),
+        |_| {},
+        ride,
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert_eq!(
+        run.app.sim().fields["Pickup location"],
+        "Connaught Place New Delhi, Delhi, India"
+    );
+    assert_eq!(waits(&run), [""], "one wait, ended by the rows showing");
+}
+
+#[tokio::test]
+async fn a_place_box_on_a_page_that_stays_still_is_waited_on_once() {
+    // Live, an address and a city box on a plain form waited twice each for
+    // a list that never came. A page that stayed still lists nothing more.
+    let run = run_with(
+        App::with(|sim| sim.places = Some(Places::default())),
+        json!({"app": "Mail", "steps": [{"enter": {"pickup location": "Nowhere Lane"}}]}),
+        |_| {},
+        ride,
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert_eq!(run.app.sim().fields["Pickup location"], "Nowhere Lane");
+    assert_eq!(waits(&run), ["nothing changed"]);
+    assert!(!asked_for_a_suggestion(&run));
+    // A wait that saw the page stay still has nothing to settle.
+    let trail = run.app.sim().trail.clone();
+    let watched = trail.iter().position(|call| *call == "still").unwrap();
+    assert_ne!(trail.get(watched + 1), Some(&"settle"), "{trail:?}");
+}
+
 #[tokio::test]
 async fn a_place_box_asks_again_for_the_row_naming_its_place_in_other_words() {
     // An unsure pick (0.45) is not pressed as such. A place box, though,

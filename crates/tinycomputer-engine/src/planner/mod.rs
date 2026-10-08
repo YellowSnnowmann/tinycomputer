@@ -50,6 +50,29 @@ pub enum Role {
     Assistant,
 }
 
+/// What one plan or rescue used of its model: the calls it made, the first
+/// and each repair of a refused answer, and the bytes the first call sent.
+/// The task journals it, so a run shows what its planning and rescues cost.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ModelUse {
+    /// Calls made: the first, and one per repair. A hosted call tried again
+    /// after a passing failure (`hosted.rs`) counts once: its tries, and
+    /// the waits between them, are inside it.
+    pub calls: u32,
+    /// Bytes of text in the first call's turns.
+    pub sent_bytes: usize,
+}
+
+impl ModelUse {
+    /// The use of a conversation about to be sent for the first time.
+    pub(crate) fn starting(turns: &[Turn]) -> Self {
+        Self {
+            calls: 0,
+            sent_bytes: turns.iter().map(|turn| turn.text.len()).sum(),
+        }
+    }
+}
+
 /// One message in a planning conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Turn {
@@ -152,6 +175,20 @@ impl Planner {
         secret_names: &[String],
         surfaces: &[SurfaceKind],
     ) -> Result<TaskPlan, String> {
+        self.plan_measured(task, fact_names, secret_names, surfaces)
+            .await
+            .0
+    }
+
+    /// [`Planner::plan`], with what it used of its model, whether or not a
+    /// plan came back.
+    pub async fn plan_measured(
+        &self,
+        task: &str,
+        fact_names: &[String],
+        secret_names: &[String],
+        surfaces: &[SurfaceKind],
+    ) -> (Result<TaskPlan, String>, ModelUse) {
         let surfaces = if surfaces.is_empty() {
             "the web browser and desktop applications".to_owned()
         } else {
@@ -200,9 +237,14 @@ impl Planner {
                 ),
             ),
         ];
+        let mut used = ModelUse::starting(&turns);
         let mut last = String::new();
         for _ in 0..=REPAIRS {
-            let reply = self.model.complete(&turns).await?;
+            used.calls += 1;
+            let reply = match self.model.complete(&turns).await {
+                Ok(reply) => reply,
+                Err(error) => return (Err(error), used),
+            };
             turns.push(Turn::new(Role::Assistant, reply.clone()));
             let problem = match parse(&reply) {
                 Ok(flow) => {
@@ -212,7 +254,7 @@ impl Planner {
                         .filter(|error| !error.contains("` is not defined in `vars`"))
                         .collect::<Vec<_>>();
                     if errors.is_empty() {
-                        return Ok(plan_for(flow, &known, &secrets));
+                        return (Ok(plan_for(flow, &known, &secrets)), used);
                     }
                     format!("That flow is invalid:\n- {}", errors.join("\n- "))
                 }
@@ -224,7 +266,10 @@ impl Planner {
                 format!("{problem}\nReply with the corrected flow only, as one JSON object."),
             ));
         }
-        Err(format!("the planner did not produce a valid flow: {last}"))
+        (
+            Err(format!("the planner did not produce a valid flow: {last}")),
+            used,
+        )
     }
 }
 

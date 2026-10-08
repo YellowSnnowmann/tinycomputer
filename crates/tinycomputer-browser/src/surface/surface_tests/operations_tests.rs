@@ -229,7 +229,8 @@ fn pressing_launching_settling_and_navigating() {
     assert_eq!(surface.press("", "").error.unwrap().code, "INVALID_KEY");
     let launched = surface.launch("browser");
     assert_eq!(launched.data.unwrap()["running"], true);
-    surface.settle();
+    // Settling steadily, as a host may still ask for.
+    surface.clone().with_settle(crate::Settle::Steady).settle();
     let idle = fake.last("waitforloadstate");
     assert_eq!(
         (idle["state"].as_str(), idle["timeout"].as_u64()),
@@ -548,4 +549,277 @@ fn a_navigation_that_timed_out_on_a_drawn_page_is_taken_as_open() {
     let blank = harness("blank-page", opening(false));
     let reply = blank.surface.navigate("https://shop.test/search?q=milk");
     assert!(!reply.ok, "nothing drawn yet: the timeout stands");
+}
+
+#[test]
+fn a_page_opened_early_is_not_loaded_again_until_it_is_read() {
+    // A shop whose page has drawn by the time it is asked.
+    let shop = || {
+        Fake::scripted(|command| {
+            let script = command["script"].as_str().unwrap_or_default();
+            (command["action"] == "evaluate" && script.contains("readyState")).then(|| {
+                ok(&json!({"result": {
+                    "url": "https://www.shop.test/",
+                    "title": "Shop",
+                    "drawn": true,
+                }}))
+            })
+        })
+    };
+    let loads = |fake: &Fake| {
+        fake.actions()
+            .iter()
+            .filter(|action| *action == "navigate")
+            .count()
+    };
+
+    let early = harness("open-at", shop());
+    assert!(early.surface.open_at("https://shop.test"));
+    assert_eq!(loads(&early.fake), 1);
+    assert_eq!(
+        early.fake.last("navigate")["timeout"],
+        10_000,
+        "a plan drafted sooner waits for it no longer"
+    );
+    // The plan's first step browses there, by another of its addresses.
+    let reply = early.surface.navigate("https://www.shop.test/");
+    assert!(reply.ok, "{:?}", reply.error);
+    assert_eq!(reply.data.unwrap()["title"], "Shop");
+    assert_eq!(loads(&early.fake), 1, "loaded once");
+    // Asked again, it loads again, with the session's own deadline.
+    assert!(early.surface.navigate("https://shop.test").ok);
+    assert_eq!(loads(&early.fake), 2);
+    assert!(early.fake.last("navigate")["timeout"].is_null());
+
+    // Once the page is read, or another page is asked for, it loads.
+    let read = harness("open-at-read", shop());
+    assert!(read.surface.open_at("https://shop.test"));
+    assert!(read.surface.observe("browser", None, Depth::Full).is_ok());
+    assert!(read.surface.navigate("https://shop.test").ok);
+    assert_eq!(loads(&read.fake), 2);
+    let elsewhere = harness("open-at-elsewhere", shop());
+    assert!(elsewhere.surface.open_at("https://shop.test"));
+    assert!(elsewhere.surface.navigate("https://shop.test/cart").ok);
+    assert_eq!(loads(&elsewhere.fake), 2);
+
+    // A page that has drawn nothing yet is loaded as asked.
+    let blank = harness("open-at-blank", Fake::new());
+    assert!(blank.surface.open_at("https://shop.test"));
+    assert!(blank.surface.navigate("https://shop.test").ok);
+    assert_eq!(loads(&blank.fake), 2);
+
+    // A page that would not load is not kept, and a surface let go opens
+    // none.
+    let refused = harness(
+        "open-at-refused",
+        Fake::scripted(|command| {
+            (command["action"] == "navigate")
+                .then(|| failure("Domain 'shop.test' is not in the allowed domains list"))
+        }),
+    );
+    assert!(!refused.surface.open_at("https://shop.test"));
+    let closed = harness("open-at-closed", shop());
+    closed.surface.close();
+    assert!(!closed.surface.open_at("https://shop.test"));
+    assert_eq!(
+        closed.fake.actions().len(),
+        0,
+        "{:?}",
+        closed.fake.actions()
+    );
+    // Let go after it opened early, it keeps no page for a later session.
+    let let_go = harness("open-at-let-go", shop());
+    assert!(let_go.surface.open_at("https://shop.test"));
+    let_go.surface.close();
+    // A new session shows the shop drawn: a page kept would skip the load.
+    assert!(let_go.surface.launch("browser").ok);
+    assert!(let_go.surface.navigate("https://shop.test").ok);
+    assert_eq!(loads(&let_go.fake), 2);
+}
+
+#[test]
+fn a_prompt_settle_counts_quiet_from_the_start_and_waits_only_while_the_page_changes() {
+    // Prompt is how a surface settles unless told otherwise.
+    let Harness { fake, surface, .. } = harness("prompt-settle", page_fake());
+    surface.settle();
+    let quiet = fake.last("waitforloadstate");
+    assert_eq!(
+        (quiet["state"].as_str(), quiet["timeout"].as_u64()),
+        (Some("networkquiet"), Some(1_000))
+    );
+    let still = fake.last("evaluate");
+    let script = still["script"].as_str().unwrap();
+    assert!(script.contains("MutationObserver"), "{script}");
+    assert!(
+        script.contains("setTimeout(done, 400)"),
+        "capped at SETTLE_MS: {script}"
+    );
+    assert!(script.contains(">= 120"), "still for STILL_MS: {script}");
+    assert!(
+        script.contains("getAnimations"),
+        "waits out CSS animations: {script}"
+    );
+    assert!(
+        script.contains("if (finished) return"),
+        "stops looking at frames once settled: {script}"
+    );
+    assert!(
+        script.contains("element.shadowRoot"),
+        "watches shadow roots too: {script}"
+    );
+    assert!(
+        !fake.actions().iter().any(|action| action == "wait"),
+        "no fixed pause: {:?}",
+        fake.actions()
+    );
+}
+
+#[test]
+fn a_brief_settle_waits_only_while_the_page_changes() {
+    // A launch or Escape fetched nothing: no wait for the network.
+    let brief = harness("brief-settle", page_fake());
+    brief.surface.settle_briefly();
+    assert!(
+        !brief
+            .fake
+            .actions()
+            .iter()
+            .any(|action| action == "waitforloadstate" || action == "wait"),
+        "{:?}",
+        brief.fake.actions()
+    );
+    let still = brief.fake.last("evaluate");
+    assert!(
+        still["script"].as_str().unwrap().contains("getAnimations"),
+        "the page is still watched until it stops changing"
+    );
+    // Settling steadily settles in full, as it always did.
+    let steady = harness("brief-steady", page_fake());
+    steady
+        .surface
+        .clone()
+        .with_settle(crate::Settle::Steady)
+        .settle_briefly();
+    assert_eq!(steady.fake.last("waitforloadstate")["state"], "networkidle");
+    assert_eq!(steady.fake.last("wait")["timeout"], 400);
+}
+
+#[test]
+fn a_wait_for_a_change_ends_at_the_pages_first_change_or_its_time() {
+    let Harness { fake, surface, .. } = harness("await-change", page_fake());
+    assert!(surface.open());
+    assert!(surface.await_change(1_000), "the page changed");
+    let watch = fake.last("evaluate");
+    let script = watch["script"].as_str().unwrap();
+    assert!(script.contains("MutationObserver"), "{script}");
+    assert!(
+        script.contains("element.shadowRoot"),
+        "watches shadow roots too: {script}"
+    );
+    assert!(
+        script.contains("done(false), 1000"),
+        "still once the time given passes: {script}"
+    );
+    assert!(
+        script.contains("'data-tc-'"),
+        "sight's own marks are no change: {script}"
+    );
+    assert!(
+        !fake.actions().iter().any(|action| action == "wait"),
+        "no fixed pause: {:?}",
+        fake.actions()
+    );
+
+    let still = harness(
+        "await-still",
+        Fake::scripted(|command| {
+            (command["action"] == "evaluate").then(|| ok(&json!({"result": false})))
+        }),
+    );
+    assert!(still.surface.open());
+    assert!(!still.surface.await_change(1_000), "the page stayed still");
+
+    // A watch that cannot run says the page may have changed, so a caller
+    // looks again as it would after a pause.
+    let unwatched = harness("await-unwatched", Fake::new());
+    assert!(unwatched.surface.open());
+    assert!(
+        unwatched.surface.await_change(1_000),
+        "no answer of its own"
+    );
+    // With no page open, there is nothing to watch and nothing is opened.
+    let closed = harness("await-closed", Fake::new());
+    assert!(closed.surface.await_change(1_000), "no session to watch");
+    assert!(
+        closed.fake.actions().is_empty(),
+        "{:?}",
+        closed.fake.actions()
+    );
+}
+
+#[test]
+fn a_watch_or_wait_the_page_never_answers_is_given_up_on() {
+    // Live, an evaluate sent while a page was being replaced waited out the
+    // browser's 30 s deadline. The harness is kept whole: its runtime runs
+    // the deadlines.
+    let watched = harness(
+        "watch-stalled",
+        page_fake().stalling(|command| command["action"] == "evaluate"),
+    );
+    assert!(watched.surface.open());
+    let started = std::time::Instant::now();
+    assert!(
+        watched.surface.await_change(10),
+        "a watch given up on may have seen a change"
+    );
+    watched.surface.settle();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+
+    let waited = harness(
+        "quiet-stalled",
+        page_fake().stalling(|command| command["action"] == "waitforloadstate"),
+    );
+    assert!(waited.surface.open());
+    let started = std::time::Instant::now();
+    waited.surface.settle();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    let still = waited.fake.last("evaluate");
+    assert!(
+        still["script"].as_str().unwrap().contains("getAnimations"),
+        "the page is still watched once the wait is given up on"
+    );
+}
+
+#[test]
+fn a_surface_opens_its_session_when_asked_rather_than_at_first_use() {
+    let Harness { fake, surface, .. } = harness("open-early", page_fake());
+    assert!(surface.session().is_none());
+    assert!(surface.open());
+    assert!(surface.session().is_some());
+    assert!(fake.actions().iter().any(|action| action == "launch"));
+    let launches = fake.actions().len();
+    assert!(surface.open(), "already open");
+    assert_eq!(fake.actions().len(), launches, "nothing launched twice");
+
+    let refused = Fake::scripted(|command| {
+        (command["action"] == "launch").then(|| failure("Chrome not found"))
+    });
+    let Harness { surface, .. } = harness("open-refused", refused);
+    assert!(!surface.open());
+
+    // A surface let go before its early open began is not opened: a task
+    // cancelled while planning holds no browser.
+    let Harness { fake, surface, .. } = harness("open-closed", page_fake());
+    surface.close();
+    assert!(!surface.open());
+    assert!(surface.session().is_none());
+    assert!(fake.actions().is_empty(), "{:?}", fake.actions());
 }

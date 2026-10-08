@@ -10,7 +10,7 @@ use tinycomputer_browser::{
 use tinycomputer_bus::DesktopResponse;
 use tinycomputer_bus::agent::{SurfaceKind, TaskConstraints, TaskId};
 use tinycomputer_engine::{
-    CaptureFuture, FlowFuture, FlowRunner, JevRuntime, TextFuture, Workspace,
+    CaptureFuture, FlowFuture, FlowRunner, JevRuntime, PrepareFuture, TextFuture, Workspace,
 };
 
 use super::config::BrowserDefaults;
@@ -71,6 +71,7 @@ impl WorkspaceRunner {
                 )
                 .with_cursor(self.cursor.clone())
                 .with_perception(self.defaults.perception)
+                .with_settle(self.defaults.settle)
             });
             (Workspace::new(desktop, browser.clone()), browser)
         };
@@ -137,6 +138,88 @@ impl FlowRunner for WorkspaceRunner {
                 .await
                 .ok()
         })
+    }
+
+    fn prepare(&self, task: &TaskId, constraints: &TaskConstraints) -> PrepareFuture {
+        if !self.defaults.prelaunch {
+            return Box::pin(async {});
+        }
+        let _workspace = self.workspace(task, constraints);
+        let browser = self.workspaces.lock().ok().and_then(|workspaces| {
+            workspaces
+                .get(task)
+                .and_then(|(_, browser)| browser.clone())
+        });
+        Box::pin(async move {
+            if let Some(browser) = browser {
+                // Opening the session is what the first step would wait for;
+                // one that fails here fails again, and is reported, there.
+                let _opened = tokio::task::spawn_blocking(move || browser.open()).await;
+            }
+        })
+    }
+
+    fn open_page(&self, task: &TaskId, url: &str) -> PrepareFuture {
+        // In the browser `prepare` opened, which it does unless prelaunch is
+        // off.
+        let browser = self
+            .defaults
+            .prelaunch
+            .then(|| {
+                self.workspaces.lock().ok().and_then(|workspaces| {
+                    workspaces
+                        .get(task)
+                        .and_then(|(_, browser)| browser.clone())
+                })
+            })
+            .flatten();
+        // Journaled with the task's flows (see `run`): the plan's outcome
+        // waits for this load.
+        let journal = self
+            .jev
+            .as_ref()
+            .filter(|runtime| runtime.journaling())
+            .map(|runtime| runtime.journaled_as(&format!("task-{task}")));
+        let url = url.to_owned();
+        Box::pin(async move {
+            if let Some(browser) = browser {
+                let started = std::time::Instant::now();
+                // A page that will not load fails again, and is reported,
+                // at the step that browses there.
+                let loaded = tokio::task::spawn_blocking(move || browser.open_at(&url))
+                    .await
+                    .unwrap_or(false);
+                if let Some(journal) = journal {
+                    let wall_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                    journal.journal_event(
+                        "open_page",
+                        || serde_json::json!({"wall_ms": wall_ms, "loaded": loaded}),
+                    );
+                }
+            }
+        })
+    }
+
+    fn warm(&self, task: &TaskId, votes: u32) -> PrepareFuture {
+        let Some(runtime) = self.jev.as_ref() else {
+            return Box::pin(async {});
+        };
+        // Journaled with the task's flows (see `run`).
+        let runtime = runtime.journaled_as(&format!("task-{task}"));
+        Box::pin(async move { runtime.warm(votes).await })
+    }
+
+    fn journal(&self, task: Option<&TaskId>, event: &str, fields: &dyn Fn() -> serde_json::Value) {
+        let Some(runtime) = self.jev.as_ref().filter(|runtime| runtime.journaling()) else {
+            return;
+        };
+        match task {
+            // Into the file the task's flows journal to (see `run`).
+            Some(task) => runtime
+                .journaled_as(&format!("task-{task}"))
+                .journal_event(event, fields),
+            None => runtime.journal_event(event, fields),
+        }
     }
 
     fn release(&self, task: &TaskId) {

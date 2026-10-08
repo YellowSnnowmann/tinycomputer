@@ -13,8 +13,9 @@ with every look, so it only notices real changes.
 
 - **Nothing changed.** The control that was pressed is banned for the rest of
   the step, so it isn't pressed again. After three actions in a row that
-  change nothing, the step fails with "the last three actions changed nothing
-  on screen".
+  change nothing, Jev is asked whether the screen already shows what the step
+  was for. If it does, the step counts as already done; if not, the step fails
+  with "the last three actions changed nothing on screen".
 - **Something changed.** A short note goes into the history Jev sees, like
   "the window is now New Message; appeared: textfield To:". That's how Jev
   learns what its last choice did.

@@ -9,7 +9,8 @@ use tinycomputer_core::Facts;
 use tinyinference_decisions::{Answer, EvaluationRequest, Question};
 
 use super::{
-    FlowRun, Halt, MAX_REQUEST_BYTES, StepLog, ask, backend::AgentBackend, brief::clip, vote,
+    FlowRun, Halt, MAX_REQUEST_BYTES, StepLog, ask, backend::AgentBackend, brief::clip, hedge,
+    quorum, vote,
 };
 use crate::agentic::{journal::millis, merge_metrics, provider_error};
 
@@ -18,8 +19,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     ///
     /// The request is briefed and masked first, then asked in as many
     /// framings as the run votes with — concurrently, each one charged as an
-    /// evaluation — and the answers are averaged. On a web page it also
-    /// carries a page-kind question, whose answer briefs the next request.
+    /// evaluation — and the answers are averaged: every framing's, or those
+    /// in once all but two of seven or more agree plainly (`quorum.rs`). On
+    /// a web page it also carries a page-kind question, whose answer briefs
+    /// the next request.
     pub(in crate::agentic::flow) async fn ask(
         &mut self,
         log: &mut StepLog,
@@ -72,20 +75,27 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             // A part none of whose framings answered leaves its questions
             // without an answer, which fails the decision as a whole.
             let mut unanswered = false;
-            for (framings, handles) in framings.into_iter().zip(handles) {
+            let mut left = 0_u32;
+            let mut asked_in = BTreeMap::new();
+            for ((part, framings), handles) in parts.iter().zip(framings).zip(handles) {
                 let before = answered.len();
-                for (framing, handle) in framings.into_iter().zip(handles) {
-                    match handle.await {
-                        Ok(Ok(evaluation)) => {
-                            merge_metrics(&mut self.metrics, &evaluation);
-                            log.calls = log.calls.saturating_add(1);
-                            answered.push((framing, evaluation.response.answers));
-                        }
-                        Ok(Err(error)) => {
-                            failure.get_or_insert(error);
-                        }
-                        Err(_) => {}
-                    }
+                for id in part.questions.keys() {
+                    asked_in.insert(id.clone(), framings.len());
+                }
+                let size = quorum::size(framings.len());
+                let gathered = quorum::gather(framings, handles, size).await;
+                for (framing, evaluation) in gathered.answered {
+                    merge_metrics(&mut self.metrics, &evaluation);
+                    log.calls = log.calls.saturating_add(1);
+                    answered.push((framing, evaluation.response.answers));
+                }
+                // Framings a quorum did not wait for still run, and are
+                // charged as made: their tokens are not known yet.
+                self.metrics.calls = self.metrics.calls.saturating_add(gathered.left);
+                log.calls = log.calls.saturating_add(gathered.left);
+                left = left.saturating_add(gathered.left);
+                if let Some(error) = gathered.failure {
+                    failure.get_or_insert(error);
                 }
                 unanswered |= answered.len() == before;
             }
@@ -99,6 +109,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     let ballots = vote::ballots(&answered);
                     let merged = vote::tally(&ballots);
                     self.ballots.extend(ballots);
+                    self.asked.extend(asked_in);
                     merged
                 }
             };
@@ -111,6 +122,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     "questions": request.questions.keys().collect::<Vec<_>>(),
                     "framings": votes,
                     "answered": answered.len(),
+                    "left": left,
                     "batched": batched,
                     "parts": parts.len(),
                     "request_bytes": largest(&parts),
@@ -199,7 +211,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             .collect()
     }
 
-    /// Sends every framing to Jev at once.
+    /// Sends every framing to Jev at once, each one [`hedged`](hedge::hedged).
     pub(super) fn spawn(
         &self,
         framings: &[vote::Framing],
@@ -217,7 +229,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 let runtime = self.runtime.clone();
                 let step = self.step.clone();
                 let request = framing.request.clone();
-                tokio::spawn(async move { runtime.evaluate(Some(&step), &request).await })
+                tokio::spawn(async move { hedge::hedged(&runtime, &step, &request).await })
             })
             .collect()
     }
@@ -331,7 +343,7 @@ pub(in crate::agentic::flow) fn largest(parts: &[EvaluationRequest]) -> usize {
 }
 
 /// The size of `request`, in bytes of JSON.
-fn bytes(request: &EvaluationRequest) -> usize {
+pub(super) fn bytes(request: &EvaluationRequest) -> usize {
     serde_json::to_vec(request).map_or(0, |json| json.len())
 }
 

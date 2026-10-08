@@ -55,6 +55,10 @@ async fn a_human_wall_pauses_for_a_person_and_the_step_runs_again() {
         *script.released.lock().unwrap(),
         std::slice::from_ref(&view.id)
     );
+    let waits = journaled(&script, "resume");
+    assert_eq!(waits.len(), 1);
+    assert_eq!(waits[0].0.as_ref(), Some(&view.id));
+    assert_eq!(waits[0].1["state"], "needs_human");
 }
 
 #[tokio::test]

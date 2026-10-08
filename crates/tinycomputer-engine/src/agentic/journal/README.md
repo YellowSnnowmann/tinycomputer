@@ -24,11 +24,16 @@ event table, reading a run with `jev_journal`, finding latency — is
   the journal on or off.
 - **After masking.** The flow journals the request after `FlowRun::mask`, so
   secrets appear only as `${name}`.
+- **A task's whole time.** The task controller times what happens between
+  its flows — planning, each rescue, each wait for a person — and hands the
+  event to its `FlowRunner::journal`; the module's runner writes it with
+  `JevRuntime::journal_event` into the task's `task-…` file, or for
+  `PlanTask`, which plans before a task exists, into a run of its own.
 
 ## Public surface
 
 `JevRuntime::with_journal`, `JevRuntime::journaled_as`,
-`JevRuntime::journal_dir`, and the constants `JOURNAL_ENV`,
+`JevRuntime::journal_dir`, `JevRuntime::journal_event`, and the constants `JOURNAL_ENV`,
 `JOURNAL_DEFAULT_DIR`, and `JOURNAL_FILE`, all re-exported from the crate
 root. The reader lives in `tinycomputer-examples` (`src/journal/`, the
 `jev_journal` binary), since only developers read journals.

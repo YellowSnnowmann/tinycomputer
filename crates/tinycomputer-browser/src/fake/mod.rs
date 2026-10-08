@@ -10,13 +10,15 @@ use serde_json::{Value, json};
 use crate::engine::{Engine, Launcher, Reply};
 
 type Script = dyn Fn(&Value) -> Option<Value> + Send + Sync;
+type Stall = dyn Fn(&Value) -> bool + Send + Sync;
 
 /// Records every command; answers from an optional override, else like the
-/// engine would.
+/// engine would, and never answers a command it is told to stall on.
 #[derive(Clone)]
 pub(crate) struct Fake {
     sent: Arc<Mutex<Vec<Value>>>,
     script: Arc<Script>,
+    stall: Arc<Stall>,
 }
 
 impl std::fmt::Debug for Fake {
@@ -36,7 +38,18 @@ impl Fake {
         Self {
             sent: Arc::new(Mutex::new(Vec::new())),
             script: Arc::new(script),
+            stall: Arc::new(|_| false),
         }
+    }
+
+    /// The same fake, never answering a command `stall` picks, as a page
+    /// being replaced may not.
+    pub(crate) fn stalling(
+        mut self,
+        stall: impl Fn(&Value) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.stall = Arc::new(stall);
+        self
     }
 
     pub(crate) fn actions(&self) -> Vec<String> {
@@ -131,6 +144,9 @@ pub(crate) fn default_reply(command: &Value) -> Value {
 impl Engine for Fake {
     fn execute(&mut self, command: Value) -> Reply<'_> {
         self.sent.lock().unwrap().push(command.clone());
+        if (self.stall)(&command) {
+            return Box::pin(std::future::pending());
+        }
         let reply = (self.script)(&command).unwrap_or_else(|| default_reply(&command));
         Box::pin(async move { reply })
     }

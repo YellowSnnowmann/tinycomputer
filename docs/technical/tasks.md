@@ -274,6 +274,33 @@ questions, which the task reports as `needs_input` before anything runs.
 `PlanTask` is the dry run: it returns the flow and the questions without
 starting anything, so a caller can inspect or edit the plan first.
 
+A `StartTask` with a `task` and no `flow` plans inside the task. When the
+task may run only on the browser, its runner is asked to get the browser
+ready meanwhile (`FlowRunner::prepare`); unless the module's
+`browser.prelaunch` is off, the session opens while the plan is drafted, so
+the first step does not wait for Chrome to start. When the task's text sends
+its browser to one web address, written out with `https://` or `http://`
+right after words such as "go to", "open", "visit", "start at" or "on", and
+carrying no query or fragment, the page loads in it meanwhile
+(`FlowRunner::open_page`, journaled as `open_page`), in the same wait, for
+at most 10 s: a first step that browses there finds it loaded, and loads
+nothing, as long as nothing has read the page first. Over 57 live plans, 56
+started by browsing the page their task named, and that first page took 1.9
+s to load (p90 6.4 s) and 1.1 s to settle; a plan takes 10–30 s. An address
+the task only mentions (one to check, read out, or pass on), one whose query
+could hold a token a load would spend, and a task naming several addresses
+or none load nothing. A plan that asks for values lets the browser go while
+the task waits (`needs_input`), and the run that follows opens it again; a
+task cancelled while its browser was still opening is left holding none.
+
+Every task planned this way also has its runner warm Jev while the plan is
+drafted (`FlowRunner::warm`): one small evaluation for each call its first
+turn will make, its judging and grounding's opening in every framing, so that
+turn finds its connections open
+([`jev-runtime.md`](../crates/tinycomputer-engine/jev-runtime.md#warming-connections)).
+The task never waits for the warm-up, and a task whose budget caps its Jev
+calls is not warmed.
+
 ## Rescues
 
 When a top-level step fails and no person is needed, the task asks a

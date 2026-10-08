@@ -40,6 +40,7 @@ evidence, checked after acting, and undone and retried when wrong.
 | `view/` | re-exports the screen model and digest from `tinycomputer-core::surface`; keeps the flow's policy: the act threshold, which controls it must not press, and `named_first` |
 | `backend/` | `AgentBackend` (the core `Surface` trait, which `Desktop` implements in `tinycomputer-desktop/src/surface/`) and the async wrappers that call it off the executor |
 | `vote.rs` | framings, ballots, and their tally |
+| `quorum.rs` | a decision merged without its last two framings once the rest agree plainly |
 | `flow_tests.rs` | the harness every flow test runs through; `flow_tests/` holds a simulated mail app and web shop (`simulator.rs`, `screens.rs`), an oracle Jev that answers from their state (`oracle.rs`), and each topic's tests in `<topic>_tests.rs`, deliberation's scenarios in `deliberation_tests.rs` |
 
 ## Operational constraints

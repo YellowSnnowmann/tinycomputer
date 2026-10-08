@@ -72,17 +72,24 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let mut fresh = fresh_rows(&screen, &shown, field, text, &self.stop_before, place);
         // A box that suggests places lists them once the page has fetched
         // them: live, a ride app's rows came after the first look, and the
-        // pickup typed was never set, so no ride showed.
+        // pickup typed was never set, so no ride showed. Rows that name
+        // nothing typed ("Allow location access", "Search in a different
+        // city") are the box's own, shown while its matches are fetched, so
+        // they are waited past too: live, a look made as soon as the page
+        // went still saw only those. The wait ends as the page changes, and
+        // a page that stayed still lists nothing more: live, an address and
+        // a city box on a plain form waited 2.3-4.2 s each for a list that
+        // never comes.
         for _ in 0..LATE_LOOKS {
-            if !fresh.is_empty() || !place {
+            if !place || fresh.iter().any(|row| names_typed(row, text)) {
                 break;
             }
-            self.act(log, "wait", None, |backend| {
-                backend.execute(JevOperation::Wait, None, None)
-            })
-            .await?;
+            let changed = self.await_change(log, LATE_LOOK_MS).await?;
             screen = self.look().await?;
             fresh = fresh_rows(&screen, &shown, field, text, &self.stop_before, place);
+            if !changed {
+                break;
+            }
         }
         let mentioned = fresh
             .iter()
@@ -276,8 +283,18 @@ pub(in crate::agentic::flow) fn shares_most_words(candidate: &Candidate, text: &
     shared >= 2 && shared * 2 >= words.len()
 }
 
-/// Looks again, a wait apart, for the rows a place box lists late.
+/// Whether `row` names the text typed: all of it, or most of its words.
+fn names_typed(row: &Candidate, text: &str) -> bool {
+    mentions(row, text) || shares_most_words(row, text)
+}
+
+/// Looks again, after a wait for the page to change, for the rows a place
+/// box lists late: until one names the text typed.
 const LATE_LOOKS: u32 = 2;
+
+/// Longest one wait for a place box's late rows: the page is looked at again
+/// as soon as it changes, and a still page lists nothing more.
+const LATE_LOOK_MS: u64 = 1_000;
 
 /// Words of a slot that name a place, whose box lists matches as it is
 /// typed in.

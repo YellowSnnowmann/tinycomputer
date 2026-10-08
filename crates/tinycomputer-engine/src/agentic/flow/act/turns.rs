@@ -4,7 +4,7 @@
 use std::time::Instant;
 
 use serde_json::json;
-use tinycomputer_bus::StepOutcome;
+use tinycomputer_bus::{FlowLoop, StepOutcome};
 
 use crate::agentic::flow::{
     Ended, FlowRun, Halt, StepLog,
@@ -83,10 +83,8 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             state.turn = Some((turn, Instant::now(), self.decisions, self.rounds));
             log.turns = log.turns.saturating_add(1);
             let screen = self.look().await?;
-            self.note_change(state, &screen)?;
-            self.note_oscillation(log, state, &screen);
-            if state.first.is_none() {
-                state.first = Some(screen.clone());
+            if self.note_turn(log, state, &screen) {
+                return self.stalled(log, intent).await;
             }
             if let Some(ended) = state
                 .last
@@ -274,15 +272,29 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
     }
 
+    /// Notes what the turn's look shows: what the last action changed, an
+    /// oscillation, and the step's first screen; `true` once [`STALL_TURNS`]
+    /// turns in a row changed nothing.
+    fn note_turn(&mut self, log: &mut StepLog, state: &mut DoState, screen: &Screen) -> bool {
+        if self.note_change(state, screen) {
+            return true;
+        }
+        self.note_oscillation(log, state, screen);
+        if state.first.is_none() {
+            state.first = Some(screen.clone());
+        }
+        false
+    }
+
     /// Records what the last action changed, banning an element that changed
-    /// nothing and failing the step after [`STALL_TURNS`] such turns.
+    /// nothing; `true` once [`STALL_TURNS`] such turns ran in a row.
     ///
     /// A wait that changes nothing is not a stall: the page has settled, and
     /// Jev is told so. It is not let wait again after [`MAX_IDLE_WAITS`] of
     /// them, which leaves it to judge or act on the page as it stands.
-    fn note_change(&mut self, state: &mut DoState, screen: &Screen) -> Result<(), Halt> {
+    fn note_change(&mut self, state: &mut DoState, screen: &Screen) -> bool {
         let Some(previous) = &state.last else {
-            return Ok(());
+            return false;
         };
         let changed = fingerprint(&previous.before) != fingerprint(screen);
         let note = change_note(&previous.before, screen, changed);
@@ -296,7 +308,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 "waited: the page has finished loading and nothing changed, so waiting longer will not change it"
                     .to_owned(),
             );
-            return Ok(());
+            return false;
         } else {
             state.unchanged = state.unchanged.saturating_add(1);
             if previous.scrolled {
@@ -318,17 +330,35 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         if let Some(struck) = copies::strike_pending(state, changed) {
             self.history.push(struck);
         }
-        // A step whose work the page did by itself (a search box that lists
-        // results as it is typed in) has nothing left to press: the note
-        // says so, so a rescue skips it rather than retry it. Live, four
-        // rescues looked for a search button a live search does not have.
-        if state.unchanged >= STALL_TURNS {
-            return Err(Halt::Failed(
-                "the last three actions changed nothing on screen; if the screen already shows what this step was for, its work is done"
-                    .to_owned(),
+        state.unchanged >= STALL_TURNS
+    }
+
+    /// Ends a step whose last [`STALL_TURNS`] actions changed nothing: done,
+    /// when the screen already shows what the step was for (asked only when
+    /// the completion loop is on), else failed.
+    ///
+    /// A step whose work the page did by itself (a search box that lists
+    /// results as it is typed in) has nothing left to press. Live, rescues
+    /// looked for a search button a live search does not have, and 25 rescues
+    /// of 189 on one day found the step's work already done, each after
+    /// ~18 s; the question here costs one decision. A failure's note still
+    /// says so, so a rescue skips the step rather than retry it.
+    async fn stalled(&mut self, log: &mut StepLog, intent: &str) -> Result<Ended, Halt> {
+        let condition = format!(
+            "the screen already shows the result that the step {intent:?} is meant to bring about"
+        );
+        // Whether a step is done is the completion loop's question: a run
+        // that turned it off fails a stalled step outright, as before.
+        if self.enabled(FlowLoop::Completion) && self.holds(log, &condition).await? >= DONE {
+            return Ok(Ended::new(
+                StepOutcome::AlreadyDone,
+                "the last three actions changed nothing, and the screen already shows what this step was for",
             ));
         }
-        Ok(())
+        Err(Halt::Failed(
+            "the last three actions changed nothing on screen; if the screen already shows what this step was for, its work is done"
+                .to_owned(),
+        ))
     }
 }
 

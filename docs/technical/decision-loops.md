@@ -186,9 +186,10 @@ The runtime compares a fingerprint of the screen before and after the last
 action. The fingerprint leaves refs out on purpose: every snapshot mints new
 refs, so a fingerprint that included them would see a change on every turn and
 stall detection would never fire. If nothing changed, the element that was
-pressed is banned for the rest of the step. Three turns in a row with no change
-(`STALL_TURNS`) fail the step with "the last three actions changed nothing on
-screen".
+pressed is banned for the rest of the step. After three turns in a row with no
+change (`STALL_TURNS`), Jev is asked whether the screen already shows what the
+step was for (`holds`; not with the completion loop off): at `DONE` the step is
+`AlreadyDone`, else it fails: "the last three actions changed nothing on screen".
 
 ### 2. Judge
 
@@ -260,10 +261,10 @@ Any other answer is ignored and logged. The runtime never falls back to a click
 on an answer it does not recognise, because a malformed or injected answer must
 fail closed.
 
-After any action the backend reports as successful, the runtime calls the
-surface's `settle` before looking again — network-idle on the browser, a short
-pause on the desktop — so the next turn's screen reflects what the action did
-rather than the moment before it took effect.
+After any action the backend reports as successful, the runtime settles the
+surface before looking again (on the browser, until the requests that change
+the page end and it goes still, or only until it is still after a launch or
+Escape; a short pause on the desktop), so the next look sees what it did.
 
 The shortcut list (`act/mod.rs::SHORTCUTS`) is short and safe: new item, new
 folder, find, reply, settings, back, next field, confirm (Return), and dismiss
@@ -298,22 +299,22 @@ own link, so the link is "covered" by the card itself; the browser surface
 then clicks through at the link's position, but only when the exact target
 (matched by name, and on the page, by the one element under that point with
 that label) sits in the same card as the cover and no dialog is involved.
-Anything else comes back covered, and the runtime presses Escape once and
-retries the *same* already-vetted target — in a `do` step's click and in
-`pick`'s alike. Escape never chooses a new element, so nothing exposed by
+Anything else comes back covered: a front layer's least committal control (a
+consent banner's "Allow Selection"; never the target's own layer or one the
+step names), or else Escape, is pressed once, and the *same* vetted target
+retried (`do` and `pick` alike), so nothing exposed by
 dismissing whatever covered the click is ever pressed without going through
 grounding and `is_destructive` again on a later turn.
 
 A dismissal the completion judge would otherwise never see ends the step
-immediately: when the last action pressed a control whose own words the
-step's intent names ("Accept Essential Only" for a step about accepting
-cookies), or the intent asks to dismiss, close, accept, decline, reject, or
-skip a banner, dialog, popup, cookie notice, modal, overlay, or prompt, and
-the screen has returned to the application's own window, the step ends as
-`Done` — a closed overlay leaves no trace afterward for the judge to read.
-The same check runs once more after the very last turn, so a dismissal that
-lands on the last permitted turn is not reported as failed for want of
-another look.
+immediately: when the last action pressed a control whose own words the step's
+intent names ("Accept Essential Only" for a step about accepting cookies), or
+the intent asks to dismiss, close, accept, decline, reject, or skip a banner,
+dialog, popup, cookie notice, modal, overlay, or prompt, and the screen has
+returned to the application's own window, the step ends as `Done` — a closed
+overlay leaves no trace afterward for the judge to read. The same check runs
+once more after the very last turn, so a dismissal that lands on the last
+permitted turn is not reported as failed for want of another look.
 
 After eight turns without an end, the runtime looks one last time. If the
 completion estimate reaches 0.75 the step is `Done`; otherwise it fails with
@@ -353,9 +354,8 @@ the disagreement.
 
 ## `enter`: filling fields
 
-`enter` takes a map of slot to text, such as
-`{"recipient": "sam@example.com", "subject": "Friday"}`. It runs up to three
-rounds:
+`enter` takes a map of slot to text, such as `{"recipient": "sam@example.com",
+"subject": "Friday"}`. It runs up to three rounds:
 
 1. Look, and explore the cut-short subtrees if there are fewer editable fields
    than pending slots.
@@ -432,9 +432,8 @@ without knowing the site. Both surfaces label repeated containers with an
 ordinal (`listitem #3`), so every node inside one card shares that label in its
 path. The list is the parent under which the most same-role ordinal containers
 repeat. Each container becomes a record whose fields are its visible text in
-reading order, and whose primary control is the one that looks most like
-"open this" (select, book, choose, view, details, continue, reserve, deal,
-see).
+reading order, and whose primary control is the one that looks most like "open
+this" (select, book, choose, view, details, continue, reserve, deal, see).
 
 `pick` parses its `by` text into a `Criterion` when it can: lowest or highest
 price, earliest or latest time, fewest stops, shortest duration. The parsers in

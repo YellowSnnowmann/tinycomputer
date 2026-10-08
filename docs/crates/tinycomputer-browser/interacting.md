@@ -165,12 +165,52 @@ appearing anywhere on the page, an element reaching a given state
 (`attached`, `detached`, `visible`, `hidden`), or a flat delay; `convert::
 wait_for` refuses if none of the three is given.
 
-`Surface::settle`, called before a decision loop reads the page again, does
-two things: waits (bounded, up to `NETWORK_IDLE_MS` = 2 seconds) for the
-page's network to go idle, then pauses an extra `SETTLE_MS` = 400
-milliseconds regardless, giving a banner or menu that is mid-animation time
-to finish closing. A page that polls constantly in the background never
-goes properly idle, so the network wait is a cap, not a guarantee.
+`Surface::settle`, called before a decision loop reads the page again,
+waits (bounded, up to `QUIET_MS` = 1 second) for the requests that change
+the page to end, then only while the page is still changing. A page that
+polls constantly in the background never goes properly quiet, so the
+network wait is a cap, not a guarantee.
+
+That is `Settle::Prompt`, the default (the module's `browser.settle`). It
+waits for the engine's `networkquiet`, which counts its 500 ms of quiet
+from the start and counts only requests that can change what the page
+shows: the page's own document, scripts, stylesheets, and fetched data, not
+analytics pings, pictures, fonts, media, or other frames' documents (some of
+which never report finishing at all). Those the action itself sent before
+the wait began, up to 3 s earlier, are waited for too. Live on Amazon, every
+action that opened a page sent 100+ requests for over 2 s, while what the
+task needed showed after 0.7–1.2 s. It then resolves once no DOM change has happened for
+`STILL_MS` = 120 milliseconds and no finite CSS animation or transition is
+running (a menu fading out changes no DOM node), over at least two drawn
+frames, and after `SETTLE_MS` = 400 milliseconds at most. An endless spinner
+is not waited for, and a busy page still waits for its requests: an idle
+page is read again after about 0.6 s. The page and its open shadow roots are
+watched alike, and each call has a deadline 500 ms past its own cap, so one
+sent while a page is replaced cannot wait out the browser's 30 s.
+
+`Settle::Steady`, the earlier default, waits for `networkidle` instead,
+which starts counting its 500 ms of quiet only after a first 600 ms
+receive window, and then pauses `SETTLE_MS` regardless, giving a banner or
+menu that is mid-animation time to finish closing: about 1.6 s an action,
+live.
+
+`Surface::settle_briefly` follows an action that fetches nothing. Under
+`Settle::Prompt` it skips the network wait and waits only while the page
+changes (120–400 ms instead of about 0.65 s on an idle page); under
+`Settle::Steady` it settles in full. A flow settles briefly only after a
+launch, which leaves an open page as it is, and after Escape closing a layer:
+live, 3% of launches and 12% of Escapes settled with a request of the page
+still running, against 39% of fills, whose suggestions the next look reads,
+and 70% of clicks.
+
+`Surface::await_change(ms)` watches the page rather than pausing: one
+`evaluate` whose `MutationObserver` resolves `true` at the page's first change
+of its own (an element or words added, removed, or rewritten, or an
+element's look changed, never a `data-tc-` mark sight leaves), or `false`
+once `ms` pass with none. A flow waiting for a place box's late suggestions
+settles and looks again as soon as the page changes, and stops waiting once
+it stays still; a watch that cannot run, or with no page open, says the page
+may have changed.
 
 ## Going back
 

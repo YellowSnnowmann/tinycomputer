@@ -120,3 +120,131 @@ fn the_tree_is_read_when_sight_fails_or_is_turned_off() {
     assert!(!fake.actions().iter().any(|action| action == "evaluate"));
     assert!(format!("{surface:?}").contains("Tree"));
 }
+
+/// A page read by sight whose `shadows` show controls: a covered "Add To
+/// Cart", and under a host the tree reads a consent banner's buttons, or
+/// fails to when `subtree_fails`.
+fn shadowed_fake(shadows: serde_json::Value, subtree_fails: bool) -> Fake {
+    Fake::scripted(move |command| match command["action"].as_str().unwrap() {
+        "evaluate"
+            if command["script"]
+                .as_str()
+                .unwrap()
+                .contains("__tinycomputerSeen") =>
+        {
+            Some(ok(&json!({"result": {
+                "ok": true,
+                "title": "Glasses",
+                "surface": "window",
+                "unreachable": 0,
+                "shadows": shadows,
+                "denoised": {"ads": 0, "empty": 0, "hidden": 0},
+                "nodes": [
+                    {"id": "1", "role": "button", "name": "Add To Cart", "states": ["covered"], "path": ["main"]},
+                    {"text": "Limited Period Offer", "path": ["main"]}
+                ]
+            }})))
+        }
+        "snapshot" if command.get("selector").is_some() && subtree_fails => {
+            Some(failure("no such element"))
+        }
+        "snapshot" if command.get("selector").is_some() => Some(ok(&json!({
+            "snapshot": "- generic\n  - paragraph\n    - StaticText \"We value your privacy\"\n  - button \"Allow Selection\" [ref=e2]\n  - button \"Allow all\" [ref=e3]",
+            "refs": {
+                "e2": {"role": "button", "name": "Allow Selection"},
+                "e3": {"role": "button", "name": "Allow all"}
+            }
+        }))),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_shadow_roots_controls_are_read_by_the_tree_beside_sight() {
+    // Live, a consent banner in a shadow root lay over "Add To Cart": sight
+    // could not read it, and giving the whole page to the tree read the
+    // rest of the page worse.
+    let banner = json!([{"id": "9", "label": "popover \"We value your privacy\""}]);
+    let Harness { fake, surface, .. } = harness("shadow-merged", shadowed_fake(banner, false));
+    let screen = surface.observe("", None, Depth::Full).unwrap();
+    let names = screen
+        .candidates
+        .iter()
+        .map(|candidate| {
+            (
+                candidate.ref_id.as_str(),
+                candidate.name.as_deref().unwrap_or_default(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        [
+            ("seen:1", "Add To Cart"),
+            ("e2", "Allow Selection"),
+            ("e3", "Allow all")
+        ]
+    );
+    let allow = &screen.candidates[1];
+    assert_eq!(
+        allow.path[0], "popover \"We value your privacy\"",
+        "{:?}",
+        allow.path
+    );
+    assert!(
+        allow.order > screen.candidates[0].order,
+        "read after sight's nodes"
+    );
+    assert!(
+        screen
+            .context
+            .iter()
+            .any(|line| line.contains("We value your privacy"))
+    );
+    let subtree = fake.last("snapshot");
+    assert_eq!(subtree["selector"], r#"[data-tc-seen="9"]"#, "{subtree}");
+
+    // A shadow root that draws no layer keeps the tree's own places.
+    let plain = json!([{"id": "9", "label": null}]);
+    let Harness { surface, .. } = harness("shadow-plain", shadowed_fake(plain, false));
+    let screen = surface.observe("", None, Depth::Full).unwrap();
+    assert!(
+        !screen.candidates[1]
+            .path
+            .first()
+            .is_some_and(|label| label.starts_with("popover")),
+        "{:?}",
+        screen.candidates[1].path
+    );
+}
+
+#[test]
+fn the_tree_reads_the_page_when_two_shadow_roots_show_or_one_cannot_be_read() {
+    let two = json!([{"id": "9", "label": null}, {"id": "10", "label": null}]);
+    let Harness { fake, surface, .. } = harness("shadow-two", shadowed_fake(two, false));
+    let screen = surface.observe("", None, Depth::Full).unwrap();
+    assert!(
+        screen
+            .candidates
+            .iter()
+            .all(|candidate| !candidate.ref_id.starts_with("seen:"))
+    );
+    assert!(
+        fake.last("snapshot").get("selector").is_none(),
+        "the whole page"
+    );
+
+    let one = json!([{"id": "9", "label": null}]);
+    let Harness { fake, surface, .. } = harness("shadow-failed", shadowed_fake(one, true));
+    let screen = surface.observe("", None, Depth::Full).unwrap();
+    assert!(
+        screen
+            .candidates
+            .iter()
+            .all(|candidate| !candidate.ref_id.starts_with("seen:"))
+    );
+    assert!(
+        fake.last("snapshot").get("selector").is_none(),
+        "the whole page"
+    );
+}

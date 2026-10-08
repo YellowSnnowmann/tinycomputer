@@ -51,9 +51,12 @@
 //! removes or replaces leaves its ref pointing at nothing, and acting on it
 //! fails rather than reaching whatever took its place.
 //!
-//! Sight gives way to the tree when it cannot reach what it sees: a control
-//! inside a shadow root, or a large frame in front, which a CSS selector from
-//! the page cannot address.
+//! What a CSS selector from the page cannot address is read through the
+//! tree. A shadow root that shows controls (even one whose host draws no
+//! box of its own) has its host's subtree read by the tree and merged into
+//! the reading, under the label of the layer it draws; sight gives way to
+//! the tree for the whole page when two shadow roots show controls, or a
+//! large frame is in front.
 
 use serde_json::{Value, json};
 use tinycomputer_core::surface::{Candidate, Screen};
@@ -146,6 +149,41 @@ pub(crate) fn denoised(result: &Value) -> Denoised {
         empty: count("empty"),
         hidden: count("hidden"),
     }
+}
+
+/// A shadow root that shows controls, which a selector from the page cannot
+/// address: its host's ref, and the label of the layer it draws over the
+/// page, if it draws one (`popover "We value your privacy"`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Shadow {
+    /// The host's ref, minted by sight.
+    pub(crate) host: String,
+    /// The container label its controls are read under, if any.
+    pub(crate) label: Option<String>,
+}
+
+/// The shadow roots a reading saw showing controls, in page order.
+#[must_use]
+pub(crate) fn shadows(result: &Value) -> Vec<Shadow> {
+    result
+        .get("shadows")
+        .and_then(Value::as_array)
+        .map(|shadows| {
+            shadows
+                .iter()
+                .filter_map(|shadow| {
+                    let id = shadow.get("id").and_then(Value::as_str)?;
+                    Some(Shadow {
+                        host: format!("{PREFIX}{id}"),
+                        label: shadow
+                            .get("label")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// What `evaluate` returned as a [`Screen`]; `None` when the reading failed

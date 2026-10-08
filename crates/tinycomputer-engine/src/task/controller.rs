@@ -116,15 +116,21 @@ impl Tasks {
         let Some(planner) = &self.planner else {
             return AgentResponse::err(no_planner());
         };
-        match planner
-            .plan(
+        let started = std::time::Instant::now();
+        let (outcome, used) = planner
+            .plan_measured(
                 &request.task,
                 &request.fact_names,
                 &request.secret_facts,
                 &request.surfaces,
             )
-            .await
-        {
+            .await;
+        // No task exists yet, so the plan journals to a run of its own.
+        let drafting = started.elapsed();
+        self.runner.journal(None, "plan", &|| {
+            super::timing::planned(&outcome, used, drafting, planner.configuration())
+        });
+        match outcome {
             Ok(plan) => AgentResponse::ok(plan),
             Err(reason) => AgentResponse::err(AgentError::new(
                 "PLAN_FAILED",
@@ -261,7 +267,15 @@ impl Tasks {
             return no_such_task(&request.id);
         };
         let status = cell.view.borrow().status.clone();
-        match status {
+        let waited = cell
+            .state
+            .lock()
+            .ok()
+            .and_then(|state| state.waiting_since)
+            .map(|since| since.elapsed());
+        let id = request.id.clone();
+        let paused = state_name(&status);
+        let reply = match status {
             TaskStatus::NeedsInput { .. } => self.supply(&cell, request),
             TaskStatus::NeedsApproval { .. } => self.decide(&cell, request.approve),
             TaskStatus::NeedsHuman { .. } => self.retry(&cell),
@@ -274,7 +288,19 @@ impl Tasks {
                 "call AwaitTask until the task asks for something",
                 true,
             )),
+        };
+        // The wait is over only once the task has left it: an answer that is
+        // refused, or that still leaves values missing, keeps it waiting.
+        let left = cell
+            .state
+            .lock()
+            .is_ok_and(|state| state.waiting_since.is_none());
+        if let (Some(waited), true) = (waited, left) {
+            self.runner.journal(Some(&id), "resume", &|| {
+                super::timing::resumed(paused, waited)
+            });
         }
+        reply
     }
 
     /// Stops a task, and lets go of whatever surface it still holds.

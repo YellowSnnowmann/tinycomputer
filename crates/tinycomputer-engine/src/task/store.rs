@@ -59,6 +59,9 @@ pub(super) struct State {
     pub(super) output: Option<TaskOutput>,
     /// Screenshots taken each time a run stopped, oldest first.
     pub(super) artifacts: Vec<OutputRef>,
+    /// When the task began waiting for an answer it is still waiting for,
+    /// to journal how long the person took.
+    pub(super) waiting_since: Option<std::time::Instant>,
 }
 
 /// A task's cumulative spend against its [`TaskBudget`], across every run.
@@ -115,6 +118,7 @@ impl Tasks {
                 rescues: Vec::new(),
                 output: request.output.clone(),
                 artifacts: Vec::new(),
+                waiting_since: None,
             }),
             worker: Mutex::new(None),
             rescuer: self.rescuer.clone(),

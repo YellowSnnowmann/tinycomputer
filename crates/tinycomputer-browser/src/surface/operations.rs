@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 use tinycomputer_bus::browser::{
-    Action, NavigateRequest, ScrollDirection, SnapshotRequest, Target, WaitState,
+    Action, NavigateRequest, ScrollDirection, SessionId, SnapshotRequest, Target, WaitState,
 };
 use tinycomputer_bus::{DesktopError, DesktopResponse, JevOperation};
 use tinycomputer_core::surface::{Candidate, Depth, Screen, Surface, uses_pointer};
@@ -12,9 +12,9 @@ use tinycomputer_core::{Key, Platform};
 use crate::error::Error;
 
 use super::envelope::{failure, not_a_text_field, reply};
-use super::sight;
 use super::{BrowserSurface, Perception};
-use super::{NETWORK_IDLE_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, tree};
+use super::{NETWORK_IDLE_MS, QUIET_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, Settle, tree};
+use super::{sight, tabs::place, watch};
 
 impl Surface for BrowserSurface {
     fn observe(
@@ -23,6 +23,8 @@ impl Surface for BrowserSurface {
         root: Option<&str>,
         depth: Depth,
     ) -> std::result::Result<Screen, Box<DesktopResponse>> {
+        // A page once read is no longer the one opened early.
+        let _opened = self.early_page();
         if self.perception == Perception::Sight
             && let Some(mut screen) = self.see(root)
         {
@@ -236,6 +238,20 @@ impl Surface for BrowserSurface {
     }
 
     fn settle(&self) {
+        if self.settle == Settle::Prompt {
+            if let Ok(id) = self.ensure_session() {
+                // Each within a deadline: a call sent while a page is being
+                // replaced can wait out the browser's own 30 s.
+                let quiet = self.browser.command(
+                    &id,
+                    json!({"action": "waitforloadstate", "state": "networkquiet", "timeout": QUIET_MS}),
+                );
+                let _quiet = self
+                    .block(async { tokio::time::timeout(watch::deadline(QUIET_MS), quiet).await });
+                self.await_still(&id);
+            }
+            return;
+        }
         if let Ok(id) = self.ensure_session() {
             let _idle = self.block(self.browser.command(
                 &id,
@@ -245,14 +261,65 @@ impl Surface for BrowserSurface {
         let _settled = self.perform("wait", pause(SETTLE_MS));
     }
 
+    fn settle_briefly(&self) {
+        // Nothing was fetched to wait for: only the page's own movement,
+        // under prompt settling. Steady settling stays as it always was.
+        if self.settle != Settle::Prompt {
+            self.settle();
+            return;
+        }
+        if let Ok(id) = self.ensure_session() {
+            self.await_still(&id);
+        }
+    }
+
+    fn await_change(&self, ms: u64) -> bool {
+        // With no page open there is nothing to watch, and nothing to open.
+        let Some(id) = self.session() else {
+            return true;
+        };
+        let watching = self.browser.command(
+            &id,
+            json!({"action": "evaluate", "script": watch::change_script(ms)}),
+        );
+        self.block(async { tokio::time::timeout(watch::deadline(ms), watching).await })
+            .ok()
+            .and_then(Result::ok)
+            .and_then(|data| data.get("result").and_then(Value::as_bool))
+            .unwrap_or(true)
+    }
+
     fn navigate(&self, url: &str) -> DesktopResponse {
+        // Loaded there while the plan was drafted, in this session, and not
+        // read since.
+        if let Some((opened_in, opened)) = self.early_page()
+            && place(&opened) == place(url)
+            && self.session().as_ref() == Some(&opened_in)
+            && let Some((shown, title)) = self.shown_page(&opened_in)
+        {
+            return reply("navigate", Ok(json!({"url": shown, "title": title})));
+        }
+        match self.ensure_session() {
+            Ok(id) => self.navigate_in(&id, NavigateRequest::new(url)),
+            Err(error) => reply("navigate", Err(error)),
+        }
+    }
+
+    fn back(&self, _app: &str) -> DesktopResponse {
+        self.perform("back", Action::Back)
+    }
+}
+
+impl BrowserSurface {
+    /// Loads `request`'s address in session `id`. A heavy page can be read
+    /// long before its `load` event fires.
+    pub(super) fn navigate_in(&self, id: &SessionId, request: NavigateRequest) -> DesktopResponse {
+        let url = request.url.clone();
         let page = self
-            .ensure_session()
-            .and_then(|id| self.block(self.browser.navigate(&id, NavigateRequest::new(url))))
+            .block(self.browser.navigate(id, request))
             .map(|page| (page.url, page.title));
-        // A heavy page can be read long before its `load` event fires.
         let page = match page {
-            Err(error @ Error::Timeout { .. }) => self.drawn_page(url).ok_or(error),
+            Err(error @ Error::Timeout { .. }) => self.drawn_page(id, &url).ok_or(error),
             other => other,
         };
         reply(
@@ -261,8 +328,25 @@ impl Surface for BrowserSurface {
         )
     }
 
-    fn back(&self, _app: &str) -> DesktopResponse {
-        self.perform("back", Action::Back)
+    /// Takes the session opened early and the address loaded in it: the
+    /// first read or navigation leaves that page as it was opened.
+    pub(super) fn early_page(&self) -> Option<(SessionId, String)> {
+        self.opened_at
+            .lock()
+            .ok()
+            .and_then(|mut opened| opened.take())
+    }
+
+    /// Waits until the page stops changing (`watch::still_script`), within
+    /// a deadline: a call sent while a page is being replaced can wait out
+    /// the browser's own 30 s.
+    fn await_still(&self, id: &SessionId) {
+        let still = self.browser.command(
+            id,
+            json!({"action": "evaluate", "script": watch::still_script()}),
+        );
+        let _still =
+            self.block(async { tokio::time::timeout(watch::deadline(SETTLE_MS), still).await });
     }
 }
 

@@ -31,7 +31,7 @@ use serde_json::Value;
 use tinyinference_decisions::{Answer, ChoiceAnswer, EvaluationRequest, NoulAnswer, Question};
 
 /// Most framings one decision is asked in.
-pub(super) const MAX_VOTES: u32 = 9;
+pub(in crate::agentic) const MAX_VOTES: u32 = 9;
 
 /// A perspective added to each framing after the first, in turn.
 const PERSPECTIVES: [&str; 4] = [
@@ -169,14 +169,30 @@ fn keys_for(count: usize, index: usize) -> Vec<String> {
 pub(super) fn ballots(
     answered: &[(Framing, BTreeMap<String, Answer>)],
 ) -> BTreeMap<String, Vec<Answer>> {
+    ballots_of(&answered.iter().map(|(framing, answers)| (framing, answers)))
+}
+
+/// The [`ballots`] of the framings `answered` so far, each named by its
+/// index in `framings`, in the order given.
+pub(super) fn ballots_at<'a>(
+    framings: &'a [Framing],
+    answered: impl Iterator<Item = (usize, &'a BTreeMap<String, Answer>)> + Clone,
+) -> BTreeMap<String, Vec<Answer>> {
+    ballots_of(&answered.filter_map(|(index, answers)| Some((framings.get(index)?, answers))))
+}
+
+fn ballots_of<'a, I>(answered: &I) -> BTreeMap<String, Vec<Answer>>
+where
+    I: Iterator<Item = (&'a Framing, &'a BTreeMap<String, Answer>)> + Clone,
+{
     answered
-        .iter()
+        .clone()
         .flat_map(|(framing, _)| framing.request.questions.keys())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .map(|id| {
             let answers = answered
-                .iter()
+                .clone()
                 .filter_map(|(framing, answers)| {
                     Some(original(framing, id, answers.get(id)?.clone()))
                 })

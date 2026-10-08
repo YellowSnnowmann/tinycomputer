@@ -7,7 +7,7 @@ Change a constant and its row together.
 
 | Constant | Value | Where | Meaning |
 |---|---|---|---|
-| `DONE` | 0.75 | `act/mod.rs` | completion that ends a step after acting; also the bar for `verify`, `wait_for`, `if`, `repeat_until` |
+| `DONE` | 0.75 | `act/mod.rs` | completion that ends a step after acting; also the bar for `verify`, `wait_for`, `if`, `repeat_until`, and for a stalled `do` step's screen already showing its result |
 | `ALREADY_DONE` | 0.85 | `act/mod.rs` | completion that skips a step before acting |
 | `BLOCKED` | 0.70 | `act/mod.rs` | obstacle probability that triggers dismissal |
 | `LEANS_DONE` | 0.50 | `act/mod.rs` | completion under which a `finished` move is overruled after acting |
@@ -36,7 +36,7 @@ Change a constant and its row together.
 | `REPAIR_TURNS` | 4 | `reflect.rs` | turns one reflection repair may spend |
 | `MAX_ACTIONS` / `MAX_CALLS` | 120 / 10000 | `mod.rs` | per-run caps on actions and Jev calls |
 | `MAX_VOTES` | 9 | `vote.rs` | most framings one decision is asked in; a deliberated decision is widened up to it |
-| `STALL_TURNS` / `MAX_IDLE_WAITS` | 3 / 2 | `act/mod.rs` | unchanged turns before a step fails; idle waits before Jev may not wait again |
+| `STALL_TURNS` / `MAX_IDLE_WAITS` | 3 / 2 | `act/mod.rs` | unchanged turns before a step ends: `AlreadyDone` when the screen already shows its result (at `DONE`, with the completion loop on), else failed; idle waits before Jev may not wait again |
 | `MAX_OBSTACLES` / `MAX_UNDOS` | 2 / 2 | `act/mod.rs` | obstacles dismissed and undos run per step at most |
 | `FIELD_ERROR` | 0.70 | `enter/mod.rs` | field-error probability that makes a slot be entered again |
 | `NOT_ASKED` | 0.35 | `enter/mod.rs` | "the form asks for it" probability under which a slot with no field is taken as not asked for |
@@ -51,7 +51,13 @@ Change a constant and its row together.
 | `LAYER_COVERS` | 3 | `front.rs` | controls something drawn over the window must cover, beyond what was covered before the press that opened it, on the same page, before it counts as a dialog the task opened (`surface` `layer`); a step that pressed inside such a dialog hands it back at the next step, and opening an address forgets it |
 | `FRONT_CONTROLS` | 8 | `act/turns.rs` | most controls of the task's dialog in front a failed step's note names, so a rescue answers with one of them |
 | `STEADY_HOLD` / `STEADY_CHECKS` | 0.65 / 3 | `steps/mod.rs` | belief a `wait_for` condition must keep, on checks in a row of one unchanged screen, to be taken as held under `DONE` |
-| `LATE_LOOKS` | 2 | `steps/suggestion.rs` | looks again, a wait apart, for the suggestions a place or search box lists late, before its text is left as typed |
+| `HEDGE_AFTER` / `HEDGE_AFTER_LARGE` | 4 s / 5 s | `hedge.rs` | how long a framing runs before a copy of it is sent and the first answer of the two taken; the longer wait is for a request of `HEDGE_LARGE_BYTES` (32 KB) or more. Sage gets no copy |
+| `QUORUM_VOTES` / `QUORUM_LEFT` | 7 / 2 | `quorum.rs` | a decision asked at least 7 ways is merged without its last 2 framings once those in settle every question; the 2 still run, and count as calls |
+| `QUORUM_TOP` | 0.9 | `quorum.rs` | least probability every framing in gives the option a Choice or Score ranks first, the same option in each, for a quorum; the page kind needs only the same option |
+| `SURE_YES` / `SURE_NO` | 0.97 / 0.08 | `quorum.rs` | a yes/no settles for a quorum when every framing in puts it at or above the first, or every one at or below the second: `UNDECIDED_BAND` beyond the highest (0.85) and lowest (0.20) thresholds one yes/no is read against; a belief pairing two answers can still fall within a band, and is widened past every framing asked |
+| `HEDGE_COPIES` | 2 | `hedge.rs` | most copies one runtime has in flight: past it, a framing waits for its own answer, so a slow or failing gateway is not sent a copy of every call |
+| `LATE_LOOKS` | 2 | `steps/suggestion.rs` | looks again, after a wait for the page to change, for the suggestions a place box lists late, until a row names the text typed (rows of the box's own, such as "Allow location access", are waited past), before its text is left as typed; a page that stayed still through a wait lists nothing more |
+| `LATE_LOOK_MS` | 1000 ms | `steps/suggestion.rs` | longest one of those waits: it ends as soon as the page changes (`Surface::await_change`) |
 | `BARE_CHARS` | 3 | `tinycomputer-core` `surface/groups.rs` | most letters and digits each field of a card may show for a list of such cards to be bare markers (carousel dots, size chips, page numbers), never results |
 | `CARD_LINK_CHARS` | 20 | `tinycomputer-core` `surface/groups.rs` | least characters (with a word in them) a link, option, radio, or button must show for a run of three or more under one parent to be a list of cards that are one control each |
 

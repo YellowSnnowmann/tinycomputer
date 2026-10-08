@@ -13,11 +13,13 @@ mod describe_tests;
 mod errors_tests;
 mod human_tests;
 mod output_tests;
+mod page_tests;
 mod plan_tests;
 mod rescue_tests;
 mod runner_tests;
 mod start_tests;
 mod status_tests;
+mod timing_tests;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -50,8 +52,18 @@ struct Script {
     shot: Mutex<Option<tinycomputer_bus::browser::OutputRef>>,
     /// A capture that never answers, like a hung surface.
     stuck: std::sync::atomic::AtomicBool,
-    /// `capture` and `release` calls, in the order they arrived.
+    /// `capture`, `release`, `prepare` and `open_page` calls, in the order
+    /// they arrived.
     events: Mutex<Vec<&'static str>>,
+    /// What the task journaled outside its flows, in order.
+    journaled: Mutex<Vec<(Option<TaskId>, String, serde_json::Value)>>,
+    /// Tasks whose surfaces were got ready while they were planned.
+    prepared: Mutex<Vec<TaskId>>,
+    /// Tasks whose Jev connections were warmed while they were planned,
+    /// with the votes asked for. The warm-up never ends.
+    warmed: Mutex<Vec<(TaskId, u32)>>,
+    /// The pages loaded while tasks were planned, with their task.
+    opened: Mutex<Vec<(TaskId, String)>>,
 }
 
 impl FlowRunner for Script {
@@ -89,6 +101,46 @@ impl FlowRunner for Script {
         self.events.lock().unwrap().push("release");
         self.released.lock().unwrap().push(task.clone());
     }
+
+    fn prepare(&self, task: &TaskId, _constraints: &TaskConstraints) -> super::PrepareFuture {
+        self.events.lock().unwrap().push("prepare");
+        self.prepared.lock().unwrap().push(task.clone());
+        Box::pin(async {})
+    }
+
+    fn open_page(&self, task: &TaskId, url: &str) -> super::PrepareFuture {
+        self.events.lock().unwrap().push("open_page");
+        self.opened
+            .lock()
+            .unwrap()
+            .push((task.clone(), url.to_owned()));
+        Box::pin(async {})
+    }
+
+    fn warm(&self, task: &TaskId, votes: u32) -> super::PrepareFuture {
+        self.warmed.lock().unwrap().push((task.clone(), votes));
+        Box::pin(std::future::pending())
+    }
+
+    fn journal(&self, task: Option<&TaskId>, event: &str, fields: &dyn Fn() -> serde_json::Value) {
+        self.journaled
+            .lock()
+            .unwrap()
+            .push((task.cloned(), event.to_owned(), fields()));
+    }
+}
+
+/// The `event`s the task journaled outside its flows, with the task each
+/// went to.
+fn journaled(script: &Script, event: &str) -> Vec<(Option<TaskId>, serde_json::Value)> {
+    script
+        .journaled
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, kind, _)| kind == event)
+        .map(|(task, _, fields)| (task.clone(), fields.clone()))
+        .collect()
 }
 
 fn controller(replies: Vec<DesktopResponse>) -> (Tasks, Arc<Script>) {

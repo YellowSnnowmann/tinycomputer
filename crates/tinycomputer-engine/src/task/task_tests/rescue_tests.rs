@@ -7,7 +7,7 @@ use serde_json::json;
 use tinycomputer_bus::agent::{RescueOutcome, StartTaskRequest, TaskBudget, TaskStatus, TaskView};
 use tinycomputer_bus::{DesktopResponse, FlowStep, FlowStopReason, StepOutcome};
 
-use super::{Script, controller, failed_at_step_two, finished_run, flow, settle, step};
+use super::{Script, controller, failed_at_step_two, finished_run, flow, journaled, settle, step};
 use crate::planner::{Completion, LanguageModel, Role, Turn};
 use crate::rescue::{MAX_RESCUES, Rescuer};
 use crate::task::Tasks;
@@ -155,6 +155,17 @@ async fn a_failed_step_is_rescued_and_the_task_finishes() {
     assert_eq!(report.rescues[0].failure, "nothing to click");
     assert_eq!(report.rescues[0].steps.len(), 2);
     assert_eq!(report.rescues[0].outcome, RescueOutcome::Recovered);
+
+    let rescues = journaled(&script, "rescue");
+    assert_eq!(rescues.len(), 1);
+    assert_eq!(rescues[0].0.as_ref(), Some(&view.id));
+    let rescue = &rescues[0].1;
+    assert_eq!(rescue["step"], 2);
+    assert_eq!(rescue["attempt"], 1);
+    assert_eq!(rescue["outcome"], "guided");
+    assert_eq!(rescue["calls"], 1);
+    assert_eq!(rescue["steps"], 2);
+    assert!(rescue["sent_bytes"].as_u64().unwrap() > 0);
 }
 
 #[tokio::test]
@@ -249,7 +260,7 @@ async fn guidance_whose_own_step_fails_is_recorded_as_failing_again() {
 
 #[tokio::test]
 async fn a_rescuer_that_fails_leaves_the_failure_with_why() {
-    let (tasks, _, _) = rescued(vec![failed_at_step_two()], &[Err("the model is down")]);
+    let (tasks, script, _) = rescued(vec![failed_at_step_two()], &[Err("the model is down")]);
     let view = begin(&tasks, TaskBudget::default());
     let TaskStatus::Failed { hint, .. } = settle(&tasks, &view.id).await.status else {
         panic!("no guidance, so the task fails");
@@ -257,6 +268,7 @@ async fn a_rescuer_that_fails_leaves_the_failure_with_why() {
     assert!(hint.contains("the model is down"), "{hint}");
     let rescues = tasks.report(&view.id).data.unwrap().rescues;
     assert_eq!(rescues[0].outcome, RescueOutcome::GaveUp);
+    assert_eq!(journaled(&script, "rescue")[0].1["outcome"], "error");
 }
 
 #[tokio::test]

@@ -30,9 +30,20 @@ leaves them as the default refusal.
 There is also `settle()`, which does nothing by default. A surface overrides
 it to give an application a moment to react: closing a banner a beat after a
 click, or turning a typed address into a token in an autocomplete field. The
-engine calls it after every action, before the next observation, and before
+engine calls it after an action, before the next observation, and before
 reading a value back, so a surface's own idea of "how long is a moment" stays
-in one place rather than being copied into every caller.
+in one place rather than being copied into every caller. After an action that
+fetches nothing (a launch, Escape) the engine calls `settle_briefly()`
+instead, which settles in full unless the surface overrides it:
+`tinycomputer-browser` then waits only while the page changes.
+
+And `await_change(ms)`, which waits up to `ms` for the application to change
+by itself and says whether it did. A flow uses it while it watches for
+something to appear, such as the suggestions a place box lists for the text
+just typed: it looks again as soon as the page changes, and stops once the
+page stays still. By default it pauses as a `Wait` does and says the
+application may have changed; `tinycomputer-browser` watches the page's DOM
+instead.
 
 Every member returns a `DesktopResponse`, never a plain `Result`. That is a
 deliberate rule of the whole repository, not just this trait: a denied
@@ -53,6 +64,8 @@ pub trait Surface: Clone + Send + 'static {
     fn press(&self, app: &str, combo: &str) -> DesktopResponse;
     fn launch(&self, app: &str) -> DesktopResponse;
     fn settle(&self) {}
+    fn settle_briefly(&self) { /* settles */ }
+    fn await_change(&self, ms: u64) -> bool { /* pauses, and says it may have */ }
     fn navigate(&self, url: &str) -> DesktopResponse { /* refuses by default */ }
     fn back(&self, app: &str) -> DesktopResponse { /* refuses by default */ }
 }

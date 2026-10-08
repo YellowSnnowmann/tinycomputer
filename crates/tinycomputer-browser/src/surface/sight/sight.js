@@ -222,9 +222,10 @@
     return byPage || byScript ? 'button' : null;
   };
 
-  // Text of the elements `ids` (space-separated) names.
-  const byIds = (ids) => squash((ids || '').split(/\s+/)
-    .map((id) => id && document.getElementById(id))
+  // Text of the elements `ids` (space-separated) names, looked up in
+  // `scope`: the document, or the shadow root an element sits in.
+  const byIds = (ids, scope = document) => squash((ids || '').split(/\s+/)
+    .map((id) => id && scope.getElementById(id))
     .filter(Boolean)
     .map((element) => element.innerText || element.textContent)
     .join(' '));
@@ -484,9 +485,14 @@
     const found = element.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"], legend');
     return found && shown(found) ? clip(found.innerText, 60) : '';
   };
-  const labelOf = (element) => clip(
-    element.getAttribute('aria-label') || byIds(element.getAttribute('aria-labelledby')), 60,
-  );
+  const labelOf = (element) => {
+    const scope = element.getRootNode();
+    return clip(
+      element.getAttribute('aria-label')
+        || byIds(element.getAttribute('aria-labelledby'), scope.getElementById ? scope : document),
+      60,
+    );
+  };
 
   // An element that floats above the page: a dialog, or a fixed layer that
   // is not the page's own header.
@@ -897,6 +903,41 @@
     twin.element = element;
   };
   let unreachable = 0;
+  // Whether a shadow root's host shows controls, which a selector from the
+  // page cannot address. A host drawn as `display: contents` has no box of
+  // its own: live, a consent banner's host had none, and its buttons went
+  // unread while the banner lay over the add-to-cart button. Its controls'
+  // own boxes then say whether it shows.
+  const showsShadowControls = (host) => {
+    const controls = host.shadowRoot.querySelectorAll('a[href], button, input, select, textarea, [role], [tabindex]');
+    return controls.length > 0 && (shown(host) || [...controls].some(shown));
+  };
+  // The shadow roots that show controls, each as its host's ref, which a
+  // selector can address, and the label of the layer it draws, if any: the
+  // controls the tree reads under the host keep the place they show in.
+  // Live, a consent banner was a fixed layer over the page. Only the first
+  // is labelled: with two, the tree reads the whole page instead.
+  const shadows = [];
+  // The first host handed to the tree. The tree reads under it the host
+  // and what the page puts in its slots as well, so sight reads neither.
+  let handed = null;
+  const firstWords = (element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = squash(node.data);
+      if (text.split(' ').length >= 3 && node.parentElement && shown(node.parentElement)) return clip(text, 60);
+    }
+    return '';
+  };
+  const shadowLabel = (host) => {
+    for (const element of host.shadowRoot.querySelectorAll('*')) {
+      const floating = layer(element);
+      if (!floating || !shown(element)) continue;
+      const named = labelOf(element) || heading(element) || firstWords(element);
+      return named ? `${floating} ${JSON.stringify(named)}` : floating;
+    }
+    return null;
+  };
   let texts = 0;
   const insideControl = (element) => {
     for (let parent = element.parentElement; parent; parent = parent.parentElement) {
@@ -966,6 +1007,7 @@
   });
   let lastText = null;
   for (let node = base; node; node = walker.nextNode()) {
+    if (handed && handed.contains(node)) continue;
     if (node.nodeType === Node.TEXT_NODE) {
       const parent = node.parentElement;
       if (!parent || !squash(node.data) || texts >= limits.texts) continue;
@@ -990,10 +1032,15 @@
       && element.getClientRects().length > 0 && noiseKinds.get(element) === 'ads') {
       tally(element);
     }
-    if (element.shadowRoot && shown(element)
-      && element.shadowRoot.querySelector('a[href], button, input, select, textarea, [role], [tabindex]')) {
+    if (element.shadowRoot && showsShadowControls(element)) {
       if (dropped) tally(dropped);
-      else unreachable += 1;
+      else {
+        shadows.push({ id: mark(element), label: shadows.length ? null : shadowLabel(element) });
+        if (!handed) {
+          handed = element;
+          continue;
+        }
+      }
     }
     if (tag(element) === 'iframe' && shown(element) && !offscreen(element) && inFront(element)) {
       const rect = box(element);
@@ -1087,5 +1134,5 @@
     if (floating === 'alertdialog') { surface = 'alert'; break; }
     if (floating === 'dialog') { surface = 'sheet'; break; }
   }
-  return { ok: true, title: document.title, surface, unreachable, nodes, denoised };
+  return { ok: true, title: document.title, surface, unreachable, shadows, nodes, denoised };
 })

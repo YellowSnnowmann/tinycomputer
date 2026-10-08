@@ -109,6 +109,45 @@ async fn a_covered_click_closes_what_covers_it_and_tries_again() {
             .collect::<Vec<_>>(),
         ["click", "press escape (uncover)", "click"],
     );
+    // The launch and Escape fetch nothing and settle briefly; the refused
+    // click does not settle, and the one that went through settles in full.
+    assert_eq!(sim.trail, ["settle briefly", "settle briefly", "settle"]);
+}
+
+#[tokio::test]
+async fn a_covered_click_closes_the_banner_in_front_with_its_own_button() {
+    // Live, a consent banner lay over "Add To Cart"; Escape left it there,
+    // and every press was refused. Its least committal button closes it.
+    let run = run_with(
+        App::quirky(Quirk::ConsentBanner),
+        json!({"app": "Mail", "steps": ["start a new email message"]}),
+        |request| request.disabled_loops.push(FlowLoop::Attention),
+        |id, question, _| (id == "move").then(|| pick(question, "activate", 0.9)),
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    let sim = run.app.sim();
+    assert!(sim.compose_open);
+    assert!(sim.presses.is_empty(), "no Escape: {:?}", sim.presses);
+    assert!(
+        sim.clicks.contains(&"Allow Selection".to_owned())
+            && !sim.clicks.contains(&"Allow all".to_owned()),
+        "{:?}",
+        sim.clicks
+    );
+    let actions = &run.result.steps[0].actions;
+    assert_eq!(
+        actions
+            .iter()
+            .map(|action| action.action.as_str())
+            .collect::<Vec<_>>(),
+        ["click", "click (uncover)", "click"],
+    );
 }
 
 #[tokio::test]
@@ -155,6 +194,40 @@ async fn actions_that_change_nothing_fail_the_step() {
     .await;
     assert_eq!(run.result.stop, FlowStopReason::StepFailed);
     assert!(run.result.steps[0].note.contains("changed nothing"));
+}
+
+#[tokio::test]
+async fn a_stalled_step_whose_result_already_shows_is_done() {
+    // Live, "press Enter to search" pressed Enter three times over results a
+    // live search had already listed, failed, and a rescue found its work
+    // done ~18 s later: 25 of a day's 189 rescues were such steps.
+    let run = run_with(
+        App::quirky(Quirk::Frozen),
+        json!({"app": "Mail", "steps": ["press the search button"]}),
+        |_| {},
+        |id, question, _| match id {
+            "done" => Some(noul(0.05)),
+            "move" => Some(pick(question, "activate", 0.9)),
+            "holds" if text_of(question, "condition").contains("already shows the result") => {
+                Some(noul(0.95))
+            }
+            _ => None,
+        },
+    )
+    .await;
+    let step = &run.result.steps[0];
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert_eq!(step.outcome, StepOutcome::AlreadyDone, "{}", step.note);
+    assert!(
+        step.note.contains("already shows what this step was for"),
+        "{}",
+        step.note
+    );
 }
 
 #[tokio::test]
