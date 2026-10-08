@@ -300,3 +300,60 @@ async fn a_task_warms_jev_while_it_is_planned_and_never_waits_for_it() {
     settle(&tasks, &started.id).await;
     assert!(script.warmed.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_browser_only_task_loads_the_page_it_names_while_it_is_planned() {
+    use tinycomputer_bus::agent::{SurfaceKind, TaskConstraints};
+
+    let mail = r#"{"app": "browser", "steps": [{"browse": "https://mail.test"}]}"#;
+    let start = |tasks: &Tasks, task: &str, surfaces: Vec<SurfaceKind>| {
+        tasks
+            .start(&StartTaskRequest {
+                task: Some(task.to_owned()),
+                constraints: TaskConstraints {
+                    surfaces,
+                    ..TaskConstraints::default()
+                },
+                ..StartTaskRequest::default()
+            })
+            .data
+            .unwrap()
+    };
+    let (tasks, script) = planned(
+        vec![finished_run(FlowStopReason::Completed, vec![], &[], None)],
+        Ok(mail),
+    );
+    let started = start(
+        &tasks,
+        "Go to https://mail.test and open my inbox.",
+        vec![SurfaceKind::Browser],
+    );
+    settle(&tasks, &started.id).await;
+    assert_eq!(
+        *script.opened.lock().unwrap(),
+        [(started.id.clone(), "https://mail.test".to_owned())]
+    );
+    assert_eq!(
+        *script.prepared.lock().unwrap(),
+        std::slice::from_ref(&started.id),
+        "after its browser"
+    );
+
+    // Two pages leave no one to start on; a task that may use the desktop
+    // gets no browser early, nor a page.
+    for (task, surfaces) in [
+        (
+            "Compare https://a.test with https://b.test",
+            vec![SurfaceKind::Browser],
+        ),
+        ("Go to https://mail.test and open my inbox.", Vec::new()),
+    ] {
+        let (tasks, script) = planned(
+            vec![finished_run(FlowStopReason::Completed, vec![], &[], None)],
+            Ok(mail),
+        );
+        let started = start(&tasks, task, surfaces);
+        settle(&tasks, &started.id).await;
+        assert_eq!(script.opened.lock().unwrap().len(), 0, "{task}");
+    }
+}

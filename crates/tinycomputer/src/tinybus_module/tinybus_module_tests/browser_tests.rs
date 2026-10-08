@@ -57,7 +57,7 @@ fn answer(command: &Value) -> Value {
 }
 
 #[derive(Debug, Default)]
-struct ScriptedLauncher(Arc<Mutex<Vec<Value>>>);
+pub(super) struct ScriptedLauncher(pub(super) Arc<Mutex<Vec<Value>>>);
 
 impl Launcher for ScriptedLauncher {
     fn open(&self, _session: &str) -> Box<dyn Engine> {

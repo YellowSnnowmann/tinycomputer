@@ -14,7 +14,7 @@ use crate::error::Error;
 use super::envelope::{failure, not_a_text_field, reply};
 use super::{BrowserSurface, Perception};
 use super::{NETWORK_IDLE_MS, QUIET_MS, READ_TIMEOUT, SETTLE_MS, SKELETON_DEPTH, Settle, tree};
-use super::{sight, watch};
+use super::{sight, tabs::place, watch};
 
 impl Surface for BrowserSurface {
     fn observe(
@@ -23,6 +23,8 @@ impl Surface for BrowserSurface {
         root: Option<&str>,
         depth: Depth,
     ) -> std::result::Result<Screen, Box<DesktopResponse>> {
+        // A page once read is no longer the one opened early.
+        let _opened = self.early_page();
         if self.perception == Perception::Sight
             && let Some(mut screen) = self.see(root)
         {
@@ -288,19 +290,18 @@ impl Surface for BrowserSurface {
     }
 
     fn navigate(&self, url: &str) -> DesktopResponse {
-        let page = self
-            .ensure_session()
-            .and_then(|id| self.block(self.browser.navigate(&id, NavigateRequest::new(url))))
-            .map(|page| (page.url, page.title));
-        // A heavy page can be read long before its `load` event fires.
-        let page = match page {
-            Err(error @ Error::Timeout { .. }) => self.drawn_page(url).ok_or(error),
-            other => other,
-        };
-        reply(
-            "navigate",
-            page.map(|(url, title)| json!({"url": url, "title": title})),
-        )
+        // Loaded there while the plan was drafted, and not read since.
+        if let Some(opened) = self.early_page()
+            && place(&opened) == place(url)
+            && let Some(id) = self.session()
+            && let Some((shown, title)) = self.shown_page(&id)
+        {
+            return reply("navigate", Ok(json!({"url": shown, "title": title})));
+        }
+        match self.ensure_session() {
+            Ok(id) => self.navigate_in(&id, url),
+            Err(error) => reply("navigate", Err(error)),
+        }
     }
 
     fn back(&self, _app: &str) -> DesktopResponse {
@@ -309,6 +310,31 @@ impl Surface for BrowserSurface {
 }
 
 impl BrowserSurface {
+    /// Loads `url` in session `id`. A heavy page can be read long before its
+    /// `load` event fires.
+    pub(super) fn navigate_in(&self, id: &SessionId, url: &str) -> DesktopResponse {
+        let page = self
+            .block(self.browser.navigate(id, NavigateRequest::new(url)))
+            .map(|page| (page.url, page.title));
+        let page = match page {
+            Err(error @ Error::Timeout { .. }) => self.drawn_page(id, url).ok_or(error),
+            other => other,
+        };
+        reply(
+            "navigate",
+            page.map(|(url, title)| json!({"url": url, "title": title})),
+        )
+    }
+
+    /// Takes the address the session was opened at early: the first read
+    /// or navigation leaves that page as it was opened.
+    pub(super) fn early_page(&self) -> Option<String> {
+        self.opened_at
+            .lock()
+            .ok()
+            .and_then(|mut opened| opened.take())
+    }
+
     /// Waits until the page stops changing (`watch::still_script`), within
     /// a deadline: a call sent while a page is being replaced can wait out
     /// the browser's own 30 s.

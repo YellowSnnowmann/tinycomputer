@@ -159,6 +159,30 @@ impl FlowRunner for WorkspaceRunner {
         })
     }
 
+    fn open_page(&self, task: &TaskId, url: &str) -> PrepareFuture {
+        // In the browser `prepare` opened, which it does unless prelaunch is
+        // off.
+        let browser = self
+            .defaults
+            .prelaunch
+            .then(|| {
+                self.workspaces.lock().ok().and_then(|workspaces| {
+                    workspaces
+                        .get(task)
+                        .and_then(|(_, browser)| browser.clone())
+                })
+            })
+            .flatten();
+        let url = url.to_owned();
+        Box::pin(async move {
+            if let Some(browser) = browser {
+                // A page that will not load fails again, and is reported,
+                // at the step that browses there.
+                let _loaded = tokio::task::spawn_blocking(move || browser.open_at(&url)).await;
+            }
+        })
+    }
+
     fn warm(&self, task: &TaskId, votes: u32) -> PrepareFuture {
         let Some(runtime) = self.jev.as_ref() else {
             return Box::pin(async {});

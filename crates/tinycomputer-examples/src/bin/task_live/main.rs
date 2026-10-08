@@ -27,7 +27,8 @@
 //!   plan is printed and saved once the task stops.
 //! - `TINYCOMPUTER_BROWSER_PRELAUNCH` — optional: `0` opens a browser-only
 //!   task's browser at its first step rather than while the task plans
-//!   itself (with `TASK_PLAN=in-task`), as it does by default.
+//!   itself (with `TASK_PLAN=in-task`), at the address the task names, as
+//!   it does by default.
 //! - `TASK_OUT` — optional: where the plan, report, and final screenshot go
 //!   (default `target/task-live`).
 //! - `OUTPUT_FILE` — optional: a JSON `TaskOutput` (`instructions` and a

@@ -59,8 +59,17 @@ pub(super) async fn plan_then_drive(
     };
     // A browser-only task's browser opens while the plan is drafted, so the
     // first step need not wait for it: whatever the plan says, it runs there.
+    // The one page the task names loads in it meanwhile, for a first step
+    // that browses there.
     let ((outcome, used), drafting) = if constraints.surfaces == [SurfaceKind::Browser] {
-        tokio::join!(planning, runner.prepare(&id, &constraints)).0
+        let page = super::page::named_page(&task);
+        let preparing = async {
+            runner.prepare(&id, &constraints).await;
+            if let Some(page) = &page {
+                runner.open_page(&id, page).await;
+            }
+        };
+        tokio::join!(planning, preparing).0
     } else {
         planning.await
     };

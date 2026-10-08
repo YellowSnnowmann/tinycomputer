@@ -123,6 +123,10 @@ pub struct BrowserSurface {
     /// Set once the surface is let go ([`BrowserSurface::close`]): it is
     /// then not opened early again.
     closed: Arc<AtomicBool>,
+    /// The address the session was opened at early
+    /// ([`BrowserSurface::open_at`]), until the page is first read or
+    /// another address is loaded: a navigation there finds it loaded.
+    opened_at: Arc<Mutex<Option<String>>>,
 }
 
 impl std::fmt::Debug for BrowserSurface {
@@ -134,6 +138,7 @@ impl std::fmt::Debug for BrowserSurface {
             .field("cursor", &self.cursor)
             .field("perception", &self.perception)
             .field("settle", &self.settle)
+            .field("opened_at", &self.opened_at)
             .finish_non_exhaustive()
     }
 }
@@ -159,6 +164,7 @@ impl BrowserSurface {
             settle: Settle::default(),
             denoised: Arc::new(Mutex::new(Denoised::default())),
             closed: Arc::new(AtomicBool::new(false)),
+            opened_at: Arc::default(),
         }
     }
 
@@ -199,6 +205,24 @@ impl BrowserSurface {
         self.session_slot(true).is_ok()
     }
 
+    /// Opens the session early, as [`BrowserSurface::open`] does, and loads
+    /// `url` in it: the page a task names, loaded while its plan is drafted.
+    /// Until the page is first read, a navigation to the same place (one
+    /// page's two addresses: `https://` or not, `www.` or not, a trailing
+    /// slash or not) finds it loaded and loads nothing. Whether the page
+    /// loaded; a surface already let go opens nothing.
+    #[must_use]
+    pub fn open_at(&self, url: &str) -> bool {
+        let Ok(id) = self.session_slot(true) else {
+            return false;
+        };
+        let loaded = self.navigate_in(&id, url).ok;
+        if loaded && let Ok(mut opened) = self.opened_at.lock() {
+            *opened = Some(url.to_owned());
+        }
+        loaded
+    }
+
     /// The session this surface drives, once one is open.
     #[must_use]
     pub fn session(&self) -> Option<SessionId> {
@@ -222,6 +246,7 @@ impl BrowserSurface {
         // Before the slot is taken: an early open that has not begun yet
         // finds it set, and one under way finishes first and is closed.
         self.closed.store(true, Ordering::Release);
+        let _opened = self.early_page();
         let Some(id) = self
             .session
             .lock()

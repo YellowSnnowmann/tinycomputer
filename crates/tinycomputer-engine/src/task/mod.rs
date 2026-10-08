@@ -46,6 +46,7 @@ mod errors;
 mod human;
 mod interpret;
 mod names;
+mod page;
 mod publish;
 mod recovery;
 mod resume;
@@ -119,6 +120,15 @@ pub trait FlowRunner: Send + Sync + 'static {
     /// cancelled task: what it opens then must be let go too. Does nothing
     /// by default.
     fn prepare(&self, _task: &TaskId, _constraints: &TaskConstraints) -> PrepareFuture {
+        Box::pin(async {})
+    }
+
+    /// Loads `url`, the one web page the task's text names, in the browser
+    /// [`FlowRunner::prepare`] got ready, while the plan is drafted: a first
+    /// step that browses there finds it loaded. Called after `prepare`, in
+    /// the same wait, for a task that runs on the browser alone. Does
+    /// nothing by default.
+    fn open_page(&self, _task: &TaskId, _url: &str) -> PrepareFuture {
         Box::pin(async {})
     }
 

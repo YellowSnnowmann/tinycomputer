@@ -2,6 +2,7 @@
 //! page that drew before it finished loading as open.
 
 use serde_json::{Value, json};
+use tinycomputer_bus::browser::SessionId;
 
 use super::{BrowserSurface, sight};
 
@@ -80,22 +81,28 @@ const SAME_TAB_JS: &str = r"(element => {
 })";
 
 impl BrowserSurface {
-    /// The page's address and title when the session shows `url` drawn
+    /// The page's address and title when session `id` shows `url` drawn
     /// with words, though its navigation timed out waiting for `load`: a
     /// heavy page keeps fetching long after it can be read (live, a store's
     /// results page). `None` when it shows another page, or nothing yet.
-    pub(super) fn drawn_page(&self, url: &str) -> Option<(String, String)> {
-        let id = self.ensure_session().ok()?;
+    pub(super) fn drawn_page(&self, id: &SessionId, url: &str) -> Option<(String, String)> {
+        self.shown_page(id)
+            .filter(|(shown, _)| place(shown) == place(url))
+    }
+
+    /// The address and title of the page session `id` shows, once it has
+    /// drawn words; `None` while it shows nothing yet.
+    pub(super) fn shown_page(&self, id: &SessionId) -> Option<(String, String)> {
         let data = self
             .block(
                 self.browser
-                    .command(&id, json!({"action": "evaluate", "script": DRAWN_JS})),
+                    .command(id, json!({"action": "evaluate", "script": DRAWN_JS})),
             )
             .ok()?;
         let page = data.get("result")?;
         let shown = page.get("url").and_then(Value::as_str)?;
         let drawn = page.get("drawn").and_then(Value::as_bool).unwrap_or(false);
-        (drawn && place(shown) == place(url)).then(|| {
+        drawn.then(|| {
             (
                 shown.to_owned(),
                 page.get("title")

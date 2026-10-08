@@ -13,6 +13,7 @@ mod describe_tests;
 mod errors_tests;
 mod human_tests;
 mod output_tests;
+mod page_tests;
 mod plan_tests;
 mod rescue_tests;
 mod runner_tests;
@@ -60,6 +61,8 @@ struct Script {
     /// Tasks whose Jev connections were warmed while they were planned,
     /// with the votes asked for. The warm-up never ends.
     warmed: Mutex<Vec<(TaskId, u32)>>,
+    /// The pages loaded while tasks were planned, with their task.
+    opened: Mutex<Vec<(TaskId, String)>>,
 }
 
 impl FlowRunner for Script {
@@ -100,6 +103,14 @@ impl FlowRunner for Script {
 
     fn prepare(&self, task: &TaskId, _constraints: &TaskConstraints) -> super::PrepareFuture {
         self.prepared.lock().unwrap().push(task.clone());
+        Box::pin(async {})
+    }
+
+    fn open_page(&self, task: &TaskId, url: &str) -> super::PrepareFuture {
+        self.opened
+            .lock()
+            .unwrap()
+            .push((task.clone(), url.to_owned()));
         Box::pin(async {})
     }
 

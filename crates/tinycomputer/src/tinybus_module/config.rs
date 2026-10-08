@@ -26,7 +26,8 @@ pub(crate) struct BrowserDefaults {
     /// default) or `steady`.
     pub(crate) settle: Settle,
     /// Whether a browser-only task's browser opens while its plan is
-    /// drafted (the default), rather than at its first step.
+    /// drafted (the default), at the one web address the task's text names
+    /// if it names one, rather than at its first step.
     pub(crate) prelaunch: bool,
 }
 

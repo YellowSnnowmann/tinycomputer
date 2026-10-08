@@ -237,7 +237,7 @@ How the module launches every browser it opens — each task's, and each
 | `args` | extra launch arguments, as an array of strings |
 | `perception` | how a task reads a page: `sight` (the default) reads the rendered page as a person sees it, `tree` the accessibility tree alone ([`browser-sight.md`](../../technical/specs/browser-sight.md)) |
 | `settle` | how a task lets a page settle after an action before reading it again: `prompt` (the default) counts the network's 500 ms of quiet from the start, counting only requests that can change the page and for at most 1 s, and then waits only while the page is still changing (at most 400 ms), so an idle page is read again after about 0.6 s; `steady` waits for the network to go idle, at least about 1.1 s, then 400 ms more |
-| `prelaunch` | `true` (the default) opens a browser-only task's browser while `StartTask` plans it (a `task` with no `flow`), so the first step does not wait for the launch; `false` opens it at the first step |
+| `prelaunch` | `true` (the default) opens a browser-only task's browser while `StartTask` plans it (a `task` with no `flow`), so the first step does not wait for the launch, and loads in it the one web address the task's text names, if it names one, so a first step that browses there does not wait for the page either; `false` opens it at the first step |
 
 Most installs never need any of this: leave `browser` out entirely and the
 linked `agent-browser` engine looks for Chrome itself. An unknown key under

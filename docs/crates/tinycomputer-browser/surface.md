@@ -135,6 +135,15 @@ go idle, then pauses a further beat regardless). `Surface::settle_briefly`,
 after a launch or Escape, skips the network wait under `Settle::Prompt`; both
 are described in [interacting.md](interacting.md#scrolling-and-waiting).
 
+`BrowserSurface::open_at(url)` opens the session early, as `open` does, and
+loads `url` in it: the page a task names, loaded while its plan is drafted.
+Until the page is first read (`observe`) or another address is loaded, a
+`navigate` to the same place finds it already there and loads nothing,
+answering with the page's address and title as they stand; "the same place"
+is `tabs::place`'s, which ignores the scheme, a leading `www.`, the fragment
+and a trailing slash. A page not yet drawn, or a surface let go meanwhile,
+is loaded as asked.
+
 ## Cross-links
 
 - [sight.md](sight.md): how `observe` actually reads the page.

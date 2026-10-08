@@ -65,7 +65,8 @@ is optional:
   `perception` (`sight`, the default, or `tree`: how a task reads a page),
   `settle` (`prompt`, the default, or `steady`: how long a page is let
   settle after an action), and `prelaunch` (a boolean, `true` by default:
-  open a browser-only task's browser while it is planned).
+  open a browser-only task's browser while it is planned, at the one web
+  address the task's text names, if it names one).
 
 Configuration is delivered as sensitive host-control traffic and is never
 shown to monitors.

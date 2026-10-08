@@ -270,3 +270,46 @@ async fn the_runner_warms_its_jev_runtime_for_a_task() {
         .warm(&TaskId::new("t-1"), 7)
         .await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_runner_loads_the_page_a_browser_task_names_in_its_early_browser() {
+    use tinycomputer_bus::agent::{SurfaceKind, TaskConstraints, TaskId};
+    use tinycomputer_engine::FlowRunner;
+
+    let scratch =
+        std::env::temp_dir().join(format!("tinycomputer-runner-page-{}", std::process::id()));
+    let sent = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let browser = std::sync::Arc::new(tinycomputer_browser::Browser::with_scratch(
+        std::sync::Arc::new(super::browser_tests::ScriptedLauncher(sent.clone())),
+        scratch.clone(),
+    ));
+    let mut runner =
+        crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser);
+    let navigated = |sent: &std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>| {
+        sent.lock()
+            .unwrap()
+            .iter()
+            .filter(|command| command["action"] == "navigate")
+            .map(|command| command["url"].clone())
+            .collect::<Vec<_>>()
+    };
+    let browser_only = TaskConstraints {
+        surfaces: vec![SurfaceKind::Browser],
+        ..TaskConstraints::default()
+    };
+    let task = TaskId::new("t-1");
+    runner.prepare(&task, &browser_only).await;
+    runner.open_page(&task, "https://example.com").await;
+    assert_eq!(navigated(&sent), [json!("https://example.com")]);
+
+    // A task whose browser was never made ready loads nothing, nor does one
+    // once prelaunch is off.
+    runner
+        .open_page(&TaskId::new("t-2"), "https://example.com")
+        .await;
+    runner.defaults.prelaunch = false;
+    runner.open_page(&task, "https://example.com").await;
+    assert_eq!(navigated(&sent).len(), 1);
+    runner.release(&task);
+    let _ = std::fs::remove_dir_all(&scratch);
+}
