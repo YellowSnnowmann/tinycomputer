@@ -61,7 +61,7 @@ has `""`, and goal and intent runs carry their goal or intent text.
 |---|---|---|
 | `run` | a run begins | `kind` (`flow`, `goal`, `goal-continuation`, `intent`), `label`, `model`, `pid` |
 | `exchange` | every Jev call, one per framing | `step` (`warm-up` for the calls that open connections while a task is planned), `questions` (ids), `request_bytes`, `request` (the exact `EvaluationRequest`), `ok`, `latency_ms`, `attempts`; on success `request_id`, `model`, `input_tokens`, `output_tokens`, `answers`; on failure `error` |
-| `decision` | a flow decision is merged | `step`, `questions`, `framings`, `answered`, `batched` (requests asked in the same round trip), `parts` (requests the decision's questions were split across; 1 unless they outgrew `MAX_REQUEST_BYTES`), `request_bytes` (the largest part), `wall_ms` — what the step actually waited |
+| `decision` | a flow decision is merged | `step`, `questions`, `framings`, `answered`, `left` (framings a quorum did not wait for; their `exchange` lines follow when they end), `batched` (requests asked in the same round trip), `parts` (requests the decision's questions were split across; 1 unless they outgrew `MAX_REQUEST_BYTES`), `request_bytes` (the largest part), `wall_ms` — what the step actually waited |
 | `turn` | a `do` turn ends | `step`, `turn`, `decisions` (made in that turn), `rounds` (round trips they took: a batch is one), `wall_ms` |
 | `survey` | the wide strategy surveys a crowded screen | `step`, `regions` asked about, `most_relevant` (region ids), `distractions` |
 | `observe` | a flow reads the screen | `step`, `part` (`screen` or `subtree`), `wall_ms`, `ok`, `candidates`, `unexplored` |
@@ -84,9 +84,10 @@ has `""`, and goal and intent runs carry their goal or intent text.
 | `rescue` | the rescuer answers for a failed step | `step` (from 1), `attempt`, `limit`, `wall_ms`, `calls` and `sent_bytes` (null when it gave no answer in time), `outcome` (`guided`, `gave_up`, `error`, `timeout`), `steps` (guidance steps), `covers`, `model` |
 | `resume` | a person answers a paused task (`ContinueTask`) | `state` it waited at (`needs_input`, `needs_approval`, `needs_human`), `waited_ms` since it first asked |
 
-A voted decision writes one `exchange` per framing and then one `decision`.
-The framings run concurrently, so a decision's `wall_ms` is close to its
-slowest framing's `latency_ms`, not their sum. The `turn` events are where
+A voted decision writes one `exchange` per framing and then one `decision`;
+the framings a quorum did not wait for (`left`) write theirs after it, as
+they end. The framings run concurrently, so a decision's `wall_ms` is close
+to its slowest awaited framing's `latency_ms`, not their sum. The `turn` events are where
 the summary's decisions-per-turn come from: a turn waits for its decisions
 one after another, so that number, not the call count, is what a `do` step's
 Jev latency scales with. A parent step (`if`,

@@ -9,7 +9,8 @@ use tinycomputer_core::Facts;
 use tinyinference_decisions::{Answer, EvaluationRequest, Question};
 
 use super::{
-    FlowRun, Halt, MAX_REQUEST_BYTES, StepLog, ask, backend::AgentBackend, brief::clip, hedge, vote,
+    FlowRun, Halt, MAX_REQUEST_BYTES, StepLog, ask, backend::AgentBackend, brief::clip, hedge,
+    quorum, vote,
 };
 use crate::agentic::{journal::millis, merge_metrics, provider_error};
 
@@ -18,8 +19,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     ///
     /// The request is briefed and masked first, then asked in as many
     /// framings as the run votes with — concurrently, each one charged as an
-    /// evaluation — and the answers are averaged. On a web page it also
-    /// carries a page-kind question, whose answer briefs the next request.
+    /// evaluation — and the answers are averaged: every framing's, or those
+    /// in once all but two of seven or more agree plainly (`quorum.rs`). On
+    /// a web page it also carries a page-kind question, whose answer briefs
+    /// the next request.
     pub(in crate::agentic::flow) async fn ask(
         &mut self,
         log: &mut StepLog,
@@ -72,20 +75,23 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             // A part none of whose framings answered leaves its questions
             // without an answer, which fails the decision as a whole.
             let mut unanswered = false;
+            let mut left = 0_u32;
             for (framings, handles) in framings.into_iter().zip(handles) {
                 let before = answered.len();
-                for (framing, handle) in framings.into_iter().zip(handles) {
-                    match handle.await {
-                        Ok(Ok(evaluation)) => {
-                            merge_metrics(&mut self.metrics, &evaluation);
-                            log.calls = log.calls.saturating_add(1);
-                            answered.push((framing, evaluation.response.answers));
-                        }
-                        Ok(Err(error)) => {
-                            failure.get_or_insert(error);
-                        }
-                        Err(_) => {}
-                    }
+                let size = quorum::size(framings.len());
+                let gathered = quorum::gather(framings, handles, size).await;
+                for (framing, evaluation) in gathered.answered {
+                    merge_metrics(&mut self.metrics, &evaluation);
+                    log.calls = log.calls.saturating_add(1);
+                    answered.push((framing, evaluation.response.answers));
+                }
+                // Framings a quorum did not wait for still run, and are
+                // charged as made: their tokens are not known yet.
+                self.metrics.calls = self.metrics.calls.saturating_add(gathered.left);
+                log.calls = log.calls.saturating_add(gathered.left);
+                left = left.saturating_add(gathered.left);
+                if let Some(error) = gathered.failure {
+                    failure.get_or_insert(error);
                 }
                 unanswered |= answered.len() == before;
             }
@@ -111,6 +117,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     "questions": request.questions.keys().collect::<Vec<_>>(),
                     "framings": votes,
                     "answered": answered.len(),
+                    "left": left,
                     "batched": batched,
                     "parts": parts.len(),
                     "request_bytes": largest(&parts),

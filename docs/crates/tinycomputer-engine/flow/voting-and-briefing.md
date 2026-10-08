@@ -114,6 +114,21 @@ does not cost more time. When the budget is short of what full voting
 would need, the run votes with whatever framings still fit rather than
 failing outright.
 
+A decision waits for its slowest framing only when it must (`quorum.rs`).
+Asked 7 ways or more, it is merged without its last 2 framings once those
+in settle every question: every Choice and Score ranks the same option
+first, each at 0.9 or more (`QUORUM_TOP`); every yes/no is at 0.97 or more
+in each framing, or at 0.08 or less in each (`SURE_YES`, `SURE_NO`: the
+evidence band beyond every yes/no threshold); and the page kind reads
+alike. Replayed over 13,669 decisions asked seven ways in 245 live runs,
+such a quorum ended 12% of them, a median 0.14 s sooner (about 2 s a run),
+and every one read the same on every threshold and evidence gate as all
+seven framings did, but for two whose mean moved by under 0.002 across the
+band's edge. A quorum of four would not have: its stragglers dissented in
+1% of the decisions it would have ended. The framings left run to their end, so their
+connections go back to the pool; they count as calls, and their exchanges
+are journaled as they end.
+
 Voting is the mechanism; deliberation, described on its own page, is what
 decides whether a decision's evidence is strong enough to stop there or
 needs to widen further. See [Deliberation](deliberation.md).

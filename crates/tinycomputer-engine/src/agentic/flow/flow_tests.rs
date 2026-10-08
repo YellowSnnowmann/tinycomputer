@@ -31,6 +31,7 @@ mod hedge_tests;
 mod helpers_tests;
 mod journal_tests;
 mod pick_tests;
+mod quorum_tests;
 mod reflection_tests;
 mod split_tests;
 mod step_kinds_tests;
@@ -81,9 +82,9 @@ use super::{
     vote, wide,
 };
 
-fn runtime(oracle: Oracle) -> JevRuntime {
+fn runtime(client: impl Evaluator + 'static) -> JevRuntime {
     JevRuntime {
-        client: Arc::new(oracle),
+        client: Arc::new(client),
         configuration: tinycomputer_bus::JevConfiguration {
             provider: tinycomputer_bus::JevProvider::OpenRouter,
             model: "jev-latest".to_owned(),

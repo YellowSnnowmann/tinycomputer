@@ -59,6 +59,7 @@ mod hedge;
 mod ledger;
 mod look;
 mod memory;
+mod quorum;
 mod reflect;
 mod run;
 mod steps;
