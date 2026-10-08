@@ -1,8 +1,9 @@
 //! Live tests of what sight reads as a control, gated on
 //! `TINYCOMPUTER_LIVE_BROWSER=1`: rows a script framework wires to a click,
 //! options inside their trigger, classes behind a variant, icons named in
-//! camel case, a control brought into the window before its press, and a
-//! control fixed to the window inside a scrolling list.
+//! camel case, a control brought into the window before its press, a
+//! control fixed to the window inside a scrolling list, and a control each
+//! card repeats, told apart by its card.
 
 #[cfg(feature = "agent-browser")]
 use serde_json::json;
@@ -225,5 +226,39 @@ async fn live_a_control_fixed_to_the_window_inside_a_scrolling_list_is_not_scrol
         states("PNQ Pune").contains("offscreen"),
         "a row below the list's fold still is: {}",
         states("PNQ Pune")
+    );
+}
+
+/// Product cards a press opens, each with its own "ADD" button, and one card
+/// with a button no other card has.
+#[cfg(feature = "agent-browser")]
+const CARD_BUTTONS_PAGE: &str = r#"<div style="display: flex; gap: 10px">
+  <div onclick="" style="cursor: pointer; width: 220px; padding: 8px">Too Yumm Korean Ramen 79 g ₹49 <button>ADD</button></div>
+  <div onclick="" style="cursor: pointer; width: 220px; padding: 8px">Maggi Double Masala 95 g ₹20 <button>ADD</button></div>
+  <div onclick="" style="cursor: pointer; width: 220px; padding: 8px">Maggi Masala 280 g ₹56 <button>Notify me</button></div>
+</div>"#;
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_a_control_each_card_repeats_is_described_by_its_card() {
+    let Some(reading) = live_reading(CARD_BUTTONS_PAGE).await else {
+        return;
+    };
+    let nodes = reading["nodes"].as_array().unwrap();
+    let described = |name: &str| {
+        nodes
+            .iter()
+            .filter(|node| node["name"] == name)
+            .map(|node| node["description"].as_str().unwrap_or_default().to_owned())
+            .collect::<Vec<_>>()
+    };
+    let adds = described("ADD");
+    assert_eq!(adds.len(), 2, "{:?}", shown_names(&reading));
+    assert!(adds[0].starts_with("in Too Yumm Korean Ramen"), "{adds:?}");
+    assert!(adds[1].starts_with("in Maggi Double Masala"), "{adds:?}");
+    assert_eq!(
+        described("Notify me"),
+        [""],
+        "a control no other card repeats needs no card to tell it apart"
     );
 }

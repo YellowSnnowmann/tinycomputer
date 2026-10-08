@@ -1257,6 +1257,26 @@
     seen.push({ element, record });
     offerChoices(element, record);
   }
+  // A control repeated on every card ("ADD" on each product), kept inside
+  // the card that is a control itself, says nothing of which card it acts
+  // on: it is described by that card's name. Live, "add the first Maggi"
+  // pressed the first card's "ADD", on a ramen above the Maggi.
+  const recordOf = new Map(seen.map(({ element, record }) => [element, record]));
+  const copies = new Map();
+  for (const { record } of seen) {
+    const key = `${record.role}\u0000${record.name}`;
+    copies.set(key, (copies.get(key) || 0) + 1);
+  }
+  for (const { element, record } of seen) {
+    if (record.description || !record.name
+      || copies.get(`${record.role}\u0000${record.name}`) < 2) continue;
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      const card = recordOf.get(parent);
+      if (!card) continue;
+      if (card.name && card.name !== record.name) record.description = clip(`in ${card.name}`, limits.name);
+      break;
+    }
+  }
   window.__tinycomputerSeen = next;
 
   const middle = document.elementFromPoint(width / 2, height / 2);

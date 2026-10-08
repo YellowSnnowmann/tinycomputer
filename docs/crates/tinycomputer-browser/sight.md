@@ -83,6 +83,11 @@ Sight decides what is a control by behavior, not by role:
   name ending in `-selected` or `-checked` (never `unselected` or
   `not-selected`) marks one, as a store's picked size
   (`size-buttons-size-button-selected`) carries no ARIA state at all.
+- A control repeated on every card ("ADD" on each product), inside a card
+  that is a control itself, is described by that card's name (`in Maggi
+  Double Masala 95 g ₹20`) when it has no description of its own: by its
+  name alone, every copy is the same, and live, "add the first Maggi"
+  pressed the first card's "ADD", on a ramen above the Maggi.
 
 The IndiGo case above is the sharpest illustration of the next rule: **a
 claimed text box that takes no text is a button, not a text box.** Sight
