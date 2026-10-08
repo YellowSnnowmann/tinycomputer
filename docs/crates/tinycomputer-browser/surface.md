@@ -136,11 +136,13 @@ after a launch or Escape, skips the network wait under `Settle::Prompt`; both
 are described in [interacting.md](interacting.md#scrolling-and-waiting).
 
 `BrowserSurface::open_at(url)` opens the session early, as `open` does, and
-loads `url` in it: the page a task names, loaded while its plan is drafted.
-Until the page is first read (`observe`) or another address is loaded, a
-`navigate` to the same place finds it already there and loads nothing,
-answering with the page's address and title as they stand; "the same place"
-is `tabs::place`'s, which ignores the scheme, a leading `www.`, the fragment
+loads `url` in it: the page a task names, loaded while its plan is drafted,
+waiting for its `load` event at most 10 s (`EARLY_LOAD_MS`, beyond nine in
+ten live first pages). Until the page is first read (`observe`) or another
+address is loaded, a `navigate` to the same place, in the same session,
+finds it already there and loads nothing, answering with the page's address
+and title as they stand (read within `READ_TIMEOUT`); "the same place" is
+`tabs::place`'s, which ignores the scheme, a leading `www.`, the fragment
 and a trailing slash. A page not yet drawn, or a surface let go meanwhile,
 is loaded as asked.
 

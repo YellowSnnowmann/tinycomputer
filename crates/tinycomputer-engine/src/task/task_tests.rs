@@ -52,7 +52,8 @@ struct Script {
     shot: Mutex<Option<tinycomputer_bus::browser::OutputRef>>,
     /// A capture that never answers, like a hung surface.
     stuck: std::sync::atomic::AtomicBool,
-    /// `capture` and `release` calls, in the order they arrived.
+    /// `capture`, `release`, `prepare` and `open_page` calls, in the order
+    /// they arrived.
     events: Mutex<Vec<&'static str>>,
     /// What the task journaled outside its flows, in order.
     journaled: Mutex<Vec<(Option<TaskId>, String, serde_json::Value)>>,
@@ -102,11 +103,13 @@ impl FlowRunner for Script {
     }
 
     fn prepare(&self, task: &TaskId, _constraints: &TaskConstraints) -> super::PrepareFuture {
+        self.events.lock().unwrap().push("prepare");
         self.prepared.lock().unwrap().push(task.clone());
         Box::pin(async {})
     }
 
     fn open_page(&self, task: &TaskId, url: &str) -> super::PrepareFuture {
+        self.events.lock().unwrap().push("open_page");
         self.opened
             .lock()
             .unwrap()

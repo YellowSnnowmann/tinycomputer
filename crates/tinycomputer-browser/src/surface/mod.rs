@@ -31,7 +31,9 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 use tinycomputer_bus::DesktopResponse;
-use tinycomputer_bus::browser::{Action, SessionId, SessionOptions, SnapshotRequest};
+use tinycomputer_bus::browser::{
+    Action, NavigateRequest, SessionId, SessionOptions, SnapshotRequest,
+};
 use tinycomputer_core::Platform;
 use tinycomputer_core::surface::Screen;
 use tinycomputer_cursor::ScreenCursor;
@@ -108,6 +110,12 @@ pub enum Settle {
 /// to count as still.
 const STILL_MS: u64 = 120;
 
+/// The longest an early load ([`BrowserSurface::open_at`]) waits for its
+/// page's `load` event: beyond nine in ten live first pages (6.4 s). A plan
+/// drafted sooner waits for it no longer, and a page not drawn by then is
+/// loaded again by the step that browses there.
+const EARLY_LOAD_MS: u64 = 10_000;
+
 /// One browser session, lazily opened, as a [`Surface`].
 #[derive(Clone)]
 pub struct BrowserSurface {
@@ -123,10 +131,10 @@ pub struct BrowserSurface {
     /// Set once the surface is let go ([`BrowserSurface::close`]): it is
     /// then not opened early again.
     closed: Arc<AtomicBool>,
-    /// The address the session was opened at early
-    /// ([`BrowserSurface::open_at`]), until the page is first read or
-    /// another address is loaded: a navigation there finds it loaded.
-    opened_at: Arc<Mutex<Option<String>>>,
+    /// The session opened early ([`BrowserSurface::open_at`]) and the
+    /// address loaded in it, until the page is first read or another address
+    /// is loaded: a navigation there, in that session, finds it loaded.
+    opened_at: Arc<Mutex<Option<(SessionId, String)>>>,
 }
 
 impl std::fmt::Debug for BrowserSurface {
@@ -206,19 +214,28 @@ impl BrowserSurface {
     }
 
     /// Opens the session early, as [`BrowserSurface::open`] does, and loads
-    /// `url` in it: the page a task names, loaded while its plan is drafted.
-    /// Until the page is first read, a navigation to the same place (one
-    /// page's two addresses: `https://` or not, `www.` or not, a trailing
-    /// slash or not) finds it loaded and loads nothing. Whether the page
-    /// loaded; a surface already let go opens nothing.
+    /// `url` in it: the page a task names, loaded while its plan is drafted,
+    /// waiting for its `load` at most `EARLY_LOAD_MS`. Until the page is
+    /// first read, a navigation to the same place (one page's two
+    /// addresses: `https://` or not, `www.` or not, a trailing slash or not)
+    /// in the same session finds it loaded and loads nothing. Whether the
+    /// page loaded; a surface already let go opens nothing, and one let go
+    /// meanwhile keeps no page.
     #[must_use]
     pub fn open_at(&self, url: &str) -> bool {
         let Ok(id) = self.session_slot(true) else {
             return false;
         };
-        let loaded = self.navigate_in(&id, url).ok;
-        if loaded && let Ok(mut opened) = self.opened_at.lock() {
-            *opened = Some(url.to_owned());
+        let request = NavigateRequest {
+            timeout_ms: Some(EARLY_LOAD_MS),
+            ..NavigateRequest::new(url)
+        };
+        let loaded = self.navigate_in(&id, request).ok;
+        if loaded
+            && !self.closed.load(Ordering::Acquire)
+            && let Ok(mut opened) = self.opened_at.lock()
+        {
+            *opened = Some((id, url.to_owned()));
         }
         loaded
     }

@@ -173,12 +173,29 @@ impl FlowRunner for WorkspaceRunner {
                 })
             })
             .flatten();
+        // Journaled with the task's flows (see `run`): the plan's outcome
+        // waits for this load.
+        let journal = self
+            .jev
+            .as_ref()
+            .filter(|runtime| runtime.journaling())
+            .map(|runtime| runtime.journaled_as(&format!("task-{task}")));
         let url = url.to_owned();
         Box::pin(async move {
             if let Some(browser) = browser {
+                let started = std::time::Instant::now();
                 // A page that will not load fails again, and is reported,
                 // at the step that browses there.
-                let _loaded = tokio::task::spawn_blocking(move || browser.open_at(&url)).await;
+                let loaded = tokio::task::spawn_blocking(move || browser.open_at(&url))
+                    .await
+                    .unwrap_or(false);
+                if let Some(journal) = journal {
+                    let wall_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                    journal.journal_event(
+                        "open_page",
+                        || serde_json::json!({"wall_ms": wall_ms, "loaded": loaded}),
+                    );
+                }
             }
         })
     }

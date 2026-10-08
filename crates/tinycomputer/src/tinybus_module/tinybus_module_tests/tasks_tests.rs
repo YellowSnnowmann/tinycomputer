@@ -305,8 +305,15 @@ async fn the_runner_loads_the_page_a_browser_task_names_in_its_early_browser() {
         std::sync::Arc::new(super::browser_tests::ScriptedLauncher(sent.clone())),
         scratch.clone(),
     ));
-    let mut runner =
-        crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser);
+    // Journaled, with the task's flows.
+    let jev = tinycomputer_engine::JevRuntime::sage("test-key", false)
+        .unwrap()
+        .with_journal(scratch.join("journal"));
+    let mut runner = crate::tinybus_module::runner::WorkspaceRunner::new(
+        crate::Desktop::new(),
+        Some(jev),
+        browser,
+    );
     let navigated = |sent: &std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>| {
         sent.lock()
             .unwrap()
@@ -323,6 +330,20 @@ async fn the_runner_loads_the_page_a_browser_task_names_in_its_early_browser() {
     runner.prepare(&task, &browser_only).await;
     runner.open_page(&task, "https://example.com").await;
     assert_eq!(navigated(&sent), [json!("https://example.com")]);
+    let journal = std::fs::read_to_string(
+        scratch
+            .join("journal")
+            .join("task-t-1")
+            .join("journal.jsonl"),
+    )
+    .unwrap();
+    let opened = journal
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .find(|event| event["event"] == "open_page")
+        .unwrap();
+    assert_eq!(opened["loaded"], true, "{opened}");
+    assert!(opened["wall_ms"].is_u64(), "{opened}");
 
     // A task whose browser was never made ready loads nothing, nor does one
     // once prelaunch is off.

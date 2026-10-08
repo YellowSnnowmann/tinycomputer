@@ -354,8 +354,18 @@ async fn a_browser_only_task_loads_the_page_it_names_while_it_is_planned() {
     );
     assert_eq!(
         *script.prepared.lock().unwrap(),
-        std::slice::from_ref(&started.id),
-        "after its browser"
+        std::slice::from_ref(&started.id)
+    );
+    assert_eq!(
+        script
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|event| matches!(**event, "prepare" | "open_page"))
+            .collect::<Vec<_>>(),
+        [&"prepare", &"open_page"],
+        "in the browser opened for it"
     );
 
     // Two pages leave no one to start on; a task that may use the desktop

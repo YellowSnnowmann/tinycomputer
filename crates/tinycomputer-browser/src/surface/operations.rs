@@ -290,16 +290,17 @@ impl Surface for BrowserSurface {
     }
 
     fn navigate(&self, url: &str) -> DesktopResponse {
-        // Loaded there while the plan was drafted, and not read since.
-        if let Some(opened) = self.early_page()
+        // Loaded there while the plan was drafted, in this session, and not
+        // read since.
+        if let Some((opened_in, opened)) = self.early_page()
             && place(&opened) == place(url)
-            && let Some(id) = self.session()
-            && let Some((shown, title)) = self.shown_page(&id)
+            && self.session().as_ref() == Some(&opened_in)
+            && let Some((shown, title)) = self.shown_page(&opened_in)
         {
             return reply("navigate", Ok(json!({"url": shown, "title": title})));
         }
         match self.ensure_session() {
-            Ok(id) => self.navigate_in(&id, url),
+            Ok(id) => self.navigate_in(&id, NavigateRequest::new(url)),
             Err(error) => reply("navigate", Err(error)),
         }
     }
@@ -310,14 +311,15 @@ impl Surface for BrowserSurface {
 }
 
 impl BrowserSurface {
-    /// Loads `url` in session `id`. A heavy page can be read long before its
-    /// `load` event fires.
-    pub(super) fn navigate_in(&self, id: &SessionId, url: &str) -> DesktopResponse {
+    /// Loads `request`'s address in session `id`. A heavy page can be read
+    /// long before its `load` event fires.
+    pub(super) fn navigate_in(&self, id: &SessionId, request: NavigateRequest) -> DesktopResponse {
+        let url = request.url.clone();
         let page = self
-            .block(self.browser.navigate(id, NavigateRequest::new(url)))
+            .block(self.browser.navigate(id, request))
             .map(|page| (page.url, page.title));
         let page = match page {
-            Err(error @ Error::Timeout { .. }) => self.drawn_page(id, url).ok_or(error),
+            Err(error @ Error::Timeout { .. }) => self.drawn_page(id, &url).ok_or(error),
             other => other,
         };
         reply(
@@ -326,9 +328,9 @@ impl BrowserSurface {
         )
     }
 
-    /// Takes the address the session was opened at early: the first read
-    /// or navigation leaves that page as it was opened.
-    pub(super) fn early_page(&self) -> Option<String> {
+    /// Takes the session opened early and the address loaded in it: the
+    /// first read or navigation leaves that page as it was opened.
+    pub(super) fn early_page(&self) -> Option<(SessionId, String)> {
         self.opened_at
             .lock()
             .ok()

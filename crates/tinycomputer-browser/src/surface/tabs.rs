@@ -4,7 +4,7 @@
 use serde_json::{Value, json};
 use tinycomputer_bus::browser::SessionId;
 
-use super::{BrowserSurface, sight};
+use super::{BrowserSurface, READ_TIMEOUT, sight};
 
 /// Where the page is, what it is called, and whether it has drawn words.
 const DRAWN_JS: &str = r"(() => ({
@@ -93,11 +93,14 @@ impl BrowserSurface {
     /// The address and title of the page session `id` shows, once it has
     /// drawn words; `None` while it shows nothing yet.
     pub(super) fn shown_page(&self, id: &SessionId) -> Option<(String, String)> {
+        let reading = self
+            .browser
+            .command(id, json!({"action": "evaluate", "script": DRAWN_JS}));
+        // Within a deadline: a call sent while a page is being replaced (a
+        // redirect, a challenge's reload) can wait out the browser's own 30 s.
         let data = self
-            .block(
-                self.browser
-                    .command(id, json!({"action": "evaluate", "script": DRAWN_JS})),
-            )
+            .block(async { tokio::time::timeout(READ_TIMEOUT, reading).await })
+            .ok()?
             .ok()?;
         let page = data.get("result")?;
         let shown = page.get("url").and_then(Value::as_str)?;

@@ -576,14 +576,20 @@ fn a_page_opened_early_is_not_loaded_again_until_it_is_read() {
     let early = harness("open-at", shop());
     assert!(early.surface.open_at("https://shop.test"));
     assert_eq!(loads(&early.fake), 1);
+    assert_eq!(
+        early.fake.last("navigate")["timeout"],
+        10_000,
+        "a plan drafted sooner waits for it no longer"
+    );
     // The plan's first step browses there, by another of its addresses.
     let reply = early.surface.navigate("https://www.shop.test/");
     assert!(reply.ok, "{:?}", reply.error);
     assert_eq!(reply.data.unwrap()["title"], "Shop");
     assert_eq!(loads(&early.fake), 1, "loaded once");
-    // Asked again, it loads again.
+    // Asked again, it loads again, with the session's own deadline.
     assert!(early.surface.navigate("https://shop.test").ok);
     assert_eq!(loads(&early.fake), 2);
+    assert!(early.fake.last("navigate")["timeout"].is_null());
 
     // Once the page is read, or another page is asked for, it loads.
     let read = harness("open-at-read", shop());
@@ -625,6 +631,8 @@ fn a_page_opened_early_is_not_loaded_again_until_it_is_read() {
     let let_go = harness("open-at-let-go", shop());
     assert!(let_go.surface.open_at("https://shop.test"));
     let_go.surface.close();
+    // A new session shows the shop drawn: a page kept would skip the load.
+    assert!(let_go.surface.launch("browser").ok);
     assert!(let_go.surface.navigate("https://shop.test").ok);
     assert_eq!(loads(&let_go.fake), 2);
 }
