@@ -23,6 +23,10 @@ use time::{Spans, length, millis, minus, union};
 /// as the repository's evals count it. Jev's output is free.
 const JEV_MICRO_USD_PER_M_INPUT: u64 = 42_000;
 
+/// The step a call opening a connection while a task is planned is
+/// journaled under.
+const WARM_UP: &str = "warm-up";
+
 /// Where one task's time went, in ms unless named otherwise.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
@@ -153,8 +157,12 @@ pub fn split(events: &[Value]) -> Split {
                 actions.push(number(event, "wall_ms") + number(event, "settle_ms"));
             }
             "exchange" => {
-                calls.push(number(event, "latency_ms"));
-                split.failed_calls += u64::from(event["ok"] == Value::Bool(false));
+                // A warm-up opens a connection while the plan is drafted:
+                // priced, but no decision's call.
+                if event["step"] != WARM_UP {
+                    calls.push(number(event, "latency_ms"));
+                    split.failed_calls += u64::from(event["ok"] == Value::Bool(false));
+                }
                 split.input_tokens += number(event, "input_tokens");
                 split.output_tokens += number(event, "output_tokens");
                 if event["model"]
@@ -257,19 +265,37 @@ impl Kinds {
     }
 }
 
+/// The question ids an `exchange` or `decision` event names.
+fn questions(event: &Value) -> Vec<&str> {
+    event["questions"]
+        .as_array()
+        .map(|ids| ids.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default()
+}
+
 /// The mean of how much longer each round of calls waited for its slowest
 /// call than for its median one. A round is the calls journaled since the
 /// previous decision: one decision's framings, or a batch's. The framings a
 /// quorum did not wait for (its `left`) journal after their decision, and
-/// are no round's.
+/// are no round's: each is told from the calls around it by its questions,
+/// which are among its decision's. A warm-up is no round's either.
 fn slowest_extra(events: &[Value]) -> u64 {
     let mut extras = Vec::new();
     let mut round = Vec::new();
-    let mut late = 0;
+    // Each decision with framings still out: its questions, and how many.
+    let mut late: Vec<(Vec<&str>, u64)> = Vec::new();
     for event in events {
         match event["event"].as_str() {
-            Some("exchange") if late > 0 => late -= 1,
-            Some("exchange") => round.push(number(event, "latency_ms")),
+            Some("exchange") if event["step"] == WARM_UP => {}
+            Some("exchange") => {
+                let asked = questions(event);
+                match late.iter_mut().find(|(decided, left)| {
+                    *left > 0 && asked.iter().all(|id| decided.contains(id))
+                }) {
+                    Some((_, left)) => *left -= 1,
+                    None => round.push(number(event, "latency_ms")),
+                }
+            }
             Some("decision") => {
                 if !round.is_empty() {
                     round.sort_unstable();
@@ -277,7 +303,11 @@ fn slowest_extra(events: &[Value]) -> u64 {
                     extras.push(slowest - round[(round.len() - 1) / 2]);
                     round.clear();
                 }
-                late = number(event, "left");
+                late.retain(|(_, left)| *left > 0);
+                let left = number(event, "left");
+                if left > 0 {
+                    late.push((questions(event), left));
+                }
             }
             Some("run") => round.clear(),
             _ => {}

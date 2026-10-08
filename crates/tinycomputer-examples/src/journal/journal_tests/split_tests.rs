@@ -215,6 +215,52 @@ fn the_framings_a_quorum_left_count_in_no_round() {
 }
 
 #[test]
+fn a_quorums_late_framings_are_told_from_the_next_rounds_by_their_questions() {
+    let exchange = |ms: u64, latency: u64, questions: &[&str]| json!({"event": "exchange", "at": at(ms), "latency_ms": latency, "ok": true, "questions": questions});
+    let decision = |ms: u64, left: u64, questions: &[&str]| json!({"event": "decision", "at": at(ms), "wall_ms": 500, "left": left, "questions": questions});
+    let judging = ["done", "not_done"];
+    let events = vec![
+        json!({"event": "run", "at": at(0), "kind": "flow"}),
+        exchange(300, 300, &judging),
+        exchange(400, 400, &judging),
+        decision(400, 2, &judging),
+        // Grounding's round, the judging's two late framings among its calls.
+        exchange(900, 400, &["target"]),
+        exchange(1_000, 1_000, &judging),
+        exchange(1_100, 600, &["target"]),
+        exchange(1_200, 1_200, &judging),
+        decision(1_100, 0, &["target"]),
+    ];
+    let spent = split(&events);
+    // Rounds of 300/400 and 400/600: 100 and 200 ms.
+    assert_eq!(spent.slowest_extra_ms, 150);
+}
+
+#[test]
+fn a_warm_up_is_priced_but_is_no_decisions_call() {
+    let events = vec![
+        json!({"event": "run", "at": at(0), "kind": "flow"}),
+        json!({"event": "exchange", "at": at(100), "latency_ms": 5_000, "ok": false,
+               "step": "warm-up", "model": "typesafe/jev-1.13-20260917", "input_tokens": 20}),
+        json!({"event": "exchange", "at": at(400), "latency_ms": 400, "ok": true,
+               "model": "typesafe/jev-1.13-20260917", "input_tokens": 1_000}),
+        json!({"event": "exchange", "at": at(500), "latency_ms": 500, "ok": true,
+               "model": "typesafe/jev-1.13-20260917", "input_tokens": 1_000}),
+        json!({"event": "decision", "at": at(500), "wall_ms": 500}),
+    ];
+    let spent = split(&events);
+    assert_eq!((spent.calls, spent.failed_calls), (2, 0));
+    assert_eq!(
+        spent.slowest_extra_ms, 100,
+        "the round is the decision's own"
+    );
+    assert_eq!(
+        spent.input_tokens, 2_020,
+        "its tokens are spent all the same"
+    );
+}
+
+#[test]
 fn jevs_input_tokens_are_priced_and_another_models_are_not() {
     let exchange = |model: &str, input_tokens: u64| {
         json!({
