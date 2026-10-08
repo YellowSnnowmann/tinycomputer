@@ -12,6 +12,7 @@ mod policy_tests;
 mod resolve_tests;
 mod scope_tests;
 mod waiting_tests;
+mod warm_tests;
 
 use std::{
     collections::{BTreeMap, VecDeque},

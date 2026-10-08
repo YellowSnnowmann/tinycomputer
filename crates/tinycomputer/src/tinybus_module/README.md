@@ -57,7 +57,8 @@ The module takes its configuration from the loader as a JSON object, parsed into
 `trace_strict` and `headed` as booleans. `browser` sets how every browser
 launches — `executable`, `user_agent`, `args`, a task's page
 `perception`, how a page `settle`s after an action, and whether to
-`prelaunch` a planned browser task's browser — and `cursor` sets the
+`prelaunch` a planned browser task's browser (a planned task also warms
+the `jev` runtime's connections meanwhile) — and `cursor` sets the
 agent's on-screen cursor: a pace (`off`, `brisk`, `natural`, `calm`) or
 `{pace, overlay}` with the overlay
 helper's path. An optional `jev` object configures the

@@ -12,9 +12,10 @@ use std::{
 use tinycomputer_bus::{DesktopError, JevConfig, JevConfiguration, JevProvider};
 use tinyinference_decisions::{
     Client, ClientConfig, Error as JevError, EvaluationFailure, EvaluationRequest,
-    EvaluationResult, RetryPolicy,
+    EvaluationResult, Noul, Question, RetryPolicy,
 };
 
+use super::flow::MAX_VOTES;
 use super::journal::Journal;
 use super::pending::PendingRun;
 use super::sage;
@@ -33,6 +34,10 @@ pub(super) const RETRY: RetryPolicy = RetryPolicy {
 /// Live, the slowest answer took 8.6 s, and a request nothing came back for
 /// waited the client's own 30 s before its retry answered in under 1 s.
 pub(super) const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The longest [`JevRuntime::warm`] waits for its answers before it gives
+/// its calls up.
+pub(super) const WARM_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Configured Jev transport and non-secret policy metadata.
 #[derive(Clone)]
@@ -222,6 +227,31 @@ impl JevRuntime {
         }
     }
 
+    /// Opens connections to Jev for the decisions to come, while a task's
+    /// plan is drafted: one for each framing of a decision asked `votes`
+    /// ways (at most 9, `MAX_VOTES`), each with a one-question evaluation,
+    /// all at once. Each is journaled as `warm-up`, its answer is dropped,
+    /// and those still out after 10 s (`WARM_TIMEOUT`) are given up on.
+    /// A decision asks its framings all at once, each on a connection of its
+    /// own; live, a task's first decision took 330 ms more a call than its
+    /// later ones, opening them. Sage, whose calls take seconds, is not
+    /// warmed.
+    pub async fn warm(&self, votes: u32) {
+        if self.configuration.provider == JevProvider::Sage {
+            return;
+        }
+        let request = Arc::new(warm_up(&self.configuration.model));
+        let mut calls = tokio::task::JoinSet::new();
+        for _ in 0..votes.clamp(1, MAX_VOTES) {
+            let (runtime, request) = (self.clone(), Arc::clone(&request));
+            calls.spawn(async move {
+                let _answer = runtime.evaluate(Some("warm-up"), &request).await;
+            });
+        }
+        // Calls still out when the time is up are dropped with the set.
+        let _warmed = tokio::time::timeout(WARM_TIMEOUT, calls.join_all()).await;
+    }
+
     /// Asks Jev one request, journaling the exchange against `step`.
     pub(super) async fn evaluate(
         &self,
@@ -231,6 +261,23 @@ impl JevRuntime {
         let outcome = self.client.evaluate(request).await;
         self.journal.exchange(step, request, outcome.as_ref());
         outcome
+    }
+}
+
+/// The smallest request `model` answers: one yes/no question about nothing
+/// on any screen.
+fn warm_up(model: &str) -> EvaluationRequest {
+    EvaluationRequest {
+        state: serde_json::json!("A connection check."),
+        model: model.to_owned(),
+        questions: [(
+            "ready".to_owned(),
+            Question::Noul(Noul {
+                instructions: serde_json::json!("The state is a connection check."),
+                criteria: None,
+            }),
+        )]
+        .into(),
     }
 }
 

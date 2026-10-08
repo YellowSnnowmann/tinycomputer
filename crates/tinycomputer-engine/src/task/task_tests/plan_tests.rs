@@ -242,3 +242,61 @@ async fn a_browser_only_task_gets_its_browser_ready_while_it_is_planned() {
         std::slice::from_ref(&started.id)
     );
 }
+
+#[tokio::test]
+async fn a_task_warms_jev_while_it_is_planned_and_never_waits_for_it() {
+    // The script's warm-up never ends: the task finishes all the same.
+    let flow = r#"{"app": "Mail", "steps": ["start a new email message"]}"#;
+    let (tasks, script) = planned(
+        vec![finished_run(FlowStopReason::Completed, vec![], &[], None)],
+        Ok(flow),
+    );
+    let started = tasks
+        .start(&StartTaskRequest {
+            task: Some("start an email".to_owned()),
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    assert!(matches!(
+        settle(&tasks, &started.id).await.status,
+        TaskStatus::Done { .. }
+    ));
+    assert_eq!(*script.warmed.lock().unwrap(), [(started.id.clone(), 7)]);
+
+    // Asked as many ways as the task's budget says.
+    let (tasks, script) = planned(
+        vec![finished_run(FlowStopReason::Completed, vec![], &[], None)],
+        Ok(flow),
+    );
+    let started = tasks
+        .start(&StartTaskRequest {
+            task: Some("start an email".to_owned()),
+            budget: tinycomputer_bus::agent::TaskBudget {
+                votes: Some(3),
+                ..tinycomputer_bus::agent::TaskBudget::default()
+            },
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    settle(&tasks, &started.id).await;
+    assert_eq!(*script.warmed.lock().unwrap(), [(started.id.clone(), 3)]);
+
+    // A flow handed over whole is not planned, and not warmed.
+    let (tasks, script) = controller(vec![finished_run(
+        FlowStopReason::Completed,
+        vec![],
+        &[],
+        None,
+    )]);
+    let started = tasks
+        .start(&StartTaskRequest {
+            flow: Some(serde_json::from_str(flow).unwrap()),
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    settle(&tasks, &started.id).await;
+    assert!(script.warmed.lock().unwrap().is_empty());
+}

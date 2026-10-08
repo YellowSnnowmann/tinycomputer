@@ -244,3 +244,29 @@ async fn the_runner_opens_no_browser_early_once_prelaunch_is_off() {
         .await;
     assert_eq!(runner.workspaces.lock().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn the_runner_warms_its_jev_runtime_for_a_task() {
+    use tinycomputer_bus::agent::TaskId;
+    use tinycomputer_engine::{FlowRunner, JevRuntime};
+
+    let browser = || {
+        std::sync::Arc::new(tinycomputer_browser::Browser::new(std::sync::Arc::new(
+            tinycomputer_browser::AgentBrowser,
+        )))
+    };
+    // The task's runtime is reached; Sage's calls take seconds and are not
+    // warmed, so nothing goes out.
+    let jev = JevRuntime::sage("test-key", false).unwrap();
+    crate::tinybus_module::runner::WorkspaceRunner::new(
+        crate::Desktop::new(),
+        Some(jev),
+        browser(),
+    )
+    .warm(&TaskId::new("t-1"), 7)
+    .await;
+    // With no Jev runtime there is nothing to warm.
+    crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser())
+        .warm(&TaskId::new("t-1"), 7)
+        .await;
+}

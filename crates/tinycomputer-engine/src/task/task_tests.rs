@@ -57,6 +57,9 @@ struct Script {
     journaled: Mutex<Vec<(Option<TaskId>, String, serde_json::Value)>>,
     /// Tasks whose surfaces were got ready while they were planned.
     prepared: Mutex<Vec<TaskId>>,
+    /// Tasks whose Jev connections were warmed while they were planned,
+    /// with the votes asked for. The warm-up never ends.
+    warmed: Mutex<Vec<(TaskId, u32)>>,
 }
 
 impl FlowRunner for Script {
@@ -98,6 +101,11 @@ impl FlowRunner for Script {
     fn prepare(&self, task: &TaskId, _constraints: &TaskConstraints) -> super::PrepareFuture {
         self.prepared.lock().unwrap().push(task.clone());
         Box::pin(async {})
+    }
+
+    fn warm(&self, task: &TaskId, votes: u32) -> super::PrepareFuture {
+        self.warmed.lock().unwrap().push((task.clone(), votes));
+        Box::pin(std::future::pending())
     }
 
     fn journal(&self, task: Option<&TaskId>, event: &str, fields: &dyn Fn() -> serde_json::Value) {

@@ -126,6 +126,23 @@ the journal. That is the enforcement mechanism for "one door": there is
 exactly one function in this crate that can produce a Jev answer, and it
 always logs.
 
+## Warming connections
+
+A decision asks its framings all at once, each on an HTTP/1.1 connection of
+its own, and opening one to the gateway costs a handshake: live, a task's
+first decision took 330 ms more a call (the median over 84 runs) than the
+task's later decisions of the same size. `JevRuntime::warm(votes)` opens them
+ahead of time. It sends one small evaluation per framing of a decision asked
+`votes` ways (at most 9, `MAX_VOTES`), all at once, each a single yes/no
+question about a one-line state, through `evaluate` like any other call, so
+each is journaled under the step `warm-up`. The answers are dropped, calls
+still out after 10 s (`WARM_TIMEOUT`) are given up on, and Sage, whose calls
+take seconds, is not warmed.
+
+The task controller warms while a task's plan is drafted
+(`FlowRunner::warm`), so its first decision finds the connections open; the
+task never waits for the warm-up.
+
 ## Run identity and the journal
 
 A `JevRuntime` carries a journal handle (see [journal.md](journal.md)) that

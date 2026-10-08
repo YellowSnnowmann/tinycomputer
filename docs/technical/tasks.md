@@ -283,6 +283,12 @@ values lets the browser go while the task waits (`needs_input`), and the
 run that follows opens it again; a task cancelled while its browser was
 still opening is left holding none.
 
+Every task planned this way also has its runner warm Jev while the plan is
+drafted (`FlowRunner::warm`): one small evaluation for each way its first
+decision will be asked, so that decision finds its connections open
+([`jev-runtime.md`](../crates/tinycomputer-engine/jev-runtime.md#warming-connections)).
+The task never waits for the warm-up.
+
 ## Rescues
 
 When a top-level step fails and no person is needed, the task asks a

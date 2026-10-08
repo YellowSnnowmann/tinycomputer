@@ -31,7 +31,7 @@ use serde_json::Value;
 use tinyinference_decisions::{Answer, ChoiceAnswer, EvaluationRequest, NoulAnswer, Question};
 
 /// Most framings one decision is asked in.
-pub(super) const MAX_VOTES: u32 = 9;
+pub(in crate::agentic) const MAX_VOTES: u32 = 9;
 
 /// A perspective added to each framing after the first, in turn.
 const PERSPECTIVES: [&str; 4] = [

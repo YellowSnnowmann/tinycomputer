@@ -69,6 +69,7 @@ mod vote;
 mod wide;
 
 pub(crate) use validate::{check as check_flow, missing_inputs};
+pub(in crate::agentic) use vote::MAX_VOTES;
 
 use std::{
     collections::{BTreeMap, BTreeSet},

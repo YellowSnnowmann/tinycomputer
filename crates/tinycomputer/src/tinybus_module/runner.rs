@@ -159,6 +159,15 @@ impl FlowRunner for WorkspaceRunner {
         })
     }
 
+    fn warm(&self, task: &TaskId, votes: u32) -> PrepareFuture {
+        let Some(runtime) = self.jev.as_ref() else {
+            return Box::pin(async {});
+        };
+        // Journaled with the task's flows (see `run`).
+        let runtime = runtime.journaled_as(&format!("task-{task}"));
+        Box::pin(async move { runtime.warm(votes).await })
+    }
+
     fn journal(&self, task: Option<&TaskId>, event: &str, fields: &dyn Fn() -> serde_json::Value) {
         let Some(runtime) = self.jev.as_ref().filter(|runtime| runtime.journaling()) else {
             return;

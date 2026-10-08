@@ -60,7 +60,7 @@ has `""`, and goal and intent runs carry their goal or intent text.
 | `event` | When | Fields |
 |---|---|---|
 | `run` | a run begins | `kind` (`flow`, `goal`, `goal-continuation`, `intent`), `label`, `model`, `pid` |
-| `exchange` | every Jev call, one per framing | `step`, `questions` (ids), `request_bytes`, `request` (the exact `EvaluationRequest`), `ok`, `latency_ms`, `attempts`; on success `request_id`, `model`, `input_tokens`, `output_tokens`, `answers`; on failure `error` |
+| `exchange` | every Jev call, one per framing | `step` (`warm-up` for the calls that open connections while a task is planned), `questions` (ids), `request_bytes`, `request` (the exact `EvaluationRequest`), `ok`, `latency_ms`, `attempts`; on success `request_id`, `model`, `input_tokens`, `output_tokens`, `answers`; on failure `error` |
 | `decision` | a flow decision is merged | `step`, `questions`, `framings`, `answered`, `batched` (requests asked in the same round trip), `parts` (requests the decision's questions were split across; 1 unless they outgrew `MAX_REQUEST_BYTES`), `request_bytes` (the largest part), `wall_ms` — what the step actually waited |
 | `turn` | a `do` turn ends | `step`, `turn`, `decisions` (made in that turn), `rounds` (round trips they took: a batch is one), `wall_ms` |
 | `survey` | the wide strategy surveys a crowded screen | `step`, `regions` asked about, `most_relevant` (region ids), `distractions` |

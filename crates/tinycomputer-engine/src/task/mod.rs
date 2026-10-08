@@ -122,6 +122,14 @@ pub trait FlowRunner: Send + Sync + 'static {
         Box::pin(async {})
     }
 
+    /// Opens the connections the task's first decision, asked `votes` ways,
+    /// will use, while its plan is drafted (`JevRuntime::warm`). Started
+    /// with the planner for every task and never waited for: the task goes
+    /// on whether it finishes or not. Does nothing by default.
+    fn warm(&self, _task: &TaskId, _votes: u32) -> PrepareFuture {
+        Box::pin(async {})
+    }
+
     /// Writes an `event` of the time a task spends outside its flows
     /// (`plan`, `rescue`, `resume`) to the debug journal: the task's own,
     /// or for `PlanTask`, which plans before any task exists (`task` is
