@@ -75,6 +75,54 @@ impl Surface for TextBackend {
     }
 }
 
+/// [`TextBackend`], counting how often it settles in full.
+#[derive(Clone, Default)]
+struct Settling {
+    text: TextBackend,
+    settled: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Surface for Settling {
+    fn observe(
+        &self,
+        app: &str,
+        root: Option<&str>,
+        depth: Depth,
+    ) -> Result<Screen, Box<DesktopResponse>> {
+        self.text.observe(app, root, depth)
+    }
+
+    fn execute(
+        &self,
+        operation: JevOperation,
+        target: Option<Candidate>,
+        text: Option<String>,
+    ) -> DesktopResponse {
+        self.text.execute(operation, target, text)
+    }
+
+    fn read_value(&self, target: &Candidate) -> Option<String> {
+        self.text.read_value(target)
+    }
+
+    fn paste(&self, app: &str, target: &Candidate, text: &str) -> DesktopResponse {
+        self.text.paste(app, target, text)
+    }
+
+    fn press(&self, app: &str, combo: &str) -> DesktopResponse {
+        self.text.press(app, combo)
+    }
+
+    fn launch(&self, app: &str) -> DesktopResponse {
+        self.text.launch(app)
+    }
+
+    fn settle(&self) {
+        self.settled
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 fn field() -> Candidate {
     Candidate {
         ref_id: "@s:e1".to_owned(),
@@ -189,8 +237,14 @@ fn text_that_never_arrives_is_reported_as_not_delivered() {
 #[test]
 fn a_surface_settles_instantly_and_has_no_addresses_unless_it_says_otherwise() {
     Surface::settle(&TextBackend::default());
-    // Settling briefly is settling, unless the surface can tell them apart.
-    Surface::settle_briefly(&TextBackend::default());
+    // Settling briefly is settling in full, unless the surface can tell them
+    // apart: the desktop's own settle runs after a launch or Escape.
+    let settling = Settling::default();
+    settling.settle_briefly();
+    assert_eq!(
+        settling.settled.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
     assert!(
         Surface::await_change(&TextBackend::default(), 1_000),
         "one that cannot watch pauses and says it may have changed"

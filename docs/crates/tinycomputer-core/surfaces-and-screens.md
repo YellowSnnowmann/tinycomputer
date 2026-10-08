@@ -30,7 +30,7 @@ leaves them as the default refusal.
 There is also `settle()`, which does nothing by default. A surface overrides
 it to give an application a moment to react: closing a banner a beat after a
 click, or turning a typed address into a token in an autocomplete field. The
-engine calls it after every action, before the next observation, and before
+engine calls it after an action, before the next observation, and before
 reading a value back, so a surface's own idea of "how long is a moment" stays
 in one place rather than being copied into every caller. After an action that
 fetches nothing (a launch, Escape) the engine calls `settle_briefly()`
