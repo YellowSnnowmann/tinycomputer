@@ -446,6 +446,11 @@ pub(super) fn overlays(sim: &Sim, root: &str, candidates: &mut Vec<Candidate>) {
         candidates.push(node("Close", "button", &["Click"], &toast, 700.0));
         candidates.push(node("Learn more", "link", &["Click"], &toast, 720.0));
     }
+    if sim.has(Quirk::CookieBar) {
+        let bar = [root, "region \"We use cookies\""];
+        candidates.push(node("Accept all", "button", &["Click"], &bar, 700.0));
+        candidates.push(node("Cookie policy", "link", &["Click"], &bar, 720.0));
+    }
     if sim.has(Quirk::ConsentBanner) {
         for candidate in candidates.iter_mut() {
             candidate.states = vec!["covered".to_owned()];

@@ -35,6 +35,9 @@ pub(super) enum Quirk {
     DisabledArchive,
     /// A promo toast with a Close button sits over the page until closed.
     PromoToast,
+    /// A cookie bar drawn without a dialog's role, its "Accept all" button
+    /// the way out, sits over the page until accepted.
+    CookieBar,
     /// A consent banner lies over the page as a popover: every other click
     /// is refused as covered, Escape leaves it, and its "Allow Selection"
     /// or "Allow all" closes it.
@@ -384,6 +387,10 @@ impl AgentBackend for App {
                 sim.clicks.push(name.clone());
                 if name == "Close" && sim.has(Quirk::PromoToast) {
                     sim.quirks.remove(&Quirk::PromoToast);
+                    return DesktopResponse::ok("click", json!({}));
+                }
+                if name == "Accept all" && sim.has(Quirk::CookieBar) {
+                    sim.quirks.remove(&Quirk::CookieBar);
                     return DesktopResponse::ok("click", json!({}));
                 }
                 if sim.page().is_some() {

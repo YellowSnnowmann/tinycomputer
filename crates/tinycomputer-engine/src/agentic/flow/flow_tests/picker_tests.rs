@@ -1,5 +1,5 @@
 //! Pop-ups and calendars a step works with: a closer that goes with its
-//! pop-up, a calendar the task picked in closed for a press behind it, in
+//! pop-up (a "Close" or a consent bar's "Accept all"), a calendar the task picked in closed for a press behind it, in
 //! its own step or a later one, and a date picked from a calendar already
 //! open.
 
@@ -57,6 +57,44 @@ async fn a_closer_that_goes_with_its_pop_up_ends_a_step_closing_it() {
         unrelated.result.stop,
         FlowStopReason::Completed,
         "a step that closes nothing is not finished by a closer"
+    );
+}
+
+/// Answers that press the cookie bar's "Accept all" and never judge the
+/// step done.
+fn press_accept(id: &str, question: &Question, _: &Sim) -> Option<Answer> {
+    match id {
+        "done" | "blocked" => Some(noul(0.05)),
+        "move" => Some(pick(question, "activate", 0.9)),
+        _ if id == "target" || id == "region" || id.starts_with("group_") => {
+            Some(pick(question, "Accept all", 0.9))
+        }
+        _ => None,
+    }
+}
+
+#[tokio::test]
+async fn accepting_a_cookie_bar_ends_the_step_that_accepts_it() {
+    // A consent bar drawn without a dialog's role closes on "Accept all"
+    // as surely as a pop-up on "Close": the press going with the bar is
+    // the evidence the judge cannot see.
+    let run = run_with(
+        App::with(|sim| {
+            sim.quirks.insert(Quirk::CookieBar);
+        }),
+        json!({"app": "Mail", "steps": ["accept the cookie banner"]}),
+        |request| request.disabled_loops.push(FlowLoop::Attention),
+        press_accept,
+    )
+    .await;
+    assert_eq!(run.result.stop, FlowStopReason::Completed);
+    assert_eq!(run.app.sim().clicks, ["Accept all"]);
+    assert!(
+        run.result.steps[0]
+            .note
+            .contains("closed with what it was on"),
+        "{}",
+        run.result.steps[0].note
     );
 }
 

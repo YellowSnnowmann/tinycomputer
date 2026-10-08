@@ -303,8 +303,11 @@ const OVERLAYS: &[&str] = &[
     "overlay", "prompt", "notice",
 ];
 
-/// Words of a control that closes what it sits on.
-const CLOSERS: &[&str] = &["close", "dismiss", "skip", "later", "decline", "reject"];
+/// Words of a control that closes what it sits on: a consent bar's "Accept
+/// all" or "I agree" closes it as surely as its "Reject all" does.
+const CLOSERS: &[&str] = &[
+    "close", "dismiss", "skip", "later", "decline", "reject", "accept", "agree",
+];
 
 fn words(text: &str) -> Vec<String> {
     text.split(|character: char| !character.is_alphanumeric())
