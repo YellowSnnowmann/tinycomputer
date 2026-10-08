@@ -208,10 +208,11 @@
     // flight site drew its days as buttons in such a grid, no day read as a
     // date, and the departure was never picked.
     const titleUses = new Map();
+    const grids = [];
     for (const grid of base.querySelectorAll('div, ul, ol, tbody')) {
       const kids = grid.children;
       if (kids.length < 28 || kids.length > 49
-        || calendars.some((calendar) => calendar.contains(grid))) continue;
+        || [...calendars, ...grids].some((calendar) => calendar.contains(grid))) continue;
       const days = [...kids].map((kid) => {
         const leading = /^(\d{1,2})(?:\s|$)/.exec(squash(kid.innerText));
         return leading && shown(kid) ? { cell: kid, day: Number(leading[1]) } : null;
@@ -229,12 +230,20 @@
       titleUses.set(title.element, used + 1);
       const [month, year] = title.months[Math.min(used, title.months.length - 1)];
       const spelled = MONTHS[month];
-      const holder = grid.parentElement;
-      calendars.push(holder && holder !== document.body ? holder : grid);
+      grids.push(grid);
       for (const { cell, day } of run) {
         const pressed = cell.matches(NESTED) ? cell : cell.querySelector(NESTED) || cell;
         calendarDays.set(pressed, `${day} ${spelled[0].toUpperCase()}${spelled.slice(1)} ${year}`);
       }
+    }
+    // Each month is the block holding its grid, with its heading and
+    // arrows, once every grid is found: a block holding two months' grids
+    // side by side, with no box of each month's own, is no one month, and
+    // is added as the picker below.
+    for (const grid of grids) {
+      const holder = grid.parentElement;
+      const shared = holder && grids.some((other) => other !== grid && holder.contains(other));
+      calendars.push(holder && holder !== document.body && !shared ? holder : grid);
     }
     // A picker showing two months beside each other pages both with one
     // pair of arrows, drawn beside the months rather than inside either:
@@ -899,15 +908,18 @@
   };
 
   // The nearest container that scrolls its content (a popover's list), or
-  // null. Each container is looked at once.
+  // null. Each container is looked at once. An element fixed to the window
+  // moves with no container, and none of them clips it: a fixed pop-up
+  // drawn from inside a scrolling list shows wherever it is placed.
   const scrollers = new Map();
   const scrollerOf = (element) => {
+    if (style(element).position === 'fixed') return null;
     const parent = element.parentElement;
     if (!parent || parent === document.body || parent === document.documentElement) return null;
     if (scrollers.has(parent)) return scrollers.get(parent);
-    const style = getComputedStyle(parent);
-    const scrolls = (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight)
-      || (/(auto|scroll)/.test(style.overflowX) && parent.scrollWidth > parent.clientWidth);
+    const overflow = style(parent);
+    const scrolls = (/(auto|scroll)/.test(overflow.overflowY) && parent.scrollHeight > parent.clientHeight)
+      || (/(auto|scroll)/.test(overflow.overflowX) && parent.scrollWidth > parent.clientWidth);
     const found = scrolls ? parent : scrollerOf(parent);
     scrollers.set(parent, found);
     return found;

@@ -6,18 +6,24 @@
 use super::live_tests::{live_reading, shown_names};
 
 /// Two months drawn as grids of buttons, not tables, under one header that
-/// names both: each day shows its fare after its number ("22 6529").
+/// names both: each day shows its fare after its number ("22 6529"). Each
+/// grid sits in a box of its month's own when `boxed`, or both side by
+/// side in one.
 #[cfg(feature = "agent-browser")]
-fn grid_calendar_page() -> String {
+fn grid_calendar_page(boxed: bool) -> String {
     let grid = |blanks: u32, days: u32, fares: u32| {
         let cells = (0..blanks)
             .map(|_| "<span></span>".to_owned())
             .chain((1..=days).map(|day| format!("<button>{day} {}</button>", fares + day * 7)))
             .collect::<String>();
-        format!(
-            "<div><div>Su Mo Tu We Th Fr Sa</div>\
-             <div style=\"display: grid; grid-template-columns: repeat(7, 44px)\">{cells}</div></div>"
-        )
+        let grid = format!(
+            "<div style=\"display: grid; grid-template-columns: repeat(7, 44px)\">{cells}</div>"
+        );
+        if boxed {
+            format!("<div><div>Su Mo Tu We Th Fr Sa</div>{grid}</div>")
+        } else {
+            grid
+        }
     };
     format!(
         "<div style=\"width: 700px\"><div><span>October 2026</span> <span>November 2026</span></div>\
@@ -30,22 +36,26 @@ fn grid_calendar_page() -> String {
 #[cfg(feature = "agent-browser")]
 #[tokio::test]
 async fn live_a_calendar_drawn_as_grids_of_buttons_reads_its_days_as_dates() {
-    let Some(reading) = live_reading(&grid_calendar_page()).await else {
-        return;
-    };
-    let described = |name: &str| {
-        reading["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|node| node["name"] == name)
-            .map_or_else(
-                || panic!("{name} not offered: {:?}", shown_names(&reading)),
-                |node| node["description"].as_str().unwrap_or_default().to_owned(),
-            )
-    };
-    assert_eq!(described("22 6154"), "22 October 2026");
-    assert_eq!(described("5 7035"), "5 November 2026");
+    // Two grids side by side in one block are two months too, not one
+    // calendar that hides the second.
+    for boxed in [true, false] {
+        let Some(reading) = live_reading(&grid_calendar_page(boxed)).await else {
+            return;
+        };
+        let described = |name: &str| {
+            reading["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["name"] == name)
+                .map_or_else(
+                    || panic!("{name} not offered: {:?}", shown_names(&reading)),
+                    |node| node["description"].as_str().unwrap_or_default().to_owned(),
+                )
+        };
+        assert_eq!(described("22 6154"), "22 October 2026", "boxed: {boxed}");
+        assert_eq!(described("5 7035"), "5 November 2026", "boxed: {boxed}");
+    }
 }
 
 /// A picker showing two months, drawn as a hotel site's was: each month a

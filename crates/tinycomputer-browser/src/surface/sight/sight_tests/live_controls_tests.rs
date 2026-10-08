@@ -1,7 +1,8 @@
 //! Live tests of what sight reads as a control, gated on
 //! `TINYCOMPUTER_LIVE_BROWSER=1`: rows a script framework wires to a click,
 //! options inside their trigger, classes behind a variant, icons named in
-//! camel case, and a control brought into the window before its press.
+//! camel case, a control brought into the window before its press, and a
+//! control fixed to the window inside a scrolling list.
 
 #[cfg(feature = "agent-browser")]
 use serde_json::json;
@@ -189,4 +190,40 @@ async fn live_a_sprite_its_class_names_in_camel_case_is_read_as_that_icon() {
         .unwrap_or_else(|| panic!("no close control: {:?}", shown_names(&reading)));
     assert_eq!(close["role"], "button");
     assert_eq!(close["description"], "an icon");
+}
+
+/// A scrolling list of airports whose last row holds a "Done" button fixed
+/// to the window below the list, outside the list's view.
+#[cfg(feature = "agent-browser")]
+const FIXED_IN_LIST_PAGE: &str = r#"<ul id="list" role="listbox" aria-label="Airports" style="position: absolute; top: 10px; left: 10px; width: 300px; height: 100px; overflow: auto; margin: 0; padding: 0">
+  <li role="option">DEL Delhi</li><li role="option">BLR Bengaluru</li><li role="option">MAA Chennai</li>
+  <li role="option">HYD Hyderabad</li><li role="option">CCU Kolkata</li><li role="option">BOM Mumbai</li>
+  <li role="option">GOI Goa</li><li role="option">PNQ Pune</li>
+  <li><button style="position: fixed; top: 300px; left: 10px">Done</button></li>
+</ul>
+<style> #list li { height: 24px; cursor: pointer; list-style: none } </style>"#;
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_a_control_fixed_to_the_window_inside_a_scrolling_list_is_not_scrolled_away() {
+    let Some(reading) = live_reading(FIXED_IN_LIST_PAGE).await else {
+        return;
+    };
+    let states = |name: &str| {
+        reading["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["name"] == name)
+            .map_or_else(
+                || panic!("{name} not offered: {:?}", shown_names(&reading)),
+                |node| node["states"].to_string(),
+            )
+    };
+    assert!(!states("Done").contains("offscreen"), "{}", states("Done"));
+    assert!(
+        states("PNQ Pune").contains("offscreen"),
+        "a row below the list's fold still is: {}",
+        states("PNQ Pune")
+    );
 }
