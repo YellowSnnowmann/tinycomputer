@@ -146,7 +146,8 @@ with `TINYCOMPUTER_JEV_JOURNAL=$TASK_OUT/journal` writes there: its
 the wall time into planning, rescues, waits for a person, and flows (and
 within flows: Jev, settling, acting, reading the screen, the rest), counting
 each moment once. It also reports per-call and per-decision latency (p50,
-p90), how much the slowest call adds to each round of calls, decisions,
+p90), how much the slowest call adds to each round of calls (a quorum's
+`left` framings count in no round), decisions,
 calls, tokens, and step, `do` turn, and action latency (p50, p90). One task prints in full; several print one
 line each with their medians; `--json` prints every split and the median.
 

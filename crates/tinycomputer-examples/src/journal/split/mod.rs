@@ -242,18 +242,25 @@ impl Kinds {
 
 /// The mean of how much longer each round of calls waited for its slowest
 /// call than for its median one. A round is the calls journaled since the
-/// previous decision: one decision's framings, or a batch's.
+/// previous decision: one decision's framings, or a batch's. The framings a
+/// quorum did not wait for (its `left`) journal after their decision, and
+/// are no round's.
 fn slowest_extra(events: &[Value]) -> u64 {
     let mut extras = Vec::new();
     let mut round = Vec::new();
+    let mut late = 0;
     for event in events {
         match event["event"].as_str() {
+            Some("exchange") if late > 0 => late -= 1,
             Some("exchange") => round.push(number(event, "latency_ms")),
-            Some("decision") if !round.is_empty() => {
-                round.sort_unstable();
-                let slowest = round[round.len() - 1];
-                extras.push(slowest - round[(round.len() - 1) / 2]);
-                round.clear();
+            Some("decision") => {
+                if !round.is_empty() {
+                    round.sort_unstable();
+                    let slowest = round[round.len() - 1];
+                    extras.push(slowest - round[(round.len() - 1) / 2]);
+                    round.clear();
+                }
+                late = number(event, "left");
             }
             Some("run") => round.clear(),
             _ => {}

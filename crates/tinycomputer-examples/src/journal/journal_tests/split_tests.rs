@@ -186,3 +186,29 @@ fn a_folder_of_runs_reads_as_one_task() {
     );
     let _ = std::fs::remove_dir_all(&scratch);
 }
+
+#[test]
+fn the_framings_a_quorum_left_count_in_no_round() {
+    let exchange = |ms: u64, latency: u64| json!({"event": "exchange", "at": at(ms), "latency_ms": latency, "ok": true});
+    let decision = |ms: u64, left: u64| json!({"event": "decision", "at": at(ms), "wall_ms": 500, "left": left});
+    let events = vec![
+        json!({"event": "run", "at": at(0), "kind": "flow"}),
+        exchange(400, 400),
+        exchange(500, 500),
+        decision(500, 0),
+        exchange(800, 300),
+        exchange(800, 300),
+        exchange(800, 300),
+        decision(800, 2),
+        // The two the quorum left, ending after their decision.
+        exchange(1_900, 2_000),
+        exchange(2_400, 2_500),
+        exchange(3_000, 600),
+        exchange(3_100, 700),
+        decision(3_100, 0),
+    ];
+    let spent = split(&events);
+    // Rounds of 400/500, 300/300/300 and 600/700: 100, 0 and 100 ms.
+    assert_eq!(spent.slowest_extra_ms, 66);
+    assert_eq!(spent.calls, 9, "every call made counts");
+}
