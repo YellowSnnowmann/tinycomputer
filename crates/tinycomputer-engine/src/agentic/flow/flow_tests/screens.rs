@@ -131,6 +131,7 @@ pub(super) struct Booking {
 
 /// What pressing `name` does to the booking form.
 pub(super) fn press_booking(sim: &mut Sim, name: &str) {
+    let stays_open = sim.has(Quirk::CalendarStaysOpen);
     let Some(booking) = sim.booking.as_mut() else {
         return;
     };
@@ -142,6 +143,8 @@ pub(super) fn press_booking(sim: &mut Sim, name: &str) {
             sim.fields
                 .insert("Destination".to_owned(), "Srinagar, SXR".to_owned());
         }
+        // A calendar that stays open is closed by its own button again.
+        "Departure" if stays_open && booking.calendar.is_some() => booking.calendar = None,
         "Departure" => booking.calendar = Some(8),
         "Next Month" => booking.calendar = booking.calendar.map(|month| (month + 1) % 12),
         // The calendar's own aggregated-label container also ends with
@@ -150,7 +153,9 @@ pub(super) fn press_booking(sim: &mut Sim, name: &str) {
         // a bug that let production code ground and press that container
         // instead of a day must not be able to pass this simulated test.
         day if booking.calendar.is_some() && is_single_day_label(day) => {
-            booking.calendar = None;
+            if !stays_open {
+                booking.calendar = None;
+            }
             sim.fields.insert("Departure".to_owned(), day.to_owned());
         }
         _ => {}
@@ -257,6 +262,13 @@ pub(super) fn booking_widget(
         }
     }
     candidates.push(node("Departure", "button", &["Click"], &widget, 120.0));
+    if sim.has(Quirk::CalendarStaysOpen) {
+        let mut find = node("Find flights", "button", &["Click"], &widget, 200.0);
+        if booking.calendar.is_some() {
+            find.states = vec!["covered".to_owned()];
+        }
+        candidates.push(find);
+    }
     if let Some(month) = booking.calendar {
         // The date field's own label lists the whole open calendar.
         let listing = (1..=28)
@@ -377,6 +389,19 @@ pub(super) fn result_cards(
             },
             path,
             order: order + 5,
+            ..Candidate::default()
+        });
+    }
+    for chip in 0..sim.fare_chips {
+        text_nodes.push(Candidate {
+            role: "text".to_owned(),
+            value: Some(json!(format!("₹ {}", 1_000 + chip))),
+            path: vec![
+                root.to_owned(),
+                "list \"Fares\"".to_owned(),
+                format!("listitem #{}", chip + 1),
+            ],
+            order: 300 + chip * 10,
             ..Candidate::default()
         });
     }

@@ -28,6 +28,8 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         operation: JevOperation,
         intent: &str,
     ) -> Result<tinycomputer_bus::DesktopResponse, Halt> {
+        // Read before this press, which would count as one in the dialog.
+        let served = self.front.served_calendar();
         let chosen = target.clone();
         let reply = self
             .act(log, verb, Some(target), move |backend| {
@@ -42,8 +44,14 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         // lies behind it leaves the flow it began (live, a movie's language
         // link behind its booking dialog led to a listing of other films).
         // A layer drawn over the window is such a question only when the
-        // task's own press opened it; a calendar left open is in the way.
-        if self.front.opened_dialog || !matches!(self.front.surface.as_str(), "window" | "layer") {
+        // task's own press opened it; a calendar left open is in the way,
+        // and so is one the task opened and has pressed in since: live, a
+        // calendar stayed in front of the guests and Search buttons once
+        // both dates were picked, and every press behind it was refused.
+        if (self.front.opened_dialog()
+            || !matches!(self.front.surface.as_str(), "window" | "layer"))
+            && !served
+        {
             self.history.push(format!(
                 "{} lies behind the dialog in front; act within the dialog instead",
                 label(target)

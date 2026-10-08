@@ -121,6 +121,29 @@ async fn pick_ranks_the_list_that_has_prices_not_the_longest_one() {
 }
 
 #[tokio::test]
+async fn pick_ranks_a_list_it_can_open_not_bare_fares() {
+    // Live, "the cheapest flight" ranked a list of bare fares and took
+    // "₹ 6,054", which had nothing to open.
+    let app = flights();
+    app.sim().fare_chips = 8;
+    let run = run(
+        app,
+        json!({"app": "Mail", "steps": [
+            {"pick": {"from": "the flight results", "by": "lowest price", "into": "flight"}}
+        ]}),
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert_eq!(run.app.sim().picked, ["@s:select-1"]);
+    assert!(run.result.vars["flight"].starts_with("IndiGo"));
+}
+
+#[tokio::test]
 async fn pick_asks_jev_when_the_criterion_needs_judgement() {
     let run = run_with(
         flights(),

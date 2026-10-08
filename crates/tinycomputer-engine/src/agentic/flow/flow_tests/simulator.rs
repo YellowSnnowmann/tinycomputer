@@ -56,6 +56,9 @@ pub(super) enum Quirk {
     SearchBehindLink,
     /// The search behind "Search mail" shows.
     SearchOpen,
+    /// The booking calendar is a dialog that stays open once a day is
+    /// picked, covering a "Find flights" button, until Escape closes it.
+    CalendarStaysOpen,
 }
 
 #[derive(Debug, Default)]
@@ -76,6 +79,9 @@ pub(super) struct Sim {
     pub(super) selected_result: Option<usize>,
     /// Days in a date strip above the results, a longer list than they are.
     pub(super) date_strip: usize,
+    /// Bare fares in a list above the results, cheaper than every flight,
+    /// with nothing to open.
+    pub(super) fare_chips: usize,
     pub(super) extra_buttons: usize,
     /// A booking form with an autocomplete destination and a calendar.
     pub(super) booking: Option<Booking>,
@@ -240,9 +246,8 @@ impl App {
         }
         overlays(&sim, &root, &mut candidates);
         let text_nodes = result_cards(&sim, &root, &mut candidates);
-        let mut surface = "window".to_owned();
+        let surface = surface_of(&sim);
         if sim.obstacle {
-            surface = "sheet".to_owned();
             obstacle_sheet(&sim, &mut candidates);
         }
         Screen {
@@ -256,6 +261,23 @@ impl App {
             unexplored: Vec::new(),
             text_nodes,
         }
+    }
+}
+
+/// What the simulated page shows in front: the obstacle's sheet, a
+/// calendar that stays open as a dialog, or the window.
+fn surface_of(sim: &Sim) -> String {
+    if sim.obstacle {
+        "sheet".to_owned()
+    } else if sim.has(Quirk::CalendarStaysOpen)
+        && sim
+            .booking
+            .as_ref()
+            .is_some_and(|booking| booking.calendar.is_some())
+    {
+        "dialog".to_owned()
+    } else {
+        "window".to_owned()
     }
 }
 
@@ -289,6 +311,15 @@ fn refused_click(sim: &mut Sim, name: &str) -> Option<DesktopResponse> {
             return Some(DesktopResponse::ok("click", json!({})));
         }
         return Some(covered("consent"));
+    }
+    if name == "Find flights"
+        && sim.has(Quirk::CalendarStaysOpen)
+        && sim
+            .booking
+            .as_ref()
+            .is_some_and(|booking| booking.calendar.is_some())
+    {
+        return Some(covered("calendar"));
     }
     sim.has(Quirk::Drawer).then(|| covered("drawer"))
 }
@@ -459,6 +490,11 @@ impl AgentBackend for App {
                 sim.obstacle = false;
                 sim.quirks.remove(&Quirk::Drawer);
                 drop_unpicked(&mut sim);
+                if sim.has(Quirk::CalendarStaysOpen)
+                    && let Some(booking) = sim.booking.as_mut()
+                {
+                    booking.calendar = None;
+                }
             }
             _ => {}
         }

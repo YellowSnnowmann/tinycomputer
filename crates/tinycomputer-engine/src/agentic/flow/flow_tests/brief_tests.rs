@@ -363,3 +363,70 @@ async fn a_long_goal_is_clipped_in_the_brief() {
     assert_eq!(goal.chars().count(), 601);
     assert!(goal.ends_with('…'));
 }
+
+/// A browser screen of `candidates`, in the order given.
+fn long_screen(candidates: Vec<Candidate>) -> Screen {
+    Screen {
+        app: "browser".to_owned(),
+        window: None,
+        surface: "sheet".to_owned(),
+        candidates,
+        context: Vec::new(),
+        unexplored: Vec::new(),
+        text_nodes: Vec::new(),
+    }
+}
+
+/// `count` buttons named `prefix` and their number, each `covered` or not.
+fn buttons(prefix: &str, count: u32, covered: bool) -> Vec<Candidate> {
+    (0..count)
+        .map(|index| {
+            let mut control = node(
+                &format!("{prefix} {index}"),
+                "button",
+                &["Click"],
+                &["main"],
+                f64::from(index),
+            );
+            if covered {
+                control.states = vec!["covered".to_owned()];
+            }
+            control
+        })
+        .collect()
+}
+
+/// The element lines Jev is shown for `screen`.
+fn element_lines(screen: &Screen) -> Vec<String> {
+    ask::state(screen, "x", &[], false)["elements"]["untrusted_accessibility_data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|line| line.as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn a_long_screen_shows_jev_what_is_in_view_and_keeps_room_for_the_rest() {
+    // Live, a sign-up pop-up a long page drew at the end of its document
+    // fell outside the first 120 elements, behind the covered page.
+    let mut candidates = buttons("Page", 130, true);
+    for name in ["close", "Enter your Mobile Number"] {
+        candidates.push(node(name, "button", &["Click"], &["dialog"], 200.0));
+    }
+    let lines = element_lines(&long_screen(candidates));
+    assert_eq!(lines.len(), 120);
+    assert!(lines[0].contains("Page 0"), "kept in screen order");
+    assert!(lines[118].contains("close"), "{:?}", &lines[115..]);
+    assert!(lines[119].contains("Enter your Mobile Number"));
+
+    // A calendar open in front fills no more than three quarters of the
+    // room: the guests button it covers, early on the page, stays.
+    let mut candidates = buttons("Search form", 3, true);
+    candidates.extend(buttons("Day", 140, false));
+    candidates.extend(buttons("Footer", 50, true));
+    let lines = element_lines(&long_screen(candidates));
+    assert_eq!(lines.len(), 120);
+    assert!(lines[0].contains("Search form 0"), "{:?}", &lines[..4]);
+    assert_eq!(lines.iter().filter(|line| line.contains("Day")).count(), 90);
+}

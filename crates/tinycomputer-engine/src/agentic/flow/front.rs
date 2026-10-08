@@ -2,11 +2,14 @@
 //! there: a dialog the task opened is the flow's next stage, never cleared
 //! as a distraction or an obstacle, in this step or the next.
 
-use super::view::Screen;
+use super::{steps::names_a_month, view::Screen};
 
 /// Controls a layer must cover, beyond what was covered before the press
 /// that opened it, before it counts as in front of the page.
 pub(super) const LAYER_COVERS: usize = 3;
+
+/// Day cells nothing covers that make what is in front a calendar: a week.
+const CALENDAR_DAYS: usize = 7;
 
 /// The history note for a dialog left open by the run before a rescue.
 const LEFT_OPEN: &str = "a dialog the task opened before is still in front: it is the task's current stage, so work within it";
@@ -29,6 +32,26 @@ pub(super) enum Acted {
     Typed,
 }
 
+/// Whose the dialog in front is, and how far the task has worked in it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum Dialog {
+    /// None of the task's: the window, or what the page itself put in
+    /// front.
+    #[default]
+    Page,
+    /// The task's own, opened by its press (or left open by its run before)
+    /// and not pressed in since: the question it asks first, such as a
+    /// format or a quantity. Live, such a dialog was closed at the start of
+    /// the following step.
+    Asking,
+    /// The task's own, pressed in since it opened.
+    Answered,
+    /// The task's own, worked in by a step before this one: no longer its
+    /// question, and in the way of the next step, but in front until the
+    /// window is (a calendar left open after its day was chosen).
+    Served,
+}
+
 /// What was in front on the last look, and how the run's own actions
 /// brought it there.
 #[derive(Debug, Clone)]
@@ -38,16 +61,13 @@ pub(super) struct Front {
     pub(super) surface: String,
     /// What the run did since the last look.
     pub(super) acted: Acted,
-    /// Whether the dialog in front was opened by the run's own press (a
-    /// question a booking or purchase button asks first, such as a format
-    /// or a quantity). Live, such a dialog was closed at the start of the
-    /// following step.
-    pub(super) opened_dialog: bool,
-    /// Whether the run has neither looked nor browsed yet: a dialog in
-    /// front at a run's first look, before any browsing, was left there by
-    /// the task's run before it (a rescue continues where that run
-    /// stopped), and counts as opened by the task.
-    pub(super) fresh: bool,
+    /// Whose the dialog in front is ([`Dialog`]).
+    pub(super) dialog: Dialog,
+    /// What the run's first look takes a dialog in front for, until it has
+    /// looked or browsed: the task's own when the task's run before this one
+    /// left its own dialog there (`true`; a rescue continues where that run
+    /// stopped), else the page's.
+    first_look: Option<bool>,
     /// How many controls something covered on the last look with nothing
     /// in front: what a sticky header always covers, which a layer a press
     /// opens must add to before it counts.
@@ -56,11 +76,8 @@ pub(super) struct Front {
     /// either changed went to another page, and what covers that page is
     /// the page's own, not an answer the press asked for.
     pub(super) looked_at: (Option<String>, Option<String>),
-    /// Whether the run has pressed or typed inside the task's dialog since
-    /// it opened: such a dialog has served the step that worked in it, and
-    /// a later step finds it in the way rather than asking (a calendar left
-    /// open after its day was chosen).
-    pub(super) answered: bool,
+    /// Whether the last look showed a calendar ([`holds_calendar`]).
+    pub(super) calendar: bool,
 }
 
 /// What the run's own housekeeping does, never a press of the task's: a
@@ -76,19 +93,32 @@ const HOUSEKEEPING: &[&str] = &[
 
 impl Default for Front {
     fn default() -> Self {
-        Self {
-            surface: "window".to_owned(),
-            acted: Acted::Nothing,
-            opened_dialog: false,
-            fresh: true,
-            covered_base: 0,
-            looked_at: (None, None),
-            answered: false,
-        }
+        Self::new(false)
     }
 }
 
 impl Front {
+    /// A run's front before its first look: `inherited` when the task's run
+    /// before this one left its own dialog in front.
+    pub(super) fn new(inherited: bool) -> Self {
+        Self {
+            surface: "window".to_owned(),
+            acted: Acted::Nothing,
+            dialog: Dialog::Page,
+            first_look: Some(inherited),
+            covered_base: 0,
+            looked_at: (None, None),
+            calendar: false,
+        }
+    }
+
+    /// Whether the dialog in front is the task's own and still its stage:
+    /// opened by its press, or left open by its run before, and not yet
+    /// handed back by a step that worked in it.
+    pub(super) fn opened_dialog(&self) -> bool {
+        matches!(self.dialog, Dialog::Asking | Dialog::Answered)
+    }
+
     /// Notes one action, `action` as the run logs it (`click`, `fill …`,
     /// `browse …`, `click (dismiss)`), on an element when `targeted`.
     ///
@@ -99,14 +129,14 @@ impl Front {
     pub(super) fn act(&mut self, action: &str, targeted: bool) {
         if action.starts_with("browse ") {
             *self = Self {
-                fresh: false,
+                first_look: None,
                 ..Self::default()
             };
             return;
         }
         if action.starts_with("launch ") {
             *self = Self {
-                fresh: self.fresh,
+                first_look: self.first_look,
                 ..Self::default()
             };
             return;
@@ -117,9 +147,19 @@ impl Front {
             let typing = action.starts_with("fill") || action.starts_with("type");
             self.acted = if typing { Acted::Typed } else { Acted::Pressed };
         }
-        if pressing && self.opened_dialog {
-            self.answered = true;
+        if pressing && self.dialog == Dialog::Asking {
+            self.dialog = Dialog::Answered;
         }
+    }
+
+    /// Whether the dialog in front is a calendar the task opened and has
+    /// pressed in since, in this step or one before: a picker that has
+    /// served its field, in the way of a press behind it rather than asking
+    /// anything. Live, a calendar stayed in front of the guests and Search
+    /// buttons once both dates were picked, a step each, and every press
+    /// behind it was refused.
+    pub(super) fn served_calendar(&self) -> bool {
+        matches!(self.dialog, Dialog::Answered | Dialog::Served) && self.calendar
     }
 
     /// Begins a step: a dialog the task opened and then worked in has
@@ -127,38 +167,30 @@ impl Front {
     /// last step's last press opened still asks its question (a format
     /// dialog a booking button raised).
     pub(super) fn next_step(&mut self) {
-        if self.answered {
-            self.opened_dialog = false;
-            self.answered = false;
+        if self.dialog == Dialog::Answered {
+            self.dialog = Dialog::Served;
         }
     }
 
     /// Takes in a look at `screen`, at the address `location`: what is in
     /// front, and whether the task opened it. The note for the history
-    /// when the dialog in front became the task's. Only a `browsing` run
-    /// takes a dialog at its first look as the task's: a browser task's
-    /// first run always browses first, so a dialog then is a rescue's
-    /// inheritance, while an application can open with its own alert.
-    pub(super) fn look(
-        &mut self,
-        screen: &Screen,
-        location: Option<&str>,
-        browsing: bool,
-    ) -> Option<&'static str> {
-        let left_open = self.fresh && browsing;
-        self.fresh = false;
+    /// when the dialog in front became the task's. A dialog at a run's first
+    /// look is the task's only when the task's run before this one left its
+    /// own dialog in front ([`Front::new`]): live, a sign-up the page opened
+    /// on load, and a site's menu drawer, were taken for the task's at a
+    /// rescue's first look, and every move past them was refused.
+    pub(super) fn look(&mut self, screen: &Screen, location: Option<&str>) -> Option<&'static str> {
+        let left_open = self.first_look.take() == Some(true);
+        self.calendar = holds_calendar(screen);
         let front = self.front_of(screen, location);
         let note = if front == "window" {
-            self.opened_dialog = false;
-            self.answered = false;
+            self.dialog = Dialog::Page;
             None
-        } else if left_open && !self.opened_dialog {
-            self.opened_dialog = true;
-            self.answered = false;
+        } else if left_open && !self.opened_dialog() {
+            self.dialog = Dialog::Asking;
             Some(LEFT_OPEN)
         } else if self.acted != Acted::Nothing && self.surface == "window" {
-            self.opened_dialog = true;
-            self.answered = false;
+            self.dialog = Dialog::Asking;
             Some(OPENED)
         } else {
             None
@@ -208,4 +240,31 @@ fn covered_count(screen: &Screen) -> usize {
                 .any(|state| state.eq_ignore_ascii_case("covered"))
         })
         .count()
+}
+
+/// Whether `screen` shows a calendar: [`CALENDAR_DAYS`] or more day numbers
+/// nothing covers, each a calendar's grid cell or beside a month's name ("1
+/// September 2026", or "1" described "Thu Oct 01 2026").
+fn holds_calendar(screen: &Screen) -> bool {
+    screen
+        .candidates
+        .iter()
+        .filter(|candidate| {
+            let name = candidate.name.as_deref().unwrap_or_default();
+            let day = name
+                .split_whitespace()
+                .next()
+                .and_then(|word| word.parse::<u8>().ok())
+                .is_some_and(|day| (1..=31).contains(&day));
+            let dated = candidate.role.eq_ignore_ascii_case("gridcell")
+                || names_a_month(name)
+                || candidate.description.as_deref().is_some_and(names_a_month);
+            let covered = candidate
+                .states
+                .iter()
+                .any(|state| state.eq_ignore_ascii_case("covered"));
+            day && dated && !covered
+        })
+        .count()
+        >= CALENDAR_DAYS
 }

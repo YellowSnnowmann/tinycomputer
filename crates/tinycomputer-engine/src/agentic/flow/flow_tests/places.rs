@@ -47,7 +47,15 @@ pub(super) struct Places {
     /// still to come, as a ride app's did live ("Allow location access",
     /// "Search in a different city").
     pub(super) starters: bool,
+    /// Whether each box shows only once its own button is pressed ("From
+    /// …", "To …"), one at a time, as a flight form draws them.
+    pub(super) behind_buttons: bool,
+    /// The box whose button was pressed last (`behind_buttons`).
+    pub(super) door: Option<String>,
 }
+
+/// The buttons that show the boxes of a form drawn `behind_buttons`.
+const DOORS: [&str; 2] = ["From", "To"];
 
 /// The places suggested for `typed`: each one that holds every typed word.
 fn suggested(typed: &str) -> Vec<&'static str> {
@@ -77,6 +85,25 @@ pub(super) fn places_widget(
 ) {
     let form = [root, "group \"Get a ride\""];
     for (index, name) in PLACE_BOXES.iter().enumerate() {
+        if places.behind_buttons {
+            // The button shows a place once one is picked, not what is typed.
+            let shown = sim
+                .fields
+                .get(*name)
+                .filter(|_| places.picked.contains(*name))
+                .cloned()
+                .unwrap_or_else(|| "Select a place".to_owned());
+            candidates.push(node(
+                &format!("{} {shown}", DOORS[index]),
+                "button",
+                &["Click"],
+                &form,
+                190.0 + 40.0 * f64::from(u8::try_from(index).unwrap()),
+            ));
+            if places.door.as_deref() != Some(*name) {
+                continue;
+            }
+        }
         let mut field = node(
             name,
             "textbox",
@@ -165,6 +192,14 @@ pub(super) fn drop_unpicked(sim: &mut Sim) {
 /// whichever that is; a press anywhere else but the box moves the focus on,
 /// so the list closes and drops the box's unpicked text, as a page does.
 pub(super) fn press_place(sim: &mut Sim, name: &str) -> bool {
+    if let Some(places) = sim.places.as_mut().filter(|places| places.behind_buttons)
+        && let Some(index) = DOORS
+            .iter()
+            .position(|door| name.starts_with(&format!("{door} ")))
+    {
+        places.door = Some(PLACE_BOXES[index].to_owned());
+        return true;
+    }
     let Some(open) = sim.places.as_ref().and_then(|places| places.open.clone()) else {
         return false;
     };
@@ -183,6 +218,7 @@ pub(super) fn press_place(sim: &mut Sim, name: &str) -> bool {
     if let Some(places) = sim.places.as_mut() {
         places.picked.insert(open.clone());
         places.open = None;
+        places.door = None;
     }
     sim.fields.insert(open, place.to_owned());
     true

@@ -47,6 +47,11 @@ pub(super) struct State {
     pub(super) exchanges: Vec<JevExchange>,
     pub(super) learned: Vec<GroundingHint>,
     pub(super) reads: BTreeMap<String, String>,
+    /// Whether the task's last run left its own dialog in front, for the
+    /// next run to work within ([`RunFlowRequest::dialog_left_open`]).
+    ///
+    /// [`RunFlowRequest::dialog_left_open`]: tinycomputer_bus::RunFlowRequest::dialog_left_open
+    pub(super) dialog_left_open: bool,
     pub(super) finished: usize,
     pub(super) resume: Option<Resume>,
     /// What every run of this task has spent so far, so an approval or a
@@ -112,6 +117,7 @@ impl Tasks {
                 exchanges: Vec::new(),
                 learned: Vec::new(),
                 reads: BTreeMap::new(),
+                dialog_left_open: false,
                 finished: 0,
                 resume: None,
                 spent: Spent::default(),

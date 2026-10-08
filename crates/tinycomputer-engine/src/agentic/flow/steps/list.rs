@@ -34,7 +34,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let by = substitute_safe(&pick.by, &self.vars, &self.facts);
         let mut screen = self.look().await?;
         self.explore(&mut screen).await;
-        let families = result_families(&screen);
+        let families = openable(result_families(&screen));
         if families.is_empty() {
             return Err(Halt::Failed(format!("no list of {from} is showing")));
         }
@@ -338,6 +338,27 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         keys.iter()
             .position(|key| *key == choice)
             .ok_or_else(|| Halt::Failed(format!("no item in {from} clearly meets {by}")))
+    }
+}
+
+/// The lists of `families` a pick can open an item of: those whose items
+/// mostly hold something to press, when any list's do. A pick opens what
+/// it takes, and a list of bare fares (a strip above the flights, or each
+/// card's price read apart from it) has nothing to open: live, "the
+/// cheapest flight" ranked such a list and took "₹ 6,054".
+fn openable(families: Vec<Vec<Group>>) -> Vec<Vec<Group>> {
+    let opens = |groups: &Vec<Group>| {
+        groups
+            .iter()
+            .filter(|group| group.primary.is_some())
+            .count()
+            * 2
+            > groups.len()
+    };
+    if families.iter().any(opens) {
+        families.into_iter().filter(opens).collect()
+    } else {
+        families
     }
 }
 

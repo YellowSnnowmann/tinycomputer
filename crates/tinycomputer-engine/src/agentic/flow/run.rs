@@ -140,7 +140,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
             expecting: None,
             step_location: None,
             step_cleared: BTreeSet::new(),
-            front: Front::default(),
+            front: Front::new(request.dialog_left_open),
         }
     }
 
@@ -346,6 +346,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
                 actions: self.actions,
                 metrics: self.metrics,
                 trace: self.trace,
+                dialog_left_open: self.front.opened_dialog(),
             },
         )
     }

@@ -237,6 +237,18 @@ fn a_date_is_told_from_other_options_and_containers_give_way() {
         "a lone match stays"
     );
     assert!(closest(Vec::new()).is_empty());
+
+    // A list's option stays however long its label: one airport row says
+    // much more than a footer link that only names the city.
+    let link = node("Mumbai", "link", &["Click"], &[], 0.0);
+    let row = node(
+        "BOM Mumbai, India Chhatrapati Shivaji International Airport 3 Nearby Airports found",
+        "option",
+        &["Click"],
+        &[],
+        0.0,
+    );
+    assert_eq!(names(closest(vec![link.clone(), row.clone()])).len(), 2);
 }
 
 #[tokio::test]
@@ -455,6 +467,27 @@ fn in_region_prefers_the_ancestor_named_region_but_keeps_every_match_when_none_i
     // `pick_option` falls back to the unnarrowed pool when nothing on the
     // page names the region at all.
     assert!(in_region(&unrelated, ""));
+
+    // A placing word alone is in too many labels to place an option: only a
+    // container whose name begins with it holds one.
+    let route = node(
+        "Delhi to Mumbai flights",
+        "link",
+        &["Click"],
+        &["root", "list \"Popular routes to Mumbai\""],
+        30.0,
+    );
+    let airport = node(
+        "BOM Mumbai, India",
+        "option",
+        &["Click"],
+        &["root", "dialog \"To\"", "listbox \"Airports\""],
+        40.0,
+    );
+    assert!(!in_region(&route, "to"));
+    assert!(in_region(&airport, "to"));
+    // A longer region name still counts on the option's own label.
+    assert!(in_region(&route, "popular routes"));
 }
 
 #[test]
@@ -486,4 +519,35 @@ fn a_day_in_a_strip_of_dates_is_found_by_its_short_label() {
         "a year the control shows must be the year asked for"
     );
     assert!(shows_date("7 Sept", &date_words("7 September")));
+}
+
+#[test]
+fn a_date_shown_under_the_fields_own_name_is_already_chosen() {
+    // Live, the day was pressed and the departure button showed it, but the
+    // step looked for a box to type the date into and failed. A day of the
+    // calendar names no field, so it never counts.
+    use super::steps::date_shown_in;
+    let screen = |names: &[&str]| Screen {
+        app: "browser".to_owned(),
+        window: None,
+        surface: "window".to_owned(),
+        candidates: names
+            .iter()
+            .map(|name| node(name, "button", &["Click"], &["form"], 0.0))
+            .collect(),
+        context: Vec::new(),
+        unexplored: Vec::new(),
+        text_nodes: Vec::new(),
+    };
+    let set = screen(&["Departure Thu, 22 Oct", "22 6845"]);
+    assert_eq!(
+        date_shown_in(&set, "departure date", "22 October 2026").and_then(|holder| holder.name),
+        Some("Departure Thu, 22 Oct".to_owned())
+    );
+    let unset = screen(&["Departure Fri, 09 Oct", "Thursday, October 22, 2026"]);
+    assert!(date_shown_in(&unset, "departure date", "22 October 2026").is_none());
+    assert!(
+        date_shown_in(&set, "date", "22 October 2026").is_none(),
+        "no word names the field"
+    );
 }

@@ -151,10 +151,12 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             // a press scrolls it out from under the bar (live, a seat table's
             // lower rows sat under its "Pay" bar).
             && !in_dialog(candidate);
-        if covered && self.front.surface != "window" {
+        // A calendar the task has picked in is closed for such a press
+        // (`press_uncovering`), so what it covers can be pressed.
+        if covered && self.front.surface != "window" && !self.front.served_calendar() {
             return false;
         }
-        !(self.front.opened_dialog && closes(candidate) && !asks_to_close(intent))
+        !(self.front.opened_dialog() && closes(candidate) && !asks_to_close(intent))
     }
 
     /// Grounds and performs an `activate`, `expand`, or `scroll` move; the
@@ -201,7 +203,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         // front: the dialog asks something first, and what answers it is
         // pressed instead, though not remembered as the step's control.
         let (grounded, answers_dialog) = match grounded {
-            None if operation == "activate" && self.front.opened_dialog => {
+            None if operation == "activate" && self.front.opened_dialog() => {
                 (self.answer_dialog(log, screen, intent, banned).await?, true)
             }
             grounded => (grounded, false),

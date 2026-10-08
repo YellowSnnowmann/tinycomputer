@@ -314,7 +314,8 @@ pub(super) struct FlowRun<'r, B> {
     /// Escape or a close that did not clear it once will not the next time.
     pub(super) step_cleared: BTreeSet<String>,
     /// What is in front, and whether the run's own press put it there
-    /// (`front.rs`).
+    /// (`front.rs`); built knowing whether the task's run before this one
+    /// left its own dialog in front ([`RunFlowRequest::dialog_left_open`]).
     pub(in crate::agentic::flow) front: Front,
 }
 

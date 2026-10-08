@@ -65,6 +65,7 @@ pub(super) fn run_request(
             trace: state.trace,
             // What earlier runs saved, so a resumed run remembers it.
             collected: state.reads.clone(),
+            dialog_left_open: state.dialog_left_open,
             ..RunFlowRequest::default()
         },
         state.constraints.clone(),

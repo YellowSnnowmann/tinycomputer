@@ -3,7 +3,10 @@
 
 use serde_json::{Value, json};
 
-use crate::agentic::flow::view::{Candidate, Screen, element_line, label, untrusted_context};
+use crate::agentic::flow::{
+    denoise::{Tier, tier},
+    view::{Candidate, Screen, element_line, label, untrusted_context},
+};
 
 use super::{MAX_FIELDS, MAX_HISTORY, MAX_STATE_ELEMENTS};
 
@@ -14,10 +17,8 @@ pub(in crate::agentic::flow) fn state(
     history: &[String],
     include_values: bool,
 ) -> Value {
-    let elements = screen
-        .candidates
-        .iter()
-        .take(MAX_STATE_ELEMENTS)
+    let elements = seen_first(&screen.candidates, MAX_STATE_ELEMENTS)
+        .into_iter()
         .map(|node| element_line(node, include_values))
         .collect::<Vec<_>>();
     let mut state = json!({
@@ -33,6 +34,30 @@ pub(in crate::agentic::flow) fn state(
         state["field_contents"] = json!({"untrusted_accessibility_data": field_contents(screen)});
     }
     state
+}
+
+/// The `most` of `candidates` Jev is shown, in screen order: those in view
+/// first, then the rest as the page orders them, which keep a quarter of
+/// the room. Live, a sign-up pop-up a long page drew at the end of its
+/// document fell outside the first 120 elements, behind the covered page,
+/// and Jev never saw it; and a calendar open in front would fill the room
+/// and hide the guests button it covers, which the next step reads.
+fn seen_first(candidates: &[Candidate], most: usize) -> Vec<&Candidate> {
+    if candidates.len() <= most {
+        return candidates.iter().collect();
+    }
+    let (in_view, rest): (Vec<_>, Vec<_>) = candidates
+        .iter()
+        .enumerate()
+        .partition(|(_, candidate)| tier(candidate) == Tier::InView);
+    let front = in_view.len().min(most - rest.len().min(most / 4));
+    let mut kept = in_view
+        .into_iter()
+        .take(front)
+        .chain(rest.into_iter().take(most - front))
+        .collect::<Vec<_>>();
+    kept.sort_by_key(|(at, _)| *at);
+    kept.into_iter().map(|(_, candidate)| candidate).collect()
 }
 
 /// What each text-holding element shows, at more length than the element

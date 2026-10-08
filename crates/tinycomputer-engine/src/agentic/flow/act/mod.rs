@@ -297,11 +297,14 @@ fn plural(word: &str) -> bool {
 /// Words of a step that ask for an overlay to go away.
 const DISMISS_VERBS: &[&str] = &["dismiss", "close", "accept", "decline", "reject", "skip"];
 
-/// What such a step asks to go away.
+/// What such a step asks to go away ("pop" of "pop-up").
 const OVERLAYS: &[&str] = &[
-    "banner", "dialog", "popup", "cookie", "cookies", "consent", "modal", "overlay", "prompt",
-    "notice",
+    "banner", "dialog", "popup", "popups", "pop", "cookie", "cookies", "consent", "modal",
+    "overlay", "prompt", "notice",
 ];
+
+/// Words of a control that closes what it sits on.
+const CLOSERS: &[&str] = &["close", "dismiss", "skip", "later", "decline", "reject"];
 
 fn words(text: &str) -> Vec<String> {
     text.split(|character: char| !character.is_alphanumeric())
@@ -318,21 +321,44 @@ fn words(text: &str) -> Vec<String> {
 /// A completion judge sees only the screen after the fact, where a closed
 /// cookie banner leaves no trace of which button closed it; this is the
 /// evidence it cannot see.
+///
+/// A pop-up the page draws without a dialog's role leaves the surface the
+/// window throughout, so for a dismissal step a closer ("Close") that went
+/// with what it was pressed on is that evidence instead. Live, an offer
+/// pop-up closed at the first press, the judge could not tell whether
+/// "declining optional cookies" was done with no cookie banner shown, and
+/// the step stalled into a rescue.
 fn closed_the_overlay(last: &LastAction, screen: &Screen, intent: &str) -> Option<Ended> {
-    let name = last.target.as_ref()?.name.as_deref()?;
-    if last.before.surface == "window" || screen.surface != "window" {
+    let target = last.target.as_ref()?;
+    let name = target.name.as_deref()?;
+    if screen.surface != "window" {
         return None;
     }
     let intent = words(intent);
+    let dismissal = intent
+        .iter()
+        .any(|word| DISMISS_VERBS.contains(&word.as_str()))
+        && intent.iter().any(|word| OVERLAYS.contains(&word.as_str()));
+    if last.before.surface == "window" {
+        let closer = words(name)
+            .iter()
+            .any(|word| CLOSERS.contains(&word.as_str()));
+        let gone = !screen
+            .candidates
+            .iter()
+            .any(|candidate| candidate.role == target.role && candidate.name == target.name);
+        return (dismissal && closer && gone).then(|| {
+            Ended::new(
+                StepOutcome::Done,
+                format!("pressed {name:?} and it closed with what it was on"),
+            )
+        });
+    }
     let named = words(name)
         .iter()
         .filter(|word| word.len() > 2)
         .all(|word| intent.iter().any(|said| said.starts_with(word.as_str())))
         && words(name).iter().any(|word| word.len() > 2);
-    let dismissal = intent
-        .iter()
-        .any(|word| DISMISS_VERBS.contains(&word.as_str()))
-        && intent.iter().any(|word| OVERLAYS.contains(&word.as_str()));
     (named || dismissal).then(|| {
         Ended::new(
             StepOutcome::Done,

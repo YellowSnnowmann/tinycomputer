@@ -129,6 +129,9 @@ do.
    on which result to take ("skip Sponsored items", "rated 4 stars or
    more") belongs in that `pick`'s `from` or `by`, never in a step of its
    own: there is nothing on screen to do for it, so such a step fails.
+   For the same reason, a pop-up that may or may not show (a login,
+   cookie, or offer pop-up) is closed in an `if` on it being visible,
+   never in a plain step.
    Keep the task's own words in a `pick`: its `from` names the item the
    task asks for ("the results for <the item named>", not just "the search
    results"), and its `by` is the task's criterion, "first" when the task

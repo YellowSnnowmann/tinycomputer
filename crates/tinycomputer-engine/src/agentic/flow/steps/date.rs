@@ -22,6 +22,15 @@ const MONTHS: &[&str] = &[
     "december",
 ];
 
+/// Whether `text` names a month, in full or cut to three letters or more
+/// ("Oct", "Sept"), as a calendar's day cells and headings do.
+pub(in crate::agentic::flow) fn names_a_month(text: &str) -> bool {
+    text.split(|character: char| !character.is_alphabetic())
+        .filter(|word| word.chars().count() >= 3)
+        .map(str::to_lowercase)
+        .any(|word| MONTHS.iter().any(|month| month.starts_with(&word)))
+}
+
 /// Whether `option` names a calendar day: a month name and a day number that
 /// is a real day of that month (a year, when given, decides February's 28th
 /// against its 29th). `February 31` or `April 31` names no such day, and is

@@ -41,7 +41,10 @@ engine's argument types, the permission preflight, and the bus surface.
   `open_jev` and `sage` decision providers, `JevConfig.fast`,
   `JevConfiguration.fast`, the planner's `LanguageModelProvider` routes, and
   `Capabilities.decision_model`, `planner_model`, `rescue_model`, and
-  `output_model`, all optional) return an
+  `output_model`; 2.9 added `RunFlowRequest.dialog_left_open` and
+  `FlowRunResult.dialog_left_open`, so a run takes a dialog at its first
+  look as the task's only when the task's run before it left that dialog
+  open, all optional) return an
   `AgentResponse` instead — see [`unified-agent.md`](unified-agent.md). They
   share this interface because a TinyBus module exports one interface.
 - The thirteen browser members (2.6) close the list, each prefixed `Browser`

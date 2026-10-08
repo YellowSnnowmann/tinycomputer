@@ -378,3 +378,31 @@ async fn a_skip_resumes_at_the_next_step_with_the_guard_kept() {
     assert_eq!(rescue.covers, 1);
     assert_eq!(rescue.outcome, RescueOutcome::Recovered);
 }
+
+#[tokio::test]
+async fn a_rescue_takes_the_dialog_in_front_as_the_tasks_only_when_the_run_before_left_it() {
+    let rest = || finished_run(FlowStopReason::Completed, vec![], &[], None);
+    // The failed run left the task's own dialog in front: its rescue works
+    // within it.
+    let mut left_open = failed_at_step_two();
+    left_open.data.as_mut().unwrap()["dialog_left_open"] = json!(true);
+    let (tasks, script, _model) = rescued(vec![left_open, rest()], &[Ok(ONE_STEP)]);
+    let view = begin(&tasks, TaskBudget::default());
+    settle(&tasks, &view.id).await;
+    let requests = script.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 2);
+    assert!(
+        !requests[0].dialog_left_open,
+        "a first run inherits nothing"
+    );
+    assert!(requests[1].dialog_left_open);
+
+    // One that left none: a dialog in front at the rescue's first look is
+    // the page's own (a sign-up it opened, a menu), not the task's.
+    let (tasks, script, _model) = rescued(vec![failed_at_step_two(), rest()], &[Ok(ONE_STEP)]);
+    let view = begin(&tasks, TaskBudget::default());
+    settle(&tasks, &view.id).await;
+    let requests = script.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 2);
+    assert!(!requests[1].dialog_left_open);
+}

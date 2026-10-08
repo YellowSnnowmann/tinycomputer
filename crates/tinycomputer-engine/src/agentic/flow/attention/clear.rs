@@ -30,10 +30,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         cleared: &mut Cleared,
     ) -> Result<bool, Halt> {
         // A dialog the run's own press opened is its next stage, not a
-        // distraction (`FlowRun::opened_dialog`).
+        // distraction (`Front::opened_dialog`).
         if !self.deliberates(FlowLoop::Attention)
             || cleared.count >= MAX_CLEARED
-            || self.front.opened_dialog
+            || self.front.opened_dialog()
         {
             return Ok(false);
         }

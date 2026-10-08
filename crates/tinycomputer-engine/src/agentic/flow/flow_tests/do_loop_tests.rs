@@ -653,7 +653,7 @@ async fn a_step_finding_nothing_to_press_answers_the_dialog_the_task_opened() {
     let run = run_with(
         App::with(|sim| sim.obstacle = true),
         json!({"app": "browser", "steps": ["choose Wednesday 7 October 2026 in the date picker"]}),
-        |_| {},
+        |request| request.dialog_left_open = true,
         |id, question, sim| {
             let answering = serde_json::to_string(question)
                 .unwrap()
@@ -689,7 +689,8 @@ async fn a_step_finding_nothing_to_press_answers_the_dialog_the_task_opened() {
 async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_not() {
     // Live, a seat table's lower rows sat under its "Pay" bar and were never
     // offered; a press scrolls such a control out from under the bar. A
-    // browser run takes a dialog at its first look as the task's own.
+    // browser run takes a dialog at its first look as the task's own when
+    // the run before it left that dialog open.
     let pressing = |wanted: &'static str| {
         move |id: &str, question: &Question, sim: &Sim| match id {
             "done" => Some(noul(if sim.obstacle { 0.05 } else { 0.95 })),
@@ -707,7 +708,7 @@ async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_no
             sim.quirks.insert(Quirk::BarOverSheet);
         }),
         json!({"app": "browser", "steps": ["keep editing the draft"]}),
-        |_| {},
+        |request| request.dialog_left_open = true,
         pressing("Keep Editing"),
     )
     .await;
@@ -734,7 +735,7 @@ async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_no
             sim.quirks.insert(Quirk::Covered);
         }),
         json!({"app": "browser", "steps": ["start a new email message"]}),
-        |_| {},
+        |request| request.dialog_left_open = true,
         pressing("New Message"),
     )
     .await;
@@ -782,25 +783,22 @@ fn a_dialog_the_task_worked_in_is_in_the_way_of_the_next_step() {
     let (window, sheet) = (page_at("window", 0), page_at("sheet", 3));
     let mut front = Front::default();
     front.act("browse https://flights.test/", false);
-    assert!(front.look(&window, at, true).is_none());
+    assert!(front.look(&window, at).is_none());
     front.act("click", true);
-    assert!(
-        front.look(&sheet, at, true).is_some(),
-        "the press opened it"
-    );
+    assert!(front.look(&sheet, at).is_some(), "the press opened it");
     front.next_step();
-    assert!(front.opened_dialog, "the next step answers what it asks");
+    assert!(front.opened_dialog(), "the next step answers what it asks");
     front.act("click", true);
-    front.look(&sheet, at, true);
+    front.look(&sheet, at);
     assert!(
-        front.opened_dialog,
+        front.opened_dialog(),
         "still its own within the step that works in it"
     );
     front.next_step();
-    assert!(!front.opened_dialog, "a step later, it is in the way");
-    front.look(&sheet, at, true);
+    assert!(!front.opened_dialog(), "a step later, it is in the way");
+    front.look(&sheet, at);
     assert!(
-        !front.opened_dialog,
+        !front.opened_dialog(),
         "and it does not become the task's again"
     );
 
@@ -808,20 +806,38 @@ fn a_dialog_the_task_worked_in_is_in_the_way_of_the_next_step() {
     for action in ["scroll", "click (clear distraction)", "click (dismiss)"] {
         let mut front = Front::default();
         front.act("browse https://flights.test/", false);
-        front.look(&window, at, true);
+        front.look(&window, at);
         front.act(action, true);
-        assert!(front.look(&sheet, at, true).is_none(), "{action}");
-        assert!(!front.opened_dialog, "{action}");
+        assert!(front.look(&sheet, at).is_none(), "{action}");
+        assert!(!front.opened_dialog(), "{action}");
     }
 
     // Opening an address leaves what was in front behind.
     let mut front = Front::default();
     front.act("browse https://flights.test/", false);
-    front.look(&window, at, true);
+    front.look(&window, at);
     front.act("click", true);
-    front.look(&sheet, at, true);
+    front.look(&sheet, at);
     front.act("browse https://flights.test/next", false);
-    assert!(!front.opened_dialog);
+    assert!(!front.opened_dialog());
+}
+
+#[test]
+fn a_dialog_at_a_runs_first_look_is_the_tasks_only_when_the_run_before_left_it() {
+    use crate::agentic::flow::front::Front;
+    let at = Some("https://flights.test/");
+    let sheet = page_at("sheet", 3);
+    // A pop-up the page opened itself, at a rescue's first look.
+    let mut front = Front::new(false);
+    assert!(front.look(&sheet, at).is_none());
+    assert!(
+        !front.opened_dialog(),
+        "the page's own, cleared like any other"
+    );
+    // The dialog the task's run before left open.
+    let mut front = Front::new(true);
+    assert!(front.look(&sheet, at).is_some());
+    assert!(front.opened_dialog(), "the task's current stage");
 }
 
 #[tokio::test]

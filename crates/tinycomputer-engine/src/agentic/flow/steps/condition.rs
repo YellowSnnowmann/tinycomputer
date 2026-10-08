@@ -180,7 +180,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             }
             // A dialog the task opened asks its question first (a format, a
             // quantity): what lies past it will not show while it waits.
-            if self.front.opened_dialog && check >= 1 {
+            if self.front.opened_dialog() && check >= 1 {
                 return Err(Halt::Failed(
                     "a dialog the task opened is waiting for an answer, so nothing past it shows: choose what it asks, then continue"
                         .to_owned(),
