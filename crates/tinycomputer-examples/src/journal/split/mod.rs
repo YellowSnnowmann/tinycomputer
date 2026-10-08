@@ -19,6 +19,10 @@ pub use render::{render_compare, render_split, render_table};
 pub use time::at_ms;
 use time::{Spans, length, millis, minus, union};
 
+/// Jev's price, in millionths of a dollar per million input tokens: $0.042,
+/// as the repository's evals count it. Jev's output is free.
+const JEV_MICRO_USD_PER_M_INPUT: u64 = 42_000;
+
 /// Where one task's time went, in ms unless named otherwise.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
@@ -78,6 +82,11 @@ pub struct Split {
     pub input_tokens: u64,
     /// Provider-reported output tokens.
     pub output_tokens: u64,
+    /// What Jev's answers cost, in millionths of a dollar: their input
+    /// tokens at $0.042 per million; Jev's output is free. Another model's
+    /// calls (Sage bills by units) are not priced, nor planning and rescues,
+    /// whose tokens are not journaled.
+    pub jev_cost_micro_usd: u64,
     /// Actions taken.
     pub actions: u64,
     /// A step's wall time, 50th and 90th percentiles.
@@ -105,6 +114,7 @@ pub fn split(events: &[Value]) -> Split {
         (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let mut start = i64::MAX;
     let mut end = i64::MIN;
+    let mut jev_tokens = 0_u64;
     for event in events {
         let Some(at) = at_ms(event) else {
             continue;
@@ -147,6 +157,12 @@ pub fn split(events: &[Value]) -> Split {
                 split.failed_calls += u64::from(event["ok"] == Value::Bool(false));
                 split.input_tokens += number(event, "input_tokens");
                 split.output_tokens += number(event, "output_tokens");
+                if event["model"]
+                    .as_str()
+                    .is_some_and(|model| model.contains("jev"))
+                {
+                    jev_tokens += number(event, "input_tokens");
+                }
             }
             "step" => steps.push(number(event, "wall_ms")),
             "turn" => turns.push(number(event, "wall_ms")),
@@ -159,6 +175,7 @@ pub fn split(events: &[Value]) -> Split {
             _ => span.0,
         });
     }
+    split.jev_cost_micro_usd = jev_tokens.saturating_mul(JEV_MICRO_USD_PER_M_INPUT) / 1_000_000;
     if start > end {
         return split;
     }

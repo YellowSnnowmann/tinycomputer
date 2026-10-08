@@ -67,6 +67,7 @@ fn a_tasks_time_is_split_across_its_runs_counting_each_moment_once() {
             slowest_extra_ms: 250,
             input_tokens: 200,
             output_tokens: 10,
+            jev_cost_micro_usd: 0,
             actions: 1,
             step_p50_ms: 1700,
             step_p90_ms: 1700,
@@ -211,4 +212,50 @@ fn the_framings_a_quorum_left_count_in_no_round() {
     // Rounds of 400/500, 300/300/300 and 600/700: 100, 0 and 100 ms.
     assert_eq!(spent.slowest_extra_ms, 66);
     assert_eq!(spent.calls, 9, "every call made counts");
+}
+
+#[test]
+fn jevs_input_tokens_are_priced_and_another_models_are_not() {
+    let exchange = |model: &str, input_tokens: u64| {
+        json!({
+            "event": "exchange", "at": at(1000), "latency_ms": 500, "ok": true,
+            "model": model, "input_tokens": input_tokens, "output_tokens": 40,
+        })
+    };
+    let spent = split(&[
+        json!({"event": "run", "at": at(0), "kind": "flow"}),
+        exchange("typesafe/jev-1.13-20260917", 1_000_000),
+        exchange("typesafe/jev-1.13-20260917", 300_000),
+        // Sage bills by units, not at Jev's price.
+        exchange("levanto-sage", 500_000),
+    ]);
+    assert_eq!(spent.input_tokens, 1_800_000);
+    assert_eq!(
+        spent.jev_cost_micro_usd, 54_600,
+        "1.3 M tokens at $0.042 a million"
+    );
+    let shown = render_split(&spent);
+    assert!(
+        shown.contains("1800000 in, 120 out; Jev cost $0.0546"),
+        "{shown}"
+    );
+    let table = render_table(&[("a".to_owned(), spent.clone())]);
+    assert!(
+        table.lines().next().unwrap().ends_with("jev cost"),
+        "{table}"
+    );
+    assert!(
+        table.lines().nth(1).unwrap().ends_with("$0.0546"),
+        "{table}"
+    );
+    let halved = Split {
+        jev_cost_micro_usd: 27_300,
+        ..spent.clone()
+    };
+    let compared = render_compare(&[spent], &[halved]);
+    let cost = compared
+        .lines()
+        .find(|line| line.starts_with("jev_cost_micro_usd"))
+        .unwrap();
+    assert!(cost.ends_with("-50%"), "{cost}");
 }

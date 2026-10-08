@@ -148,8 +148,13 @@ within flows: Jev, settling, acting, reading the screen, the rest), counting
 each moment once. It also reports per-call and per-decision latency (p50,
 p90), how much the slowest call adds to each round of calls (a quorum's
 `left` framings count in no round), decisions,
-calls, tokens, and step, `do` turn, and action latency (p50, p90). One task prints in full; several print one
-line each with their medians; `--json` prints every split and the median.
+calls, tokens, Jev's cost, and step, `do` turn, and action latency (p50,
+p90). Jev's cost is its answers' input tokens at $0.042 per million, the
+price the evals count (OpenRouter's; Jev's output is free), as
+`jev_cost_micro_usd` in millionths of a dollar; another model's calls (Sage
+bills by units) are not priced, nor planning and rescues, whose tokens are
+not journaled. One task prints in full; several print one line each with
+their medians; `--json` prints every split and the median.
 
 `--compare` prints the medians of the tasks before `--vs` against those
 after it, with the change in percent: two builds, or two settings, run on

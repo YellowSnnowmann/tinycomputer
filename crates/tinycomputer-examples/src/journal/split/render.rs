@@ -74,17 +74,28 @@ pub fn render_split(split: &Split) -> String {
     );
     let _ = writeln!(
         out,
-        "tokens    {} in, {} out",
-        split.input_tokens, split.output_tokens
+        "tokens    {} in, {} out; Jev cost {}",
+        split.input_tokens,
+        split.output_tokens,
+        dollars(split.jev_cost_micro_usd)
     );
     out
+}
+
+/// `micro_usd` millionths of a dollar, to a hundredth of a cent.
+fn dollars(micro_usd: u64) -> String {
+    format!(
+        "${}.{:04}",
+        micro_usd / 1_000_000,
+        micro_usd % 1_000_000 / 100
+    )
 }
 
 /// One line per named split, then their medians, for a terminal.
 #[must_use]
 pub fn render_table(splits: &[(String, Split)]) -> String {
     let mut out = format!(
-        "{:<44} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>6} {:>6} {:>12} {:>12} {:>7}\n",
+        "{:<44} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>6} {:>6} {:>12} {:>12} {:>7} {:>8}\n",
         "run",
         "wall",
         "plan",
@@ -96,11 +107,12 @@ pub fn render_table(splits: &[(String, Split)]) -> String {
         "decs",
         "call p50/90",
         "dec p50/90",
-        "slow+"
+        "slow+",
+        "jev cost"
     );
     let row = |name: &str, split: &Split| {
         format!(
-            "{:<44} {:>6.1}s {:>6.1}s {:>6.1}s {:>6.1}s {:>6.1}s {:>6.1}s {:>6} {:>6} {:>12} {:>12} {:>5} ms\n",
+            "{:<44} {:>6.1}s {:>6.1}s {:>6.1}s {:>6.1}s {:>6.1}s {:>6.1}s {:>6} {:>6} {:>12} {:>12} {:>5} ms {:>8}\n",
             super::super::clip(name, 44),
             secs(split.wall_ms),
             secs(split.planning_ms),
@@ -112,7 +124,8 @@ pub fn render_table(splits: &[(String, Split)]) -> String {
             split.decisions,
             format!("{}/{}", split.call_p50_ms, split.call_p90_ms),
             format!("{}/{}", split.decision_p50_ms, split.decision_p90_ms),
-            split.slowest_extra_ms
+            split.slowest_extra_ms,
+            dollars(split.jev_cost_micro_usd)
         )
     };
     for (name, split) in splits {
@@ -159,7 +172,7 @@ pub fn render_compare(before: &[Split], after: &[Split]) -> String {
 }
 
 /// The fields a comparison lists, in order.
-const COMPARED: [&str; 20] = [
+const COMPARED: [&str; 21] = [
     "wall_ms",
     "planning_ms",
     "rescue_ms",
@@ -178,6 +191,7 @@ const COMPARED: [&str; 20] = [
     "decision_p90_ms",
     "slowest_extra_ms",
     "input_tokens",
+    "jev_cost_micro_usd",
     "step_p90_ms",
     "action_p50_ms",
 ];
