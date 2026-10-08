@@ -346,7 +346,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
                 actions: self.actions,
                 metrics: self.metrics,
                 trace: self.trace,
-                dialog_left_open: self.front.opened_dialog(),
+                dialog_left_open: self.front.left_open(),
             },
         )
     }

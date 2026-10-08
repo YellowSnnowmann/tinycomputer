@@ -2,7 +2,10 @@
 //! there: a dialog the task opened is the flow's next stage, never cleared
 //! as a distraction or an obstacle, in this step or the next.
 
-use super::{steps::names_a_month, view::Screen};
+use super::{
+    steps::names_a_month,
+    view::{Candidate, Screen},
+};
 
 /// Controls a layer must cover, beyond what was covered before the press
 /// that opened it, before it counts as in front of the page.
@@ -119,14 +122,25 @@ impl Front {
         matches!(self.dialog, Dialog::Asking | Dialog::Answered)
     }
 
+    /// Whether the run leaves the task's own dialog in front, for the task's
+    /// next run ([`tinycomputer_bus::RunFlowRequest::dialog_left_open`]): one
+    /// it opened, or the one its run before left there while it has not
+    /// looked since. A run that ends before its first look changed nothing
+    /// in front.
+    pub(super) fn left_open(&self) -> bool {
+        self.opened_dialog() || self.first_look == Some(true)
+    }
+
     /// Notes one action, `action` as the run logs it (`click`, `fill …`,
-    /// `browse …`, `click (dismiss)`), on an element when `targeted`.
+    /// `browse …`, `click (dismiss)`), on `target` when it had one.
     ///
     /// Only the task's own presses and typing count: a scroll moves no
     /// question into view, and the run's housekeeping (a distraction
-    /// cleared, an undo) answers none. Opening an address or an application
-    /// leaves whatever was in front behind.
-    pub(super) fn act(&mut self, action: &str, targeted: bool) {
+    /// cleared, an undo) answers none. Nor does turning a calendar's month
+    /// (`turns_the_month`): the calendar still asks for its day. Opening an
+    /// address or an application leaves whatever was in front behind.
+    pub(super) fn act(&mut self, action: &str, target: Option<&Candidate>) {
+        let targeted = target.is_some();
         if action.starts_with("browse ") {
             *self = Self {
                 first_look: None,
@@ -147,7 +161,7 @@ impl Front {
             let typing = action.starts_with("fill") || action.starts_with("type");
             self.acted = if typing { Acted::Typed } else { Acted::Pressed };
         }
-        if pressing && self.dialog == Dialog::Asking {
+        if pressing && self.dialog == Dialog::Asking && !target.is_some_and(turns_the_month) {
             self.dialog = Dialog::Answered;
         }
     }
@@ -242,10 +256,34 @@ fn covered_count(screen: &Screen) -> usize {
         .count()
 }
 
+/// Whether `target` only turns a calendar's month ("next month", "Previous
+/// month"), which answers nothing the calendar asks.
+fn turns_the_month(target: &Candidate) -> bool {
+    let words = target
+        .name
+        .as_deref()
+        .unwrap_or_default()
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>();
+    let said = words.join(" ");
+    words.len() <= 4 && (said.contains("next month") || said.contains("previous month"))
+}
+
 /// Whether `screen` shows a calendar: [`CALENDAR_DAYS`] or more day numbers
-/// nothing covers, each a calendar's grid cell or beside a month's name ("1
-/// September 2026", or "1" described "Thu Oct 01 2026").
+/// nothing covers, each beside a month's name ("1 September 2026", or "1"
+/// described "Thu Oct 01 2026"), or a grid cell on a screen that names a
+/// month somewhere: a seat map's or a table's cells are bare numbers too.
 fn holds_calendar(screen: &Screen) -> bool {
+    let month_shown = screen
+        .candidates
+        .iter()
+        .chain(&screen.text_nodes)
+        .flat_map(|node| [node.name.as_deref(), node.description.as_deref()])
+        .flatten()
+        .chain(screen.context.iter().map(String::as_str))
+        .any(names_a_month);
     screen
         .candidates
         .iter()
@@ -256,7 +294,7 @@ fn holds_calendar(screen: &Screen) -> bool {
                 .next()
                 .and_then(|word| word.parse::<u8>().ok())
                 .is_some_and(|day| (1..=31).contains(&day));
-            let dated = candidate.role.eq_ignore_ascii_case("gridcell")
+            let dated = (month_shown && candidate.role.eq_ignore_ascii_case("gridcell"))
                 || names_a_month(name)
                 || candidate.description.as_deref().is_some_and(names_a_month);
             let covered = candidate

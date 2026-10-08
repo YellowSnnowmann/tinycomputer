@@ -781,14 +781,15 @@ fn a_dialog_the_task_worked_in_is_in_the_way_of_the_next_step() {
     use crate::agentic::flow::front::Front;
     let at = Some("https://flights.test/");
     let (window, sheet) = (page_at("window", 0), page_at("sheet", 3));
+    let press = node("Control 4", "button", &["Click"], &["main"], 4.0);
     let mut front = Front::default();
-    front.act("browse https://flights.test/", false);
+    front.act("browse https://flights.test/", None);
     assert!(front.look(&window, at).is_none());
-    front.act("click", true);
+    front.act("click", Some(&press));
     assert!(front.look(&sheet, at).is_some(), "the press opened it");
     front.next_step();
     assert!(front.opened_dialog(), "the next step answers what it asks");
-    front.act("click", true);
+    front.act("click", Some(&press));
     front.look(&sheet, at);
     assert!(
         front.opened_dialog(),
@@ -805,20 +806,20 @@ fn a_dialog_the_task_worked_in_is_in_the_way_of_the_next_step() {
     // A scroll or the run's own housekeeping opens no dialog of the task's.
     for action in ["scroll", "click (clear distraction)", "click (dismiss)"] {
         let mut front = Front::default();
-        front.act("browse https://flights.test/", false);
+        front.act("browse https://flights.test/", None);
         front.look(&window, at);
-        front.act(action, true);
+        front.act(action, Some(&press));
         assert!(front.look(&sheet, at).is_none(), "{action}");
         assert!(!front.opened_dialog(), "{action}");
     }
 
     // Opening an address leaves what was in front behind.
     let mut front = Front::default();
-    front.act("browse https://flights.test/", false);
+    front.act("browse https://flights.test/", None);
     front.look(&window, at);
-    front.act("click", true);
+    front.act("click", Some(&press));
     front.look(&sheet, at);
-    front.act("browse https://flights.test/next", false);
+    front.act("browse https://flights.test/next", None);
     assert!(!front.opened_dialog());
 }
 
@@ -838,6 +839,89 @@ fn a_dialog_at_a_runs_first_look_is_the_tasks_only_when_the_run_before_left_it()
     let mut front = Front::new(true);
     assert!(front.look(&sheet, at).is_some());
     assert!(front.opened_dialog(), "the task's current stage");
+}
+
+/// A sheet of ten grid cells named by bare numbers, under `month` when
+/// given.
+fn days_at(month: Option<&str>) -> Screen {
+    let mut screen = page_at("sheet", 3);
+    screen.candidates.extend((1..=10).map(|day: u32| {
+        node(
+            &day.to_string(),
+            "gridcell",
+            &["Click"],
+            &["main"],
+            f64::from(100 + day),
+        )
+    }));
+    screen.context.extend(month.map(str::to_owned));
+    screen
+}
+
+#[test]
+fn turning_a_calendars_month_answers_nothing_it_asks() {
+    // An arrow pressed is no day chosen: the calendar still asks for one,
+    // and nothing it covers may be pressed through it yet.
+    use crate::agentic::flow::front::Front;
+    let at = Some("https://flights.test/");
+    let calendar = days_at(Some("October 2026"));
+    let mut front = Front::default();
+    front.act("browse https://flights.test/", None);
+    front.look(&page_at("window", 0), at);
+    front.act(
+        "click",
+        Some(&node("Departure", "button", &["Click"], &["main"], 0.0)),
+    );
+    assert!(front.look(&calendar, at).is_some(), "the press opened it");
+    front.act(
+        "click",
+        Some(&node("Next month", "button", &["Click"], &["main"], 90.0)),
+    );
+    front.look(&calendar, at);
+    assert!(!front.served_calendar(), "a month turned is no day chosen");
+    assert!(front.opened_dialog());
+    front.act(
+        "click",
+        Some(&node("5", "gridcell", &["Click"], &["main"], 105.0)),
+    );
+    front.look(&calendar, at);
+    assert!(front.served_calendar(), "a day chosen serves its field");
+}
+
+#[test]
+fn a_grid_of_bare_numbers_is_a_calendar_only_beside_a_month() {
+    // A seat map's cells are numbers in a grid too: pressed in, it is no
+    // calendar that has served its field and may be closed for a press
+    // behind it.
+    use crate::agentic::flow::front::Front;
+    let at = Some("https://cinema.test/");
+    for (month, calendar) in [(None, false), (Some("October 2026"), true)] {
+        let grid = days_at(month);
+        let mut front = Front::default();
+        front.act("browse https://cinema.test/", None);
+        front.look(&page_at("window", 0), at);
+        front.act(
+            "click",
+            Some(&node("Select seats", "button", &["Click"], &["main"], 0.0)),
+        );
+        front.look(&grid, at);
+        front.act(
+            "click",
+            Some(&node("5", "gridcell", &["Click"], &["main"], 105.0)),
+        );
+        front.look(&grid, at);
+        assert_eq!(front.served_calendar(), calendar, "{month:?}");
+    }
+}
+
+#[test]
+fn a_run_that_never_looked_hands_on_the_dialog_it_was_left() {
+    use crate::agentic::flow::front::Front;
+    assert!(Front::new(true).left_open(), "nothing changed in front");
+    assert!(!Front::new(false).left_open());
+    let mut front = Front::new(true);
+    front.look(&page_at("window", 0), Some("https://flights.test/"));
+    assert!(!front.left_open(), "the window is in front once it looked");
 }
 
 #[tokio::test]
