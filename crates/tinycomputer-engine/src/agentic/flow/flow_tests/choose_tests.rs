@@ -249,6 +249,12 @@ fn a_date_is_told_from_other_options_and_containers_give_way() {
         0.0,
     );
     assert_eq!(names(closest(vec![link.clone(), row.clone()])).len(), 2);
+    // However the surface spells its role.
+    let row = Candidate {
+        role: "Option".to_owned(),
+        ..row
+    };
+    assert_eq!(names(closest(vec![link, row])).len(), 2);
 }
 
 #[tokio::test]

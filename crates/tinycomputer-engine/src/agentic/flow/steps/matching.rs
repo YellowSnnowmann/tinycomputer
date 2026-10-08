@@ -40,7 +40,7 @@ pub(in crate::agentic::flow) fn closest(matches: Vec<Candidate>) -> Vec<Candidat
     matches
         .into_iter()
         .filter(|candidate| {
-            ONE_OPTION_ROLES.contains(&candidate.role.as_str())
+            is_one_option(candidate)
                 || length(candidate) <= shortest.saturating_mul(3).max(shortest + 40)
         })
         .collect()
@@ -370,8 +370,10 @@ const PLACING_WORDS: &[&str] = &[
 /// ancestor labels (`path`), which the snapshot records outermost first.
 ///
 /// A region named by a placing word alone ("to", "from") holds only what
-/// sits under a container whose name begins with it: live, "to" kept a
-/// page's "Delhi to Mumbai flights" links and dropped the airport list.
+/// sits under a container whose name begins with it, never a control that
+/// names it itself (the "To" box's own button is no option of its list):
+/// live, "to" kept a page's "Delhi to Mumbai flights" links and dropped
+/// the airport list.
 pub(in crate::agentic::flow) fn in_region(candidate: &Candidate, what: &str) -> bool {
     let wanted = plain(what);
     if wanted.is_empty() {
