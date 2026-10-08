@@ -133,10 +133,13 @@ const BOX_WORDS: &[&str] = &[
 const PLACE_LEADS: &[&str] = &["to", "via"];
 
 /// A control on `screen` that is no field itself and whose label holds a
-/// word of a pending slot's name (four letters or more, not a box word),
-/// or begins with its short place word ([`PLACE_LEADS`]): the link or
-/// button that shows the slot's field, such as a store's search link for
-/// the slot "search box", or a flight form's "To BLR" for the slot "to".
+/// word of a pending slot's name (four letters or more, not a box word)
+/// among its first three words, or begins with its short place word
+/// ([`PLACE_LEADS`]): the link or button that shows the slot's field, such
+/// as a store's search link for the slot "search box", or a flight form's
+/// "To BLR" for the slot "to". Further into a label, the slot's word is a
+/// sentence's ("Read our tips to search faster"), and a press there leaves
+/// the form.
 pub(in crate::agentic::flow) fn named_opener(
     screen: &Screen,
     slots: &[Slot],

@@ -42,11 +42,12 @@ engine's argument types, the permission preflight, and the bus surface.
   `JevConfiguration.fast`, the planner's `LanguageModelProvider` routes, and
   `Capabilities.decision_model`, `planner_model`, `rescue_model`, and
   `output_model`; 2.9 added `RunFlowRequest.dialog_left_open` and
-  `FlowRunResult.dialog_left_open`, so a run takes a dialog at its first
-  look as the task's only when the task's run before it left that dialog
-  open, all optional) return an
+  `FlowRunResult.dialog_left_open`; all optional) return an
   `AgentResponse` instead — see [`unified-agent.md`](unified-agent.md). They
-  share this interface because a TinyBus module exports one interface.
+  share this interface because a TinyBus module exports one interface. A
+  task hands `dialog_left_open` from one run's result to its next run's
+  request: a run takes a dialog in front at its first look as the task's
+  own stage only when the run before it left that dialog open.
 - The thirteen browser members (2.6) close the list, each prefixed `Browser`
   (`tinycomputer_bus::browser::names`): sessions, navigate, snapshot,
   perform, read, evaluate, screenshot, held outputs, and downloads. A member

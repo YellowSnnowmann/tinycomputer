@@ -36,12 +36,13 @@ pub(in crate::agentic::flow) fn state(
     state
 }
 
-/// The `most` of `candidates` Jev is shown, in screen order: those in view
-/// first, then the rest as the page orders them, which keep a quarter of
-/// the room. Live, a sign-up pop-up a long page drew at the end of its
-/// document fell outside the first 120 elements, behind the covered page,
-/// and Jev never saw it; and a calendar open in front would fill the room
-/// and hide the guests button it covers, which the next step reads.
+/// The `most` of `candidates` Jev is shown, all listed in screen order.
+/// On a longer screen, those in view are kept first, and the rest, as the
+/// page orders them, keep a quarter of the room. Live, a sign-up pop-up a
+/// long page drew at the end of its document fell outside the first 120
+/// elements, behind the covered page, and Jev never saw it; and a calendar
+/// open in front would fill the room and hide the guests button it covers,
+/// which the next step reads.
 fn seen_first(candidates: &[Candidate], most: usize) -> Vec<&Candidate> {
     if candidates.len() <= most {
         return candidates.iter().collect();
