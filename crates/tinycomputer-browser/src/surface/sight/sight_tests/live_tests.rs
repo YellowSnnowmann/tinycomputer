@@ -12,7 +12,7 @@ use crate::surface::sight::script;
 /// page is written into a blank tab, so nothing is fetched but what the
 /// fixture itself asks for.
 #[cfg(feature = "agent-browser")]
-async fn live_reading(html: &str) -> Option<serde_json::Value> {
+pub(super) async fn live_reading(html: &str) -> Option<serde_json::Value> {
     live_results(html, &[script(None)])
         .await
         .map(|mut results| results.remove(0))
@@ -21,7 +21,7 @@ async fn live_reading(html: &str) -> Option<serde_json::Value> {
 /// A blank tab of a real browser with `html` written into it: `None`
 /// unless `TINYCOMPUTER_LIVE_BROWSER=1`, since CI has no browser to launch.
 #[cfg(feature = "agent-browser")]
-async fn live_page(
+pub(super) async fn live_page(
     html: &str,
 ) -> Option<(
     crate::sessions::Browser,
@@ -79,7 +79,7 @@ async fn live_results(html: &str, scripts: &[String]) -> Option<Vec<serde_json::
 
 /// The names of the controls and the words of the text a reading returned.
 #[cfg(feature = "agent-browser")]
-fn shown_names(reading: &serde_json::Value) -> Vec<String> {
+pub(super) fn shown_names(reading: &serde_json::Value) -> Vec<String> {
     reading["nodes"]
         .as_array()
         .unwrap()
@@ -517,6 +517,54 @@ const CHOICES_PAGE: &str = r#"<main>
   window.changes = [];
   document.addEventListener('change', (event) => window.changes.push(event.target.id));
 </script>"#;
+
+/// A popover's list scrolled so its last rows are out of its view, beside
+/// a button a modal covers.
+#[cfg(feature = "agent-browser")]
+const SCROLLED_LIST_PAGE: &str = r#"<div style="position: absolute; top: 10px; left: 10px; width: 300px">
+  <ul id="list" role="listbox" aria-label="Airports" style="height: 100px; overflow: auto; margin: 0; padding: 0">
+    <li role="option">DEL Delhi</li><li role="option">BLR Bengaluru</li><li role="option">MAA Chennai</li>
+    <li role="option">HYD Hyderabad</li><li role="option">CCU Kolkata</li><li role="option">BOM Mumbai</li>
+    <li role="option">GOI Goa</li><li role="option">PNQ Pune</li>
+  </ul>
+  <div style="height: 40px; background: white">Planning a holiday?</div>
+</div>
+<button id="behind" style="position: absolute; top: 200px; left: 10px">Search</button>
+<div role="dialog" aria-label="Offer" style="position: absolute; top: 180px; left: 0; width: 400px; height: 80px; background: white">
+  Sign up for offers</div>
+<style> #list li { height: 24px; cursor: pointer } </style>"#;
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_a_row_scrolled_out_of_its_list_is_offscreen_not_covered() {
+    let Some(reading) = live_reading(SCROLLED_LIST_PAGE).await else {
+        return;
+    };
+    let states = |name: &str| {
+        reading["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["name"] == name)
+            .map_or_else(
+                || panic!("{name} not offered"),
+                |node| node["states"].to_string(),
+            )
+    };
+    assert!(
+        !states("DEL Delhi").contains("offscreen"),
+        "{}",
+        states("DEL Delhi")
+    );
+    for row in ["BOM Mumbai", "PNQ Pune"] {
+        let read = states(row);
+        assert!(
+            read.contains("offscreen") && !read.contains("covered"),
+            "{row}: {read}"
+        );
+    }
+    assert!(states("Search").contains("covered"), "a modal still covers");
+}
 
 /// The options a reading offers, each as "<name> in <container> <states>".
 #[cfg(feature = "agent-browser")]
