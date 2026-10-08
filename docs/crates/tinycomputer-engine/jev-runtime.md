@@ -132,16 +132,21 @@ A decision asks its framings all at once, each on an HTTP/1.1 connection of
 its own, and opening one to the gateway costs a handshake: live, a task's
 first decision took 330 ms more a call (the median over 84 runs) than the
 task's later decisions of the same size. `JevRuntime::warm(votes)` opens them
-ahead of time. It sends one small evaluation per framing of a decision asked
-`votes` ways (at most 9, `MAX_VOTES`), all at once, each a single yes/no
-question about a one-line state, through `evaluate` like any other call, so
-each is journaled under the step `warm-up`. The answers are dropped, calls
-still out after 10 s (`WARM_TIMEOUT`) are given up on, and Sage, whose calls
-take seconds, is not warmed.
+ahead of time. A step's first turn asks its judging and grounding's opening
+together (`FIRST_TURN`, 2), each in `votes` framings (at most 9,
+`MAX_VOTES`), so the warm-up sends one small evaluation for each of those
+calls, all at once: a single yes/no question about a one-line state, through
+`evaluate` like any other call, so each is journaled under the step
+`warm-up`. The answers are dropped, calls still out after 10 s
+(`WARM_TIMEOUT`) are given up on, and Sage, whose calls take seconds, is not
+warmed. Idle connections stay in the client's pool for 90 s, longer than a
+plan takes to draft.
 
 The task controller warms while a task's plan is drafted
-(`FlowRunner::warm`), so its first decision finds the connections open; the
-task never waits for the warm-up.
+(`FlowRunner::warm`), so its first turn finds the connections open; the task
+never waits for the warm-up. A task whose budget caps its Jev calls
+(`max_model_calls`) is not warmed: the warm-up's calls would not count
+against the cap.
 
 ## Run identity and the journal
 

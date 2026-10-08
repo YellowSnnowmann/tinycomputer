@@ -1,7 +1,7 @@
 //! Tests for warming a runtime's connections while a task's plan is drafted.
 
 use super::*;
-use crate::agentic::runtime::WARM_TIMEOUT;
+use crate::agentic::runtime::{FIRST_TURN, WARM_TIMEOUT};
 
 /// An evaluator nothing ever comes back from.
 struct Silent;
@@ -34,11 +34,15 @@ fn ready() -> tinyinference_decisions::EvaluationResult {
 }
 
 #[tokio::test]
-async fn a_warm_up_asks_one_small_question_for_each_framing() {
-    let (runtime, requests) = runtime_recording(vec![ready(); 7]);
+async fn a_warm_up_asks_one_small_question_for_each_call_of_a_first_turn() {
+    let (runtime, requests) = runtime_recording(vec![ready(); 14]);
     runtime.warm(7).await;
     let requests = requests.lock().unwrap();
-    assert_eq!(requests.len(), 7, "one call a framing, all at once");
+    assert_eq!(
+        requests.len(),
+        14,
+        "the judging and grounding's opening, each in every framing, all at once"
+    );
     for request in requests.iter() {
         assert_eq!(request.model, "jev-latest", "the runtime's own model");
         assert_eq!(
@@ -54,13 +58,21 @@ async fn a_warm_up_asks_one_small_question_for_each_framing() {
 }
 
 #[tokio::test]
-async fn a_warm_up_opens_no_more_than_a_decision_asks_at_once() {
-    let (runtime, requests) = runtime_recording(vec![ready(); 9]);
+async fn a_warm_up_opens_no_more_than_a_first_turn_asks_at_once() {
+    let (runtime, requests) = runtime_recording(vec![ready(); 18]);
     runtime.warm(50).await;
-    assert_eq!(requests.lock().unwrap().len(), 9, "MAX_VOTES at most");
-    let (runtime, requests) = runtime_recording(vec![ready()]);
+    assert_eq!(
+        requests.lock().unwrap().len(),
+        18,
+        "MAX_VOTES framings of each first-turn request at most"
+    );
+    let (runtime, requests) = runtime_recording(vec![ready(); 2]);
     runtime.warm(0).await;
-    assert_eq!(requests.lock().unwrap().len(), 1, "one at least");
+    assert_eq!(
+        requests.lock().unwrap().len(),
+        usize::try_from(FIRST_TURN).unwrap(),
+        "one framing of each at least"
+    );
 }
 
 #[tokio::test]
@@ -83,7 +95,7 @@ async fn a_warm_up_nothing_answers_is_given_up_on() {
 #[tokio::test]
 async fn a_warm_up_is_journaled_with_the_task() {
     let dir = std::env::temp_dir().join(format!("tinycomputer-warm-{}", std::process::id()));
-    let (runtime, _requests) = runtime_recording(vec![ready(); 7]);
+    let (runtime, _requests) = runtime_recording(vec![ready(); 14]);
     let runtime = runtime.with_journal(&dir).journaled_as("task-t-1");
     runtime.warm(7).await;
     let journal = std::fs::read_to_string(dir.join("task-t-1").join("journal.jsonl")).unwrap();
@@ -94,5 +106,5 @@ async fn a_warm_up_is_journaled_with_the_task() {
         .map(|event| event["step"].as_str().unwrap().to_owned())
         .collect::<Vec<_>>();
     std::fs::remove_dir_all(&dir).unwrap();
-    assert_eq!(steps, vec!["warm-up"; 7]);
+    assert_eq!(steps, vec!["warm-up"; 14]);
 }

@@ -291,10 +291,12 @@ run that follows opens it again; a task cancelled while its browser was
 still opening is left holding none.
 
 Every task planned this way also has its runner warm Jev while the plan is
-drafted (`FlowRunner::warm`): one small evaluation for each way its first
-decision will be asked, so that decision finds its connections open
+drafted (`FlowRunner::warm`): one small evaluation for each call its first
+turn will make, its judging and grounding's opening in every framing, so that
+turn finds its connections open
 ([`jev-runtime.md`](../crates/tinycomputer-engine/jev-runtime.md#warming-connections)).
-The task never waits for the warm-up.
+The task never waits for the warm-up, and a task whose budget caps its Jev
+calls is not warmed.
 
 ## Rescues
 

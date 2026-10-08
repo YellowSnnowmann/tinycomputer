@@ -39,6 +39,11 @@ pub(super) const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
 /// its calls up.
 pub(super) const WARM_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Requests a step's first turn asks at once, each in every framing: its
+/// judging, and grounding's opening for the move it almost always makes
+/// (`flow::act::judge`).
+pub(super) const FIRST_TURN: u32 = 2;
+
 /// Configured Jev transport and non-secret policy metadata.
 #[derive(Clone)]
 pub struct JevRuntime {
@@ -228,21 +233,22 @@ impl JevRuntime {
     }
 
     /// Opens connections to Jev for the decisions to come, while a task's
-    /// plan is drafted: one for each framing of a decision asked `votes`
-    /// ways (at most 9, `MAX_VOTES`), each with a one-question evaluation,
-    /// all at once. Each is journaled as `warm-up`, its answer is dropped,
-    /// and those still out after 10 s (`WARM_TIMEOUT`) are given up on.
-    /// A decision asks its framings all at once, each on a connection of its
-    /// own; live, a task's first decision took 330 ms more a call than its
-    /// later ones, opening them. Sage, whose calls take seconds, is not
-    /// warmed.
+    /// plan is drafted: one for each call of a step's first turn, which asks
+    /// its judging and grounding's opening together (`FIRST_TURN`), each in
+    /// `votes` framings (at most 9, `MAX_VOTES`). Each connection is opened
+    /// with a one-question evaluation, all at once, journaled as `warm-up`;
+    /// its answer is dropped, and those still out after 10 s
+    /// (`WARM_TIMEOUT`) are given up on. A decision asks its framings all
+    /// at once, each on a connection of its own; live, a task's first
+    /// decision took 330 ms more a call than its later ones, opening them.
+    /// Sage, whose calls take seconds, is not warmed.
     pub async fn warm(&self, votes: u32) {
         if self.configuration.provider == JevProvider::Sage {
             return;
         }
         let request = Arc::new(warm_up(&self.configuration.model));
         let mut calls = tokio::task::JoinSet::new();
-        for _ in 0..votes.clamp(1, MAX_VOTES) {
+        for _ in 0..votes.clamp(1, MAX_VOTES).saturating_mul(FIRST_TURN) {
             let (runtime, request) = (self.clone(), Arc::clone(&request));
             calls.spawn(async move {
                 let _answer = runtime.evaluate(Some("warm-up"), &request).await;

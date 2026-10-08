@@ -25,13 +25,14 @@ pub(super) async fn plan_then_drive(
     task: String,
     surfaces: Vec<tinycomputer_bus::agent::SurfaceKind>,
 ) {
-    let (names, secrets, constraints, votes) = cell.state.lock().map_or_else(
+    let (names, secrets, constraints, votes, capped) = cell.state.lock().map_or_else(
         |_| {
             (
                 Vec::new(),
                 Vec::new(),
                 TaskConstraints::default(),
                 DEFAULT_VOTES,
+                false,
             )
         },
         |state| {
@@ -41,13 +42,17 @@ pub(super) async fn plan_then_drive(
                 owned(state.facts.secret_names()),
                 state.constraints.clone(),
                 state.budget.votes.unwrap_or(DEFAULT_VOTES),
+                state.budget.max_model_calls.is_some(),
             )
         },
     );
     let id = cell.view.borrow().id.clone();
     // Jev's connections open while the plan is drafted, so the first
-    // decision need not open them; nothing waits for this.
-    tokio::spawn(runner.warm(&id, votes));
+    // decision need not open them; nothing waits for this. A budget that
+    // caps the task's Jev calls is not spent on calls it does not count.
+    if !capped {
+        tokio::spawn(runner.warm(&id, votes));
+    }
     let started = Instant::now();
     // Timed on its own: a browser slower to open than the plan is to draft
     // is not planning time.

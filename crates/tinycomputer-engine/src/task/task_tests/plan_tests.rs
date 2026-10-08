@@ -283,6 +283,25 @@ async fn a_task_warms_jev_while_it_is_planned_and_never_waits_for_it() {
     settle(&tasks, &started.id).await;
     assert_eq!(*script.warmed.lock().unwrap(), [(started.id.clone(), 3)]);
 
+    // A budget capping its Jev calls is not spent on warming.
+    let (tasks, script) = planned(
+        vec![finished_run(FlowStopReason::Completed, vec![], &[], None)],
+        Ok(flow),
+    );
+    let started = tasks
+        .start(&StartTaskRequest {
+            task: Some("start an email".to_owned()),
+            budget: tinycomputer_bus::agent::TaskBudget {
+                max_model_calls: Some(40),
+                ..tinycomputer_bus::agent::TaskBudget::default()
+            },
+            ..StartTaskRequest::default()
+        })
+        .data
+        .unwrap();
+    settle(&tasks, &started.id).await;
+    assert!(script.warmed.lock().unwrap().is_empty());
+
     // A flow handed over whole is not planned, and not warmed.
     let (tasks, script) = controller(vec![finished_run(
         FlowStopReason::Completed,

@@ -255,9 +255,13 @@ async fn the_runner_warms_its_jev_runtime_for_a_task() {
             tinycomputer_browser::AgentBrowser,
         )))
     };
-    // The task's runtime is reached; Sage's calls take seconds and are not
-    // warmed, so nothing goes out.
-    let jev = JevRuntime::sage("test-key", false).unwrap();
+    // A runtime whose every call gives up within a millisecond, before any
+    // request can reach Jev: each is journaled with the task all the same.
+    let dir = std::env::temp_dir().join(format!("tinycomputer-runner-warm-{}", std::process::id()));
+    let mut config = tinycomputer_bus::JevConfig::new("test-key");
+    config.timeout_ms = Some(1);
+    config.max_retries = Some(0);
+    let jev = JevRuntime::configure(&config).unwrap().with_journal(&dir);
     crate::tinybus_module::runner::WorkspaceRunner::new(
         crate::Desktop::new(),
         Some(jev),
@@ -265,7 +269,25 @@ async fn the_runner_warms_its_jev_runtime_for_a_task() {
     )
     .warm(&TaskId::new("t-1"), 7)
     .await;
-    // With no Jev runtime there is nothing to warm.
+    let journal = std::fs::read_to_string(dir.join("task-t-1").join("journal.jsonl")).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let warmed = journal
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .filter(|event| event["event"] == "exchange" && event["step"] == "warm-up")
+        .count();
+    assert_eq!(warmed, 14, "every framing of a first turn's two requests");
+
+    // Sage's calls take seconds and are not warmed; with no Jev runtime
+    // there is nothing to warm.
+    let sage = JevRuntime::sage("test-key", false).unwrap();
+    crate::tinybus_module::runner::WorkspaceRunner::new(
+        crate::Desktop::new(),
+        Some(sage),
+        browser(),
+    )
+    .warm(&TaskId::new("t-1"), 7)
+    .await;
     crate::tinybus_module::runner::WorkspaceRunner::new(crate::Desktop::new(), None, browser())
         .warm(&TaskId::new("t-1"), 7)
         .await;
