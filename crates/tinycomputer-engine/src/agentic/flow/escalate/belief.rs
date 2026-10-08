@@ -29,7 +29,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let asked = request
             .questions
             .keys()
-            .map(|id| self.ballot(id).len())
+            .map(|id| self.asked_in(id))
             .max()
             .unwrap_or_default();
         let from = u32::try_from(asked).unwrap_or(u32::MAX);
@@ -67,6 +67,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let fresh = vote::ballots(&answered);
         for (id, ballot) in fresh.clone() {
             self.ballots.entry(id).or_default().extend(ballot);
+        }
+        let widened_to = usize::try_from(to).unwrap_or(usize::MAX);
+        for id in parts.iter().flat_map(|part| part.questions.keys()) {
+            self.asked.insert(id.clone(), widened_to);
         }
         self.runtime.journal.record("decision", || {
             json!({

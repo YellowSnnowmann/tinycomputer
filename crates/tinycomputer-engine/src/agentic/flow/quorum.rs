@@ -29,8 +29,10 @@ pub(super) const QUORUM_VOTES: usize = 7;
 /// ranks first, the same option in each.
 pub(super) const QUORUM_TOP: f64 = 0.9;
 /// A yes/no every framing answers at or above this, or every one at or
-/// below [`SURE_NO`], lies the evidence band's 0.12 beyond every yes/no
-/// threshold the loops use (0.20 to 0.85).
+/// below [`SURE_NO`], lies the evidence band's 0.12 beyond every threshold
+/// the loops read one yes/no against (0.20 to 0.85). A belief that pairs it
+/// with its negation or a coverage can still fall within a band, and is
+/// widened then as it would be after all the framings.
 pub(super) const SURE_YES: f64 = 0.97;
 /// See [`SURE_YES`].
 pub(super) const SURE_NO: f64 = 0.08;

@@ -120,6 +120,16 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         self.ballots.get(id).map_or(&[], Vec::as_slice)
     }
 
+    /// How many framings `id` was asked in, by the latest decision that
+    /// asked it and any widening since: more than its ballot holds when the
+    /// decision ended on a quorum.
+    pub(super) fn asked_in(&self, id: &str) -> usize {
+        self.asked
+            .get(id)
+            .copied()
+            .unwrap_or_else(|| self.ballot(id).len())
+    }
+
     /// Each framing's own reading of `belief`, from the latest ballots.
     fn framed(&self, belief: &Belief<'_>) -> Vec<f64> {
         let ids = [Some(belief.yes), Some(belief.no), belief.top]

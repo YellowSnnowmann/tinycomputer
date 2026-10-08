@@ -134,6 +134,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
             typed: BTreeSet::new(),
             deliberation: request.deliberation,
             ballots: BTreeMap::new(),
+            asked: BTreeMap::new(),
             location: None,
             frontier: Vec::new(),
             expecting: None,

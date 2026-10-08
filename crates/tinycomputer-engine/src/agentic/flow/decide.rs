@@ -76,8 +76,12 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             // without an answer, which fails the decision as a whole.
             let mut unanswered = false;
             let mut left = 0_u32;
-            for (framings, handles) in framings.into_iter().zip(handles) {
+            let mut asked_in = BTreeMap::new();
+            for ((part, framings), handles) in parts.iter().zip(framings).zip(handles) {
                 let before = answered.len();
+                for id in part.questions.keys() {
+                    asked_in.insert(id.clone(), framings.len());
+                }
                 let size = quorum::size(framings.len());
                 let gathered = quorum::gather(framings, handles, size).await;
                 for (framing, evaluation) in gathered.answered {
@@ -105,6 +109,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     let ballots = vote::ballots(&answered);
                     let merged = vote::tally(&ballots);
                     self.ballots.extend(ballots);
+                    self.asked.extend(asked_in);
                     merged
                 }
             };

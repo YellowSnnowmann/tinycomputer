@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::agentic::flow::quorum::{self, QUORUM_TOP, SURE_NO, SURE_YES};
+use crate::agentic::flow::{FlowRun, StepLog};
 
 /// A target Choice whose options each framing relabels and reorders, a
 /// yes/no, and the page kind.
@@ -425,4 +426,61 @@ async fn a_run_whose_framings_agree_plainly_does_not_wait_for_its_slowest() {
     assert_eq!(result.stop, FlowStopReason::Completed, "{:?}", result.steps);
     assert!(took >= Duration::from_secs(2), "{took:?}");
     assert!(decisions.iter().all(|decision| decision["left"] == 0));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_decision_ended_on_a_quorum_widens_past_every_framing_it_asked() {
+    // A press nothing undoes is vouched for, and the vouching always widens.
+    let app = App::with(|_| {});
+    let staggered = Staggered {
+        oracle: Oracle {
+            app: app.clone(),
+            hook: Box::new(|id: &str, _: &Question, _: &Sim| match id {
+                "is_0" => Some(noul(0.99)),
+                "only_near_0" => Some(noul(0.02)),
+                _ => None,
+            }),
+            requests: Mutex::new(Vec::new()),
+            fail: false,
+        },
+        pace: [10, 10, 10, 10, 10, 2_000, 2_000],
+        calls: Mutex::new(0),
+    };
+    let runtime = runtime(staggered);
+    let request = RunFlowRequest {
+        flow: serde_json::from_value(json!({
+            "app": "Mail",
+            "steps": [{"stop_before": "sending the email"}]
+        }))
+        .unwrap(),
+        votes: 7,
+        ..RunFlowRequest::default()
+    };
+    let mut run = FlowRun::new(app, &runtime, &request);
+    let mut log = StepLog::default();
+    let yes_no = |question: &str| {
+        Question::Noul(tinyinference_decisions::Noul {
+            instructions: json!({"question": question}),
+            criteria: None,
+        })
+    };
+    let vouching = EvaluationRequest {
+        state: json!("the draft, its Send button in view"),
+        model: "jev-latest".to_owned(),
+        questions: BTreeMap::from([
+            ("is_0".to_owned(), yes_no("is it the Send button?")),
+            ("only_near_0".to_owned(), yes_no("is it only near it?")),
+        ]),
+    };
+    run.ask(&mut log, vouching.clone()).await.unwrap();
+    assert_eq!(
+        (run.ballot("is_0").len(), run.asked_in("is_0")),
+        (5, 7),
+        "ended on a quorum"
+    );
+    run.widen(&mut log, &vouching).await.unwrap().unwrap();
+    // The eighth and ninth framings: not the sixth and seventh again, which
+    // were asked and left.
+    assert_eq!((run.ballot("is_0").len(), run.asked_in("is_0")), (7, 9));
+    assert_eq!(log.calls, 9, "seven, and two more");
 }
