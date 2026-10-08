@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 use tinycomputer_bus::browser::{
-    Action, NavigateRequest, ScrollDirection, SnapshotRequest, Target, WaitState,
+    Action, NavigateRequest, ScrollDirection, SessionId, SnapshotRequest, Target, WaitState,
 };
 use tinycomputer_bus::{DesktopError, DesktopResponse, JevOperation};
 use tinycomputer_core::surface::{Candidate, Depth, Screen, Surface, uses_pointer};
@@ -246,12 +246,7 @@ impl Surface for BrowserSurface {
                 );
                 let _quiet = self
                     .block(async { tokio::time::timeout(watch::deadline(QUIET_MS), quiet).await });
-                let still = self.browser.command(
-                    &id,
-                    json!({"action": "evaluate", "script": watch::still_script()}),
-                );
-                let _still = self
-                    .block(async { tokio::time::timeout(watch::deadline(SETTLE_MS), still).await });
+                self.await_still(&id);
             }
             return;
         }
@@ -262,6 +257,18 @@ impl Surface for BrowserSurface {
             ));
         }
         let _settled = self.perform("wait", pause(SETTLE_MS));
+    }
+
+    fn settle_briefly(&self) {
+        // Nothing was fetched to wait for: only the page's own movement,
+        // under prompt settling. Steady settling stays as it always was.
+        if self.settle != Settle::Prompt {
+            self.settle();
+            return;
+        }
+        if let Ok(id) = self.ensure_session() {
+            self.await_still(&id);
+        }
     }
 
     fn await_change(&self, ms: u64) -> bool {
@@ -298,6 +305,20 @@ impl Surface for BrowserSurface {
 
     fn back(&self, _app: &str) -> DesktopResponse {
         self.perform("back", Action::Back)
+    }
+}
+
+impl BrowserSurface {
+    /// Waits until the page stops changing (`watch::still_script`), within
+    /// a deadline: a call sent while a page is being replaced can wait out
+    /// the browser's own 30 s.
+    fn await_still(&self, id: &SessionId) {
+        let still = self.browser.command(
+            id,
+            json!({"action": "evaluate", "script": watch::still_script()}),
+        );
+        let _still =
+            self.block(async { tokio::time::timeout(watch::deadline(SETTLE_MS), still).await });
     }
 }
 

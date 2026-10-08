@@ -275,6 +275,14 @@ impl<D: Surface + Sync, W: Surface + Sync> Surface for Workspace<D, W> {
         }
     }
 
+    fn settle_briefly(&self) {
+        match (self.active_browser(), &self.desktop) {
+            (Some(browser), _) => browser.settle_briefly(),
+            (None, Some(desktop)) => desktop.settle_briefly(),
+            (None, None) => {}
+        }
+    }
+
     fn await_change(&self, ms: u64) -> bool {
         match (self.active_browser(), &self.desktop) {
             (Some(browser), _) => browser.await_change(ms),

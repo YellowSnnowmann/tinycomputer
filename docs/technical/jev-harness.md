@@ -159,7 +159,7 @@ round trip's *slowest* framing, plus the action, plus settling. The levers:
 | request size | Jev's latency grows with input tokens; a big element list is the usual cause | trimming can drop the element that was needed |
 | grounding memory | a remembered element is confirmed with one Noul instead of narrowing | none when the hint is right |
 | `disabled_loops` | each loop off removes a question or a whole decision | measure it before shipping it off |
-| `settle` | fixed per action on the desktop; on the browser, `prompt` (the default) waits at most 1 s for the requests that change the page, then ≤ 400 ms for it to go still, and `steady` for network idle (≤ 2 s) and 400 ms more | too short and the next look sees the old screen |
+| `settle` | fixed per action on the desktop; on the browser, `prompt` (the default) waits at most 1 s for the requests that change the page, then ≤ 400 ms for it to go still (only the latter after a launch or Escape, which fetch nothing), and `steady` for network idle (≤ 2 s) and 400 ms more | too short and the next look sees the old screen |
 | observation | an accessibility snapshot of a large window is slow; `explore` adds more | a budgeted view can miss the target |
 
 Measure before changing any of them. The debug journal

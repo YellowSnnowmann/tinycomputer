@@ -69,8 +69,13 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         if settles {
             // Let the surface finish reacting, so the next look sees what the
             // action did rather than the moment before it took effect.
-            self.backend_call(|backend| {
-                backend.settle();
+            let briefly = fetches_nothing(action);
+            self.backend_call(move |backend| {
+                if briefly {
+                    backend.settle_briefly();
+                } else {
+                    backend.settle();
+                }
                 DesktopResponse::ok("settle", serde_json::json!({}))
             })
             .await;
@@ -114,6 +119,16 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     {
         blocking(self.backend.clone(), call).await
     }
+}
+
+/// Whether `action` fetches nothing the next look must wait for, so the
+/// surface settles briefly after it (`Surface::settle_briefly`): a launch,
+/// which leaves an open page as it is, or Escape closing a layer. Live, 3%
+/// of launches and 12% of Escapes settled with a request of the page still
+/// running, against 39% of fills (fetching suggestions the next look reads)
+/// and 70% of clicks, which settle in full.
+fn fetches_nothing(action: &str) -> bool {
+    action == "launch" || action.starts_with("launch ") || action.starts_with("press escape")
 }
 
 /// Whether `reply` is a wait's that saw the surface stay still.

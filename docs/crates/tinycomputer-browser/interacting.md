@@ -194,6 +194,15 @@ receive window, and then pauses `SETTLE_MS` regardless, giving a banner or
 menu that is mid-animation time to finish closing: about 1.6 s an action,
 live.
 
+`Surface::settle_briefly` follows an action that fetches nothing. Under
+`Settle::Prompt` it skips the network wait and waits only while the page
+changes (120–400 ms instead of about 0.65 s on an idle page); under
+`Settle::Steady` it settles in full. A flow settles briefly only after a
+launch, which leaves an open page as it is, and after Escape closing a layer:
+live, 3% of launches and 12% of Escapes settled with a request of the page
+still running, against 39% of fills, whose suggestions the next look reads,
+and 70% of clicks.
+
 `Surface::await_change(ms)` watches the page rather than pausing: one
 `evaluate` whose `MutationObserver` resolves `true` at the page's first change
 of its own (an element or words added, removed, or rewritten, or an

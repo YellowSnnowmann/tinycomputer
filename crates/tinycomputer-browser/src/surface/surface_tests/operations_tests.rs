@@ -589,6 +589,36 @@ fn a_prompt_settle_counts_quiet_from_the_start_and_waits_only_while_the_page_cha
 }
 
 #[test]
+fn a_brief_settle_waits_only_while_the_page_changes() {
+    // A launch or Escape fetched nothing: no wait for the network.
+    let brief = harness("brief-settle", page_fake());
+    brief.surface.settle_briefly();
+    assert!(
+        !brief
+            .fake
+            .actions()
+            .iter()
+            .any(|action| action == "waitforloadstate" || action == "wait"),
+        "{:?}",
+        brief.fake.actions()
+    );
+    let still = brief.fake.last("evaluate");
+    assert!(
+        still["script"].as_str().unwrap().contains("getAnimations"),
+        "the page is still watched until it stops changing"
+    );
+    // Settling steadily settles in full, as it always did.
+    let steady = harness("brief-steady", page_fake());
+    steady
+        .surface
+        .clone()
+        .with_settle(crate::Settle::Steady)
+        .settle_briefly();
+    assert_eq!(steady.fake.last("waitforloadstate")["state"], "networkidle");
+    assert_eq!(steady.fake.last("wait")["timeout"], 400);
+}
+
+#[test]
 fn a_wait_for_a_change_ends_at_the_pages_first_change_or_its_time() {
     let Harness { fake, surface, .. } = harness("await-change", page_fake());
     assert!(surface.open());

@@ -32,7 +32,10 @@ it to give an application a moment to react: closing a banner a beat after a
 click, or turning a typed address into a token in an autocomplete field. The
 engine calls it after every action, before the next observation, and before
 reading a value back, so a surface's own idea of "how long is a moment" stays
-in one place rather than being copied into every caller.
+in one place rather than being copied into every caller. After an action that
+fetches nothing (a launch, Escape) the engine calls `settle_briefly()`
+instead, which settles in full unless the surface overrides it:
+`tinycomputer-browser` then waits only while the page changes.
 
 And `await_change(ms)`, which waits up to `ms` for the application to change
 by itself and says whether it did. A flow uses it while it watches for
@@ -61,6 +64,7 @@ pub trait Surface: Clone + Send + 'static {
     fn press(&self, app: &str, combo: &str) -> DesktopResponse;
     fn launch(&self, app: &str) -> DesktopResponse;
     fn settle(&self) {}
+    fn settle_briefly(&self) { /* settles */ }
     fn await_change(&self, ms: u64) -> bool { /* pauses, and says it may have */ }
     fn navigate(&self, url: &str) -> DesktopResponse { /* refuses by default */ }
     fn back(&self, app: &str) -> DesktopResponse { /* refuses by default */ }

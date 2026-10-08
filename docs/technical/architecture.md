@@ -97,6 +97,7 @@ pub trait Surface: Clone + Send + 'static {
     fn press(&self, app: &str, combo: &str) -> DesktopResponse;
     fn launch(&self, app: &str) -> DesktopResponse;
     fn settle(&self) {}
+    fn settle_briefly(&self) { /* settles */ }
     fn await_change(&self, ms: u64) -> bool { /* pauses, and says it may have */ }
     fn navigate(&self, url: &str) -> DesktopResponse { /* ACTION_NOT_SUPPORTED */ }
 }

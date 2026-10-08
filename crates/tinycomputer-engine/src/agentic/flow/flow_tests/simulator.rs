@@ -99,8 +99,8 @@ pub(super) struct Sim {
     /// The field typed or pasted into last: where the focus stays.
     pub(super) focused: Option<String>,
     pub(super) quirks: BTreeSet<Quirk>,
-    /// The calls that touch no element, in order: each `settle`, and each
-    /// `await_change` as `changed` or `still`.
+    /// The calls that touch no element, in order: each `settle` and `settle
+    /// briefly`, and each `await_change` as `changed` or `still`.
     pub(super) trail: Vec<&'static str>,
 }
 
@@ -431,6 +431,10 @@ impl AgentBackend for App {
 
     fn settle(&self) {
         self.sim().trail.push("settle");
+    }
+
+    fn settle_briefly(&self) {
+        self.sim().trail.push("settle briefly");
     }
 
     fn paste(&self, _app: &str, target: &Candidate, text: &str) -> DesktopResponse {

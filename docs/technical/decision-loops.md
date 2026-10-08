@@ -261,10 +261,10 @@ Any other answer is ignored and logged. The runtime never falls back to a click
 on an answer it does not recognise, because a malformed or injected answer must
 fail closed.
 
-After any action the backend reports as successful, the runtime calls the
-surface's `settle` before looking again — on the browser, until the requests
-that change the page end and it goes still; a short pause on the desktop — so
-the next turn's screen reflects what the action did, not the moment before.
+After any action the backend reports as successful, the runtime settles the
+surface before looking again (on the browser, until the requests that change
+the page end and it goes still, or only until it is still after a launch or
+Escape; a short pause on the desktop), so the next look sees what it did.
 
 The shortcut list (`act/mod.rs::SHORTCUTS`) is short and safe: new item, new
 folder, find, reply, settings, back, next field, confirm (Return), and dismiss

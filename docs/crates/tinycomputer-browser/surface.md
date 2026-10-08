@@ -131,8 +131,9 @@ of unopened submenus the way a desktop tree does).
 called before a flow reads the page again after an action, waits, bounded,
 for the requests that change the page to end, then only while the page is
 still changing (`Settle::Prompt`; `Settle::Steady` waits for the network to
-go idle, then pauses a further beat regardless), as described in
-[interacting.md](interacting.md#scrolling-and-waiting).
+go idle, then pauses a further beat regardless). `Surface::settle_briefly`,
+after a launch or Escape, skips the network wait under `Settle::Prompt`; both
+are described in [interacting.md](interacting.md#scrolling-and-waiting).
 
 ## Cross-links
 

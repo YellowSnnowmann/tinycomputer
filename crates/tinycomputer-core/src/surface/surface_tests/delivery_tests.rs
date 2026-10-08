@@ -189,6 +189,8 @@ fn text_that_never_arrives_is_reported_as_not_delivered() {
 #[test]
 fn a_surface_settles_instantly_and_has_no_addresses_unless_it_says_otherwise() {
     Surface::settle(&TextBackend::default());
+    // Settling briefly is settling, unless the surface can tell them apart.
+    Surface::settle_briefly(&TextBackend::default());
     assert!(
         Surface::await_change(&TextBackend::default(), 1_000),
         "one that cannot watch pauses and says it may have changed"

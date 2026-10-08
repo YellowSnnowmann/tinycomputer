@@ -109,6 +109,9 @@ async fn a_covered_click_closes_what_covers_it_and_tries_again() {
             .collect::<Vec<_>>(),
         ["click", "press escape (uncover)", "click"],
     );
+    // The launch and Escape fetch nothing and settle briefly; the refused
+    // click does not settle, and the one that went through settles in full.
+    assert_eq!(sim.trail, ["settle briefly", "settle briefly", "settle"]);
 }
 
 #[tokio::test]

@@ -74,6 +74,14 @@ pub trait Surface: Clone + Send + 'static {
     /// address into a token.
     fn settle(&self) {}
 
+    /// Settles after an action that fetches nothing — launching what is
+    /// already open, Escape closing a layer — so only the application's
+    /// own movement is waited out. A surface that cannot tell such an
+    /// action apart settles as after any other.
+    fn settle_briefly(&self) {
+        self.settle();
+    }
+
     /// Waits, for up to the given milliseconds, for the application to
     /// change by itself — a list of suggestions a box fetches for the text
     /// just typed, the rest of a page arriving — and says whether it did, so
