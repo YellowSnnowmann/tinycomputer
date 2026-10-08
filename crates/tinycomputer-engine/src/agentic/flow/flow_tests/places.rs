@@ -192,12 +192,25 @@ pub(super) fn drop_unpicked(sim: &mut Sim) {
 /// whichever that is; a press anywhere else but the box moves the focus on,
 /// so the list closes and drops the box's unpicked text, as a page does.
 pub(super) fn press_place(sim: &mut Sim, name: &str) -> bool {
-    if let Some(places) = sim.places.as_mut().filter(|places| places.behind_buttons)
-        && let Some(index) = DOORS
-            .iter()
-            .position(|door| name.starts_with(&format!("{door} ")))
-    {
-        places.door = Some(PLACE_BOXES[index].to_owned());
+    let door = sim
+        .places
+        .as_ref()
+        .filter(|places| places.behind_buttons)
+        .and_then(|_| {
+            DOORS
+                .iter()
+                .position(|door| name.starts_with(&format!("{door} ")))
+        });
+    if let Some(index) = door {
+        // Another box's button moves the focus on, as a press anywhere else
+        // does: the open list closes and drops its box's unpicked text.
+        let open = sim.places.as_ref().and_then(|places| places.open.clone());
+        if open.as_deref() != Some(PLACE_BOXES[index]) {
+            drop_unpicked(sim);
+        }
+        if let Some(places) = sim.places.as_mut() {
+            places.door = Some(PLACE_BOXES[index].to_owned());
+        }
         return true;
     }
     let Some(open) = sim.places.as_ref().and_then(|places| places.open.clone()) else {
