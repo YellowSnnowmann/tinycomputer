@@ -272,7 +272,8 @@ folder, find, reply, settings, back, next field, confirm (Return), and dismiss
 spelling (`cmd+n`); each surface translates them, so the desktop sends
 `ctrl+n` on Windows and Linux and the browser sends `Meta+n` or `Control+n`.
 Return is refused while a sheet or alert is showing, because there it presses
-the default button.
+the default button, unless the run's last action typed into a search box,
+where Return runs the search.
 
 Before any click, `is_destructive` runs. It refuses the click, and fails the
 step, when:

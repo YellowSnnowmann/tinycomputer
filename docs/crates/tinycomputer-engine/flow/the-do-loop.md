@@ -152,7 +152,10 @@ They are written in macOS spelling (`cmd+n`) and each surface translates
 them: the desktop sends `ctrl+n` on Windows and Linux, the browser sends
 `Meta+n` or `Control+n`. Return is refused while a sheet or alert is
 showing, because there it presses that dialog's default button, which
-might not be the one the step wants.
+might not be the one the step wants, unless the run's last action typed
+into a search box (`is_search_box`): Return there runs the search. Live, a
+store's search opened as a full-window sheet, and pressing Enter in it
+was refused 154 times.
 
 ### The destructive check
 

@@ -38,6 +38,8 @@ pub(super) enum Quirk {
     /// A cookie bar drawn without a dialog's role, its "Accept all" button
     /// the way out, sits over the page until accepted.
     CookieBar,
+    /// The inbox's search, once open, fills the window as a sheet.
+    SearchSheet,
     /// A consent banner lies over the page as a popover: every other click
     /// is refused as covered, Escape leaves it, and its "Allow Selection"
     /// or "Allow all" closes it.
@@ -270,7 +272,7 @@ impl App {
 /// What the simulated page shows in front: the obstacle's sheet, a
 /// calendar that stays open as a dialog, or the window.
 fn surface_of(sim: &Sim) -> String {
-    if sim.obstacle {
+    if sim.obstacle || (sim.has(Quirk::SearchSheet) && sim.has(Quirk::SearchOpen)) {
         "sheet".to_owned()
     } else if sim.has(Quirk::CalendarStaysOpen)
         && sim

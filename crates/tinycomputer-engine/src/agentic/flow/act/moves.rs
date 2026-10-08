@@ -70,7 +70,12 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     ));
                     return Ok(Move::Skipped);
                 }
-                if combo == "return" && screen.surface != "window" {
+                // Return in a search box runs its search wherever the box
+                // sits: live, a store's search opened as a full-window
+                // sheet, and its step to press Enter in the box just typed
+                // into was refused 154 times.
+                let searching = self.typed_last.as_ref().is_some_and(is_search_box);
+                if combo == "return" && screen.surface != "window" && !searching {
                     self.history.push(format!(
                         "refused return while a {} is showing: it would press its default button",
                         screen.surface
@@ -342,4 +347,20 @@ fn asks_to_close(intent: &str) -> bool {
                 "close" | "dismiss" | "cancel" | "exit" | "leave" | "back"
             )
         })
+}
+
+/// Whether `field` is a search box: a `searchbox`, or a box that takes text
+/// and names itself for searching ("Search Lenskart", "Search for atta dal
+/// and more"). Return there runs the search, never a dialog's default
+/// button.
+pub(in crate::agentic::flow) fn is_search_box(field: &Candidate) -> bool {
+    let takes_text = field
+        .available_actions
+        .iter()
+        .any(|action| action == "SetValue" || action == "TypeText");
+    let named = [field.name.as_deref(), field.description.as_deref()]
+        .into_iter()
+        .flatten()
+        .any(|text| text.to_lowercase().contains("search"));
+    field.role.eq_ignore_ascii_case("searchbox") || (takes_text && named)
 }

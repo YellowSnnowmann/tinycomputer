@@ -746,6 +746,59 @@ async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_no
     );
 }
 
+#[tokio::test]
+async fn return_in_a_search_box_runs_the_search_with_a_sheet_in_front() {
+    // Live, a store's search opened as a full-window sheet, and the step to
+    // press Enter in the box just typed into was refused 154 times, as if
+    // Return would press the sheet's default button.
+    let pressing_return = |id: &str, question: &Question, sim: &Sim| match id {
+        "done" => Some(noul(if sim.presses.iter().any(|key| key == "return") {
+            0.95
+        } else {
+            0.05
+        })),
+        "move" => Some(pick(question, "shortcut", 0.9)),
+        "shortcut" => Some(pick(question, "confirm", 0.95)),
+        _ => None,
+    };
+    let run = run_with(
+        App::with(|sim| {
+            sim.quirks.insert(Quirk::SearchBehindLink);
+            sim.quirks.insert(Quirk::SearchOpen);
+            sim.quirks.insert(Quirk::SearchSheet);
+        }),
+        json!({"app": "Mail", "steps": [
+            {"enter": {"search": "invoices"}},
+            "press Enter in the search box"
+        ]}),
+        |request| request.disabled_loops.push(FlowLoop::Attention),
+        pressing_return,
+    )
+    .await;
+    let presses = run.app.sim().presses.clone();
+    assert!(presses.iter().any(|key| key == "return"), "{presses:?}");
+    assert_eq!(run.result.stop, FlowStopReason::Completed);
+
+    // Without a search box typed into, Return in front of a sheet stays
+    // refused: it would press the sheet's default button.
+    let run = run_with(
+        App::with(|sim| {
+            sim.quirks.insert(Quirk::SearchBehindLink);
+            sim.quirks.insert(Quirk::SearchOpen);
+            sim.quirks.insert(Quirk::SearchSheet);
+        }),
+        json!({"app": "Mail", "steps": ["press Enter"]}),
+        |request| {
+            request.disabled_loops.push(FlowLoop::Attention);
+            request.max_actions = 3;
+        },
+        pressing_return,
+    )
+    .await;
+    let presses = run.app.sim().presses.clone();
+    assert!(!presses.iter().any(|key| key == "return"), "{presses:?}");
+}
+
 /// A page at `surface`, its `covered` controls drawn under something.
 fn page_at(surface: &str, covered: usize) -> Screen {
     Screen {

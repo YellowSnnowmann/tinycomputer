@@ -132,6 +132,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
             read: request.collected.keys().cloned().collect(),
             refused: BTreeSet::new(),
             typed: BTreeSet::new(),
+            typed_last: None,
             deliberation: request.deliberation,
             ballots: BTreeMap::new(),
             asked: BTreeMap::new(),
