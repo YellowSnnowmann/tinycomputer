@@ -155,3 +155,71 @@ pub fn rank(records: &[Record], criterion: Criterion) -> Option<Vec<usize>> {
     });
     Some(order)
 }
+
+/// The number a criterion such as "closest to 9" or "nearest to size 42"
+/// asks items to come nearest to; `None` for any other criterion.
+///
+/// ```
+/// use tinycomputer_core::closest_to;
+///
+/// assert_eq!(closest_to("closest to 9"), Some(9.0));
+/// assert_eq!(closest_to("the size nearest to UK 8.5"), Some(8.5));
+/// assert_eq!(closest_to("lowest price"), None);
+/// ```
+#[must_use]
+pub fn closest_to(text: &str) -> Option<f64> {
+    let lower = text.to_ascii_lowercase();
+    let after = ["closest to", "nearest to"]
+        .iter()
+        .find_map(|lead| lower.find(lead).map(|at| &lower[at + lead.len()..]))?;
+    first_number(after)
+}
+
+/// Record indexes, nearest to `target` first, by the first number each
+/// record shows: a size list of 6, 7, and 8 with 9 sold out ranks 8, 7, 6.
+///
+/// Ties keep the records' own order, and records that show no number go
+/// last. `None` when no record shows one.
+///
+/// ```
+/// use tinycomputer_core::{Record, rank_closest};
+///
+/// let sizes = [
+///     Record::from_pairs([("size", "6")]),
+///     Record::from_pairs([("size", "7"), ("stock", "3 left")]),
+///     Record::from_pairs([("size", "8"), ("stock", "2 left")]),
+/// ];
+/// assert_eq!(rank_closest(&sizes, 9.0), Some(vec![2, 1, 0]));
+/// ```
+#[must_use]
+pub fn rank_closest(records: &[Record], target: f64) -> Option<Vec<usize>> {
+    let keyed = records
+        .iter()
+        .map(|record| {
+            record
+                .fields
+                .values()
+                .find_map(|text| first_number(text))
+                .map(|number| (number - target).abs())
+        })
+        .collect::<Vec<_>>();
+    if keyed.iter().all(Option::is_none) {
+        return None;
+    }
+    let mut order = (0..records.len()).collect::<Vec<_>>();
+    order.sort_by(|&left, &right| match (keyed[left], keyed[right]) {
+        (Some(a), Some(b)) => a.total_cmp(&b),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+    Some(order)
+}
+
+/// The first number `text` shows ("7" of "7 3 left", "8.5" of "UK 8.5").
+fn first_number(text: &str) -> Option<f64> {
+    text.split(|character: char| !(character.is_ascii_digit() || character == '.'))
+        .map(|word| word.trim_matches('.'))
+        .find(|word| !word.is_empty())
+        .and_then(|word| word.parse().ok())
+}

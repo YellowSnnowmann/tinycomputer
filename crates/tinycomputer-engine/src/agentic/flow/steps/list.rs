@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde_json::json;
 use tinycomputer_bus::{FlowLoop, JevOperation, PickStep, ReadStep, StepOutcome};
 use tinycomputer_core::surface::{Group, result_families};
-use tinycomputer_core::{Criterion, Record, rank};
+use tinycomputer_core::{Criterion, Record, closest_to, rank, rank_closest};
 use tinyinference_decisions::Answer;
 
 use crate::agentic::flow::{
@@ -23,12 +23,13 @@ use super::{
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// Picks the best of a list of results by `pick.by`, stores its text,
-    /// and opens it. A criterion over prices, times, durations, or stops is
-    /// ranked exactly, and the first ranked item that Jev confirms belongs
-    /// to `pick.from` is taken: the ranking reads only its measure, and
-    /// live, "the cheapest of the results rated 4 stars or more" took a
-    /// 3.1-star item of another brand. Anything else, or a ranking none of
-    /// whose leaders belongs, is judged by Jev among the records.
+    /// and opens it. A criterion over prices, times, durations, or stops,
+    /// or nearness to a number ("closest to 9"), is ranked exactly, and the
+    /// first ranked item that Jev confirms belongs to `pick.from` is taken:
+    /// the ranking reads only its measure, and live, "the cheapest of the
+    /// results rated 4 stars or more" took a 3.1-star item of another brand.
+    /// Anything else, or a ranking none of whose leaders belongs, is judged
+    /// by Jev among the records.
     pub(super) async fn pick(&mut self, log: &mut StepLog, pick: &PickStep) -> Result<Ended, Halt> {
         let from = substitute_safe(&pick.from, &self.vars, &self.facts);
         let by = substitute_safe(&pick.by, &self.vars, &self.facts);
@@ -47,22 +48,25 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let condition = first_meeting(&by);
         let criterion =
             Criterion::parse(&by).or_else(|| condition.as_ref().map(|_| Criterion::First));
-        let ranked = match criterion {
+        let ranked = match (closest_to(&by), criterion) {
+            // Nearness to a number ranks by distance, within the list `from`
+            // names, since numbers show in every list. Live, a store's sizes
+            // 9 and 10 were sold out, and "closest to 9", judged item by
+            // item, took none of 6, 7, and 8.
+            (Some(target), _) => {
+                let groups = self.named_list(log, &screen, &from, &families).await?;
+                rank_closest(&records_of(groups), target).map(|order| (groups, order))
+            }
             // The list's own order fits every list on the page, so the one
             // `from` names is asked for first, as a judged pick does.
-            Some(order @ (Criterion::First | Criterion::Last)) => {
-                let list = if families.len() > 1 {
-                    self.judge_list(log, &screen, &from, &families).await?
-                } else {
-                    0
-                };
-                let groups = &families[list];
+            (None, Some(order @ (Criterion::First | Criterion::Last))) => {
+                let groups = self.named_list(log, &screen, &from, &families).await?;
                 rank(&records_of(groups), order).map(|ranking| (groups, ranking))
             }
-            Some(criterion) => families.iter().find_map(|groups| {
+            (None, Some(criterion)) => families.iter().find_map(|groups| {
                 rank(&records_of(groups), criterion).map(|order| (groups, order))
             }),
-            None => None,
+            (None, None) => None,
         };
         let meets =
             condition.map_or_else(|| from.clone(), |condition| format!("{from}, {condition}"));
@@ -78,12 +82,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         } else {
             // Several lists show (a chat list beside the open chat's
             // messages): judge within the one `from` names.
-            let list = if families.len() > 1 {
-                self.judge_list(log, &screen, &from, &families).await?
-            } else {
-                0
-            };
-            let groups = &families[list];
+            let groups = self.named_list(log, &screen, &from, &families).await?;
             let best = self.judge_pick(log, &screen, &from, &by, groups).await?;
             (groups, best, "judged")
         };
@@ -195,6 +194,23 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             StepOutcome::Done,
             format!("extracted {} items into {}", rows.len(), read.into),
         ))
+    }
+
+    /// The list of `families` that `from` names: the only one, or the one
+    /// Jev chooses when several show.
+    async fn named_list<'f>(
+        &mut self,
+        log: &mut StepLog,
+        screen: &crate::agentic::flow::view::Screen,
+        from: &str,
+        families: &'f [Vec<Group>],
+    ) -> Result<&'f Vec<Group>, Halt> {
+        let list = if families.len() > 1 {
+            self.judge_list(log, screen, from, families).await?
+        } else {
+            0
+        };
+        Ok(&families[list])
     }
 
     /// Asks Jev which of the lists showing is `what`, each shown by its

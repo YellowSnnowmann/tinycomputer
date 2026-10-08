@@ -41,7 +41,7 @@ do.
 | `choose` | `{"choose": {"what": "the font list", "option": "Helvetica"}}` | Pick an option in a list, menu, or popup, or in a group of option buttons (a size, a colour, a quantity, a day in a strip of dates). |
 | `read` | `{"read": {"what": "the newest message's subject", "into": "subject"}}` | Store visible text in a variable. Read the price of one item before any step raises its count: after that, its line and the cart show the total for all of them. |
 | `extract` | `{"extract": {"what": "the flight results", "into": "flights"}}` | Store every item of a list, as JSON rows of their text, in a variable. |
-| `pick` | `{"pick": {"from": "the flight results", "by": "lowest price", "into": "flight"}}` | Choose the best of a list of results (cards or rows, each an item to open) and open it; `into` stores its text. Prices, times, durations, and stops are compared exactly. |
+| `pick` | `{"pick": {"from": "the flight results", "by": "lowest price", "into": "flight"}}` | Choose the best of a list of results (cards or rows, each an item to open) and open it; `into` stores its text. Prices, times, durations, stops, and nearness to a number ("closest to 9", for a size when 9 may be sold out) are compared exactly. |
 | `verify` | `{"verify": "the draft shows a recipient"}` | Fail the flow unless this holds. |
 | `wait_for` | `{"wait_for": "the search results are showing"}` | Wait until this holds. |
 | `stop_before` | `{"stop_before": "sending the email"}` | Find an irreversible action and stop in front of it. |

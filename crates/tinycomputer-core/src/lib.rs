@@ -52,7 +52,8 @@ pub use error::{Error, Result};
 pub use facts::{Facts, is_sensitive_name};
 pub use keymap::{Key, Platform};
 pub use records::{
-    Criterion, Price, Record, parse_clock, parse_duration, parse_price, parse_stops, rank,
+    Criterion, Price, Record, closest_to, parse_clock, parse_duration, parse_price, parse_stops,
+    rank, rank_closest,
 };
 pub use safety::{
     Consequence, FieldHint, PaymentEvidence, adjusts_a_count, consequence, human_needed,
