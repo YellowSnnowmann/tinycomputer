@@ -1,5 +1,6 @@
-//! Tests for clicking through a result card's own cover, and pressing a
-//! selection again through the DOM.
+//! Tests for bringing a control into the window before it is pressed,
+//! clicking through a result card's own cover, and pressing a selection
+//! again through the DOM.
 
 use serde_json::json;
 use tinycomputer_bus::JevOperation;
@@ -72,7 +73,7 @@ fn a_click_covered_by_anything_else_stays_refused() {
             .execute(JevOperation::Click, Some(node("e5", &["Click"])), None)
             .ok
     );
-    assert!(!fake.evaluated_besides_keeping_the_tab());
+    assert!(!fake.evaluated_besides_every_press());
 }
 
 /// A page that takes every click, and says through `evaluate` whether the
@@ -113,9 +114,34 @@ fn a_tab_click_the_page_ignored_is_pressed_again_through_the_dom() {
             ..node(reference, &["Click"])
         };
         assert!(surface.execute(JevOperation::Click, Some(node), None).ok);
-        assert!(
-            !fake.evaluated_besides_keeping_the_tab(),
-            "{reference} {role}"
-        );
+        assert!(!fake.evaluated_besides_every_press(), "{reference} {role}");
     }
+}
+
+#[test]
+fn a_control_sight_found_is_brought_into_the_window_before_it_is_pressed() {
+    // Live, a store's "Add to cart" sat at the window's foot with its middle
+    // below it, and every press went nowhere while reporting success.
+    let into_view = |command: &serde_json::Value| {
+        command["action"] == "evaluate"
+            && command["script"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with(crate::surface::INTO_VIEW_JS)
+    };
+    let Harness { fake, surface, .. } = harness("into-view", Fake::new());
+    let reply = surface.execute(JevOperation::Click, Some(node("seen:21", &["Click"])), None);
+    assert!(reply.ok, "{:?}", reply.error);
+    let sent = fake.sent();
+    let brought = sent.iter().position(into_view).expect("brought into view");
+    let pressed = sent
+        .iter()
+        .position(|command| command["action"] == "click")
+        .expect("pressed");
+    assert!(brought < pressed, "{:?}", fake.actions());
+
+    // A ref of the tree is brought into view by the browser itself.
+    let Harness { fake, surface, .. } = harness("tree-into-view", Fake::new());
+    surface.execute(JevOperation::Click, Some(node("e5", &["Click"])), None);
+    assert!(!fake.sent().iter().any(into_view));
 }

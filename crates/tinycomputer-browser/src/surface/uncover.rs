@@ -35,6 +35,22 @@ const CENTRE_JS: &str = r"(element => {
   return true;
 })";
 
+/// Brings an element whose middle lies outside the window to the window's
+/// middle, and leaves one whose middle shows where it is; `true` when it
+/// moved the element. A press lands on the element's middle, and the browser
+/// presses there whether the window shows that point or not: live, a store's
+/// "Add to cart" sat at the window's foot with its middle below it, and every
+/// press went nowhere while reporting success.
+pub(crate) const INTO_VIEW_JS: &str = r"(element => {
+  if (!element) return false;
+  const box = element.getBoundingClientRect();
+  const x = box.left + box.width / 2;
+  const y = box.top + box.height / 2;
+  if (x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight) return false;
+  element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  return true;
+})";
+
 /// How long a link's press is given to start leaving the page.
 const LEAVE_MS: u64 = 400;
 
@@ -91,6 +107,9 @@ impl BrowserSurface {
             self.allow_location();
         }
         let seen = sight::is_seen(reference);
+        if seen {
+            self.bring_into_view(reference);
+        }
         // Where a link's press starts from, to tell whether it went.
         let before = (follows && seen && node.is_some_and(|node| node.role == "link"))
             .then(|| self.page_url())
@@ -128,6 +147,23 @@ impl BrowserSurface {
             self.select_if_ignored(reference);
         }
         reply
+    }
+
+    /// Brings the element `reference` names into the window when its middle
+    /// lies outside it ([`INTO_VIEW_JS`]), before it is pressed. A ref of the
+    /// tree is brought into view by the browser itself.
+    fn bring_into_view(&self, reference: &str) {
+        let (Ok(id), Ok(selector)) = (
+            self.ensure_session(),
+            serde_json::to_string(&sight::selector(reference)),
+        ) else {
+            return;
+        };
+        let script = format!("{INTO_VIEW_JS}(document.querySelector({selector}))");
+        let _moved = self.block(
+            self.browser
+                .command(&id, json!({"action": "evaluate", "script": script})),
+        );
     }
 
     /// Clicks `reference` once more after the browser refused because
