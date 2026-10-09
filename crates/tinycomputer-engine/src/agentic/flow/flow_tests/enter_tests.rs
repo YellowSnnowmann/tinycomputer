@@ -473,4 +473,14 @@ fn a_short_place_word_names_its_box_only_as_a_labels_first_word() {
         opener.name.as_deref(),
         Some("To BLR, Bengaluru Airport India")
     );
+    // However the surface spells the role.
+    let mut screen = screen;
+    for candidate in &mut screen.candidates {
+        candidate.role = "Button".to_owned();
+    }
+    let opener = named_opener(&screen, &slots, &BTreeSet::from([0])).unwrap();
+    assert_eq!(
+        opener.name.as_deref(),
+        Some("To BLR, Bengaluru Airport India")
+    );
 }

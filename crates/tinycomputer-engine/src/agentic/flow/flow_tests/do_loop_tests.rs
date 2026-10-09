@@ -968,6 +968,68 @@ fn a_grid_of_bare_numbers_is_a_calendar_only_beside_a_month() {
 }
 
 #[test]
+fn a_calendar_reads_its_days_from_labels_that_name_their_month() {
+    // Day cells named whole dates, the day not first ("Thu Oct 01 2026",
+    // "Choose Thursday, October 22nd, 2026"), are a calendar's days too.
+    use crate::agentic::flow::front::Front;
+    let at = Some("https://stays.test/");
+    let mut calendar = page_at("sheet", 3);
+    calendar.candidates.extend((1..=7).map(|day: u32| {
+        node(
+            &format!("Choose Thursday, October {day}th, 2026"),
+            "button",
+            &["Click"],
+            &["main"],
+            f64::from(100 + day),
+        )
+    }));
+    let mut front = Front::default();
+    front.act("browse https://stays.test/", None);
+    front.look(&page_at("window", 0), at);
+    front.act(
+        "click",
+        Some(&node("Check-in", "button", &["Click"], &["main"], 0.0)),
+    );
+    front.look(&calendar, at);
+    // An arrow named "Next" and described "next month" turns the month.
+    let next = Candidate {
+        description: Some("next month".to_owned()),
+        ..node("Next", "button", &["Click"], &["main"], 90.0)
+    };
+    front.act("click", Some(&next));
+    front.look(&calendar, at);
+    assert!(!front.served_calendar(), "a month turned is no day chosen");
+    front.act(
+        "click",
+        Some(&node(
+            "Choose Thursday, October 2th, 2026",
+            "button",
+            &["Click"],
+            &["main"],
+            102.0,
+        )),
+    );
+    front.look(&calendar, at);
+    assert!(front.served_calendar(), "its days are read as a calendar's");
+}
+
+#[test]
+fn a_search_box_typed_into_counts_only_while_it_shows_uncovered() {
+    use crate::agentic::flow::act::still_shows;
+    let field = node("Search Lenskart", "textbox", &["SetValue"], &["main"], 0.0);
+    let mut screen = page_at("sheet", 0);
+    screen.candidates.push(field.clone());
+    assert!(still_shows(&screen, &field));
+    screen.candidates.last_mut().unwrap().states = vec!["covered".to_owned()];
+    assert!(
+        !still_shows(&screen, &field),
+        "a dialog over it takes the keys"
+    );
+    screen.candidates.pop();
+    assert!(!still_shows(&screen, &field), "nor once it is gone");
+}
+
+#[test]
 fn a_run_that_never_looked_hands_on_the_dialog_it_was_left() {
     use crate::agentic::flow::front::Front;
     assert!(Front::new(true).left_open(), "nothing changed in front");

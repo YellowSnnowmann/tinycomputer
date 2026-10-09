@@ -31,6 +31,8 @@ mod dialog;
 pub(in crate::agentic::flow) use copies::copies_of;
 mod judge;
 mod moves;
+#[cfg(test)]
+pub(in crate::agentic::flow) use moves::still_shows;
 mod recover;
 mod turns;
 mod uncover;

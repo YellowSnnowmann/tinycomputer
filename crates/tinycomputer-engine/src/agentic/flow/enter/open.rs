@@ -168,7 +168,9 @@ pub(in crate::agentic::flow) fn named_opener(
         .candidates
         .iter()
         .filter(|candidate| {
-            matches!(candidate.role.as_str(), "link" | "button")
+            ["link", "button"]
+                .iter()
+                .any(|role| candidate.role.eq_ignore_ascii_case(role))
                 && candidate
                     .available_actions
                     .iter()

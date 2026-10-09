@@ -74,7 +74,10 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 // sits: live, a store's search opened as a full-window
                 // sheet, and its step to press Enter in the box just typed
                 // into was refused 154 times.
-                let searching = self.typed_last.as_ref().is_some_and(is_search_box);
+                let searching = self
+                    .typed_last
+                    .as_ref()
+                    .is_some_and(|field| is_search_box(field) && still_shows(screen, field));
                 if combo == "return" && screen.surface != "window" && !searching {
                     self.history.push(format!(
                         "refused return while a {} is showing: it would press its default button",
@@ -363,4 +366,18 @@ pub(in crate::agentic::flow) fn is_search_box(field: &Candidate) -> bool {
         .flatten()
         .any(|text| text.to_lowercase().contains("search"));
     field.role.eq_ignore_ascii_case("searchbox") || (takes_text && named)
+}
+
+/// Whether `field` still shows on `screen` with nothing covering it: a
+/// dialog that has come up over it since it was typed into takes the keys
+/// itself.
+pub(in crate::agentic::flow) fn still_shows(screen: &Screen, field: &Candidate) -> bool {
+    screen.candidates.iter().any(|candidate| {
+        candidate.role == field.role
+            && candidate.name == field.name
+            && !candidate
+                .states
+                .iter()
+                .any(|state| state.eq_ignore_ascii_case("covered"))
+    })
 }

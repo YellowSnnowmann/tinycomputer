@@ -257,24 +257,46 @@ fn covered_count(screen: &Screen) -> usize {
 }
 
 /// Whether `target` only turns a calendar's month ("next month", "Previous
-/// month"), which answers nothing the calendar asks.
+/// month", or a "Next" described "next month"), which answers nothing the
+/// calendar asks.
 fn turns_the_month(target: &Candidate) -> bool {
-    let words = target
-        .name
-        .as_deref()
-        .unwrap_or_default()
-        .split(|character: char| !character.is_alphanumeric())
-        .filter(|word| !word.is_empty())
-        .map(str::to_lowercase)
-        .collect::<Vec<_>>();
-    let said = words.join(" ");
-    words.len() <= 4 && (said.contains("next month") || said.contains("previous month"))
+    [target.name.as_deref(), target.description.as_deref()]
+        .into_iter()
+        .flatten()
+        .any(|text| {
+            let words = text
+                .split(|character: char| !character.is_alphanumeric())
+                .filter(|word| !word.is_empty())
+                .map(str::to_lowercase)
+                .collect::<Vec<_>>();
+            let said = words.join(" ");
+            words.len() <= 4 && (said.contains("next month") || said.contains("previous month"))
+        })
+}
+
+/// The day of the month `word` names: 1 to 31, with a leading zero or an
+/// ordinal ending ("01", "22nd").
+fn day_of(word: &str) -> Option<u8> {
+    let digits = ["st", "nd", "rd", "th"]
+        .iter()
+        .find_map(|ending| {
+            word.to_ascii_lowercase()
+                .strip_suffix(ending)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| word.to_owned());
+    digits
+        .parse::<u8>()
+        .ok()
+        .filter(|day| (1..=31).contains(day))
 }
 
 /// Whether `screen` shows a calendar: [`CALENDAR_DAYS`] or more day numbers
 /// nothing covers, each beside a month's name ("1 September 2026", or "1"
 /// described "Thu Oct 01 2026"), or a grid cell on a screen that names a
 /// month somewhere: a seat map's or a table's cells are bare numbers too.
+/// A short label that names a month holds its day anywhere ("Thu Oct 01
+/// 2026", "Choose Thursday, October 22nd, 2026").
 fn holds_calendar(screen: &Screen) -> bool {
     let month_shown = screen
         .candidates
@@ -289,11 +311,12 @@ fn holds_calendar(screen: &Screen) -> bool {
         .iter()
         .filter(|candidate| {
             let name = candidate.name.as_deref().unwrap_or_default();
-            let day = name
-                .split_whitespace()
-                .next()
-                .and_then(|word| word.parse::<u8>().ok())
-                .is_some_and(|day| (1..=31).contains(&day));
+            let day = name.split_whitespace().next().and_then(day_of).is_some()
+                || (names_a_month(name)
+                    && name.split_whitespace().count() <= 6
+                    && name
+                        .split(|character: char| !character.is_alphanumeric())
+                        .any(|word| day_of(word).is_some()));
             let dated = (month_shown && candidate.role.eq_ignore_ascii_case("gridcell"))
                 || names_a_month(name)
                 || candidate.description.as_deref().is_some_and(names_a_month);

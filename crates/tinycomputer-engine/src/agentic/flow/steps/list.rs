@@ -378,7 +378,8 @@ fn openable(families: Vec<Vec<Group>>) -> Vec<Vec<Group>> {
     }
 }
 
-/// Each card's text as a record, its fields numbered in reading order.
+/// Each card's text as a record, its fields numbered in reading order, and
+/// numbered so that their keys sort in that order too.
 fn records_of(groups: &[Group]) -> Vec<Record> {
     groups
         .iter()
@@ -387,7 +388,7 @@ fn records_of(groups: &[Group]) -> Vec<Record> {
                 .fields
                 .iter()
                 .enumerate()
-                .map(|(index, text)| (format!("field {index}"), text.clone()))
+                .map(|(index, text)| (format!("field {index:03}"), text.clone()))
                 .collect(),
         })
         .collect()
