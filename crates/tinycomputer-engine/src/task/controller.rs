@@ -178,15 +178,8 @@ impl Tasks {
                 ));
             }
         }
-        if request.constraints.payment == PaymentMode::FillThenApprove
-            && request.constraints.origins.is_empty()
-        {
-            return AgentResponse::err(AgentError::new(
-                "ORIGINS_REQUIRED",
-                "filling a payment form needs the sites card details may be typed on",
-                "list them in constraints.origins, or leave payment at stop_at_payment",
-                true,
-            ));
+        if let Some(refusal) = constraints_refusal(&request.constraints) {
+            return AgentResponse::err(refusal);
         }
         let Some(flow) = request.flow.clone() else {
             if let (Some(task), Some(planner)) = (&request.task, &self.planner) {
@@ -375,4 +368,48 @@ impl Tasks {
                 .collect(),
         )
     }
+}
+
+/// Why a task's constraints cannot start it, if they cannot: a payment form
+/// filled with no named site to type card details on (`*` names none), a
+/// relative profile folder, which would land wherever the module's host
+/// happens to run, or a blank browser binary.
+fn constraints_refusal(
+    constraints: &tinycomputer_bus::agent::TaskConstraints,
+) -> Option<AgentError> {
+    if constraints.payment == PaymentMode::FillThenApprove
+        && (constraints.origins.is_empty()
+            || constraints
+                .origins
+                .iter()
+                .any(|origin| origin.trim() == "*"))
+    {
+        return Some(AgentError::new(
+            "ORIGINS_REQUIRED",
+            "filling a payment form needs the sites card details may be typed on, and `*` names none",
+            "list them in constraints.origins, or leave payment at stop_at_payment",
+            true,
+        ));
+    }
+    let browser = if constraints
+        .browser_profile
+        .as_deref()
+        .is_some_and(|folder| !std::path::Path::new(folder.trim()).is_absolute())
+    {
+        "browser_profile must be an absolute folder"
+    } else if constraints
+        .browser_executable
+        .as_deref()
+        .is_some_and(|binary| binary.trim().is_empty())
+    {
+        "browser_executable must name a binary"
+    } else {
+        return None;
+    };
+    Some(AgentError::new(
+        "INVALID_REQUEST",
+        browser,
+        "give constraints.browser_profile as an absolute folder and browser_executable as a binary's path, or leave them out",
+        true,
+    ))
 }

@@ -138,12 +138,15 @@ pub struct SessionOptions {
     pub download_dir: Option<String>,
     /// Extra command-line arguments for a launched browser.
     pub args: Vec<String>,
-    /// If non-empty, the only origins this session may navigate to.
+    /// If non-empty, the only origins this session may show pages from.
     ///
-    /// An entry is an origin (`https://example.com`) or a host with a leading
-    /// dot for its subdomains (`.example.com`). A navigation outside the list is
-    /// refused before the browser is asked to make a request, which is the only
-    /// point where refusing it is cheap and certain.
+    /// An entry is an origin (`https://example.com`), a host with a leading
+    /// dot for its subdomains (`.example.com`), or `*` for any public host,
+    /// private and local addresses refused. A navigation outside the list is
+    /// refused before the browser is asked to make a request, and a page a
+    /// session is taken to by a click, a key, or a redirect is left and
+    /// reported. Only pages are checked: the files a page loads from other
+    /// hosts (its CDN, its APIs) load as they would in any browser.
     pub allowed_origins: Vec<String>,
     /// Default deadline in milliseconds for operations that do not carry their
     /// own. Defaults to 30 seconds.

@@ -109,8 +109,11 @@ pub struct TaskConstraints {
     pub payment: PaymentMode,
     /// Surfaces the task may use; empty means every available one.
     pub surfaces: Vec<SurfaceKind>,
-    /// Origins browser sessions may load, such as `https://.makemytrip.com`
-    /// for a site and its subdomains; empty means any.
+    /// Origins the task's browser may open pages on, such as
+    /// `https://.makemytrip.com` for a site and its subdomains, or `*` for
+    /// any public site (private and local addresses stay refused); empty
+    /// means any. Only pages are checked, never the files a page loads from
+    /// other hosts.
     pub origins: Vec<String>,
     /// Perform irreversible actions (send, delete, confirm a booking) without
     /// pausing for approval.
@@ -120,6 +123,15 @@ pub struct TaskConstraints {
     pub browser_endpoint: Option<String>,
     /// Show the browser rather than running it headless.
     pub headed: bool,
+    /// The Chrome or Chromium binary the task's browser launches, where the
+    /// module's own configuration or discovery would not find the one the
+    /// caller means.
+    pub browser_executable: Option<String>,
+    /// An absolute folder the task's browser keeps its profile in between
+    /// tasks, so a site signed into once stays signed in. Absent, each task
+    /// starts in a fresh profile removed when it ends. One browser can hold a
+    /// folder at a time.
+    pub browser_profile: Option<String>,
 }
 
 /// How far a task goes on a payment page.

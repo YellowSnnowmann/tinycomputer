@@ -216,6 +216,50 @@ async fn a_value_supplied_for_a_missing_fact_still_fails_fast_if_it_leaks() {
 }
 
 #[tokio::test]
+async fn constraints_that_cannot_start_a_task_are_refused() {
+    let (tasks, _) = controller(Vec::new());
+    let any_site = tasks.start(&StartTaskRequest {
+        flow: Some(flow(json!({"app": "Mail", "steps": ["x"]}))),
+        constraints: TaskConstraints {
+            payment: PaymentMode::FillThenApprove,
+            origins: vec!["https://.pay.test".to_owned(), "*".to_owned()],
+            ..TaskConstraints::default()
+        },
+        ..StartTaskRequest::default()
+    });
+    assert_eq!(
+        code(&any_site),
+        "ORIGINS_REQUIRED",
+        "`*` names no site card details may be typed on"
+    );
+    let relative_profile = tasks.start(&StartTaskRequest {
+        flow: Some(flow(json!({"app": "Mail", "steps": ["x"]}))),
+        constraints: TaskConstraints {
+            browser_profile: Some("chrome-profile".to_owned()),
+            ..TaskConstraints::default()
+        },
+        ..StartTaskRequest::default()
+    });
+    assert_eq!(code(&relative_profile), "INVALID_REQUEST");
+    assert!(
+        relative_profile
+            .error
+            .unwrap()
+            .message
+            .contains("absolute folder")
+    );
+    let blank_binary = tasks.start(&StartTaskRequest {
+        flow: Some(flow(json!({"app": "Mail", "steps": ["x"]}))),
+        constraints: TaskConstraints {
+            browser_executable: Some("  ".to_owned()),
+            ..TaskConstraints::default()
+        },
+        ..StartTaskRequest::default()
+    });
+    assert_eq!(code(&blank_binary), "INVALID_REQUEST");
+}
+
+#[tokio::test]
 async fn requests_that_cannot_start_are_refused_with_a_hint() {
     let (tasks, _) = controller(Vec::new());
     let misspelt = tasks.start(&StartTaskRequest {

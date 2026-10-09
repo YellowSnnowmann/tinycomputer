@@ -171,9 +171,14 @@ spent waiting for the caller does not count.
 - `surfaces`: `browser`, `desktop`, or both (empty means both). A task confined
   to one side gets a workspace without the other, so it cannot reach it even by
   mistake.
-- `origins`: the sites a browser session may load, such as
-  `https://.goindigo.in` for a site and its subdomains. agent-browser's domain
-  filter enforces it. It is a guard rail, not a sandbox.
+- `origins`: the sites a browser session may open pages on, such as
+  `https://.goindigo.in` for a site and its subdomains, or `*` for any public
+  site (private and local addresses stay refused). The session checks pages
+  itself: a navigation outside the list is refused before it is sent, and a
+  page a click or redirect lands on outside it is left before it is read. The
+  files a page loads from other hosts are not checked; agent-browser's domain
+  filter is not used, as it refuses those files too and breaks the page. It
+  is a guard rail, not a sandbox. `fill_then_approve` refuses `*`.
 - `payment`: `stop_at_payment` (the default) makes the control that pays a
   final checkpoint; `fill_then_approve` fills the payment form from secret
   facts and waits at `needs_approval` before pressing it. The latter needs
@@ -186,6 +191,10 @@ spent waiting for the caller does not count.
   browser but serve a person's own. Closing an attached session only
   disconnects; it never closes the person's browser.
 - `headed`: show the browser.
+- `browser_executable`: the Chrome or Chromium binary to launch.
+- `browser_profile`: an absolute folder to keep the browser's profile in, so
+  sign-ins last between tasks (`INVALID_REQUEST` for a relative folder). One
+  browser can hold a folder at a time.
 
 ## Private values
 

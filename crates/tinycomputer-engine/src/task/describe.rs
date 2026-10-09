@@ -84,10 +84,19 @@ fn start_task_input() -> Value {
                     "default": "stop_at_payment"
                 },
                 "surfaces": surfaces(),
-                "origins": {"type": "array", "items": {"type": "string"}},
+                "origins": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "sites the browser may open pages on: https://example.com, https://.example.com with its subdomains, or * for any public site; only pages are checked, never the files a page loads"
+                },
                 "allow_destructive": {"type": "boolean"},
                 "browser_endpoint": {"type": "string"},
-                "headed": {"type": "boolean"}
+                "headed": {"type": "boolean"},
+                "browser_executable": {"type": "string"},
+                "browser_profile": {
+                    "type": "string",
+                    "description": "an absolute folder the browser keeps its profile in, so sign-ins last between tasks"
+                }
             }},
             "budget": {"type": "object", "properties": {
                 "max_actions": {"type": "integer"},
