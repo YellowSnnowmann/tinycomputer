@@ -104,10 +104,12 @@ agent-browser:
 - every call that acts on or reads the page (`perform`, `evaluate`,
   `snapshot`, `read_page`, `screenshot`, a raw command, its `title`
   included) first checks the page the session shows, so nothing is sent to
-  a page that moved out of the list on its own (a timer, a redirect); a raw
-  wait or lookup that neither acts nor reads (`waitforloadstate`,
-  `boundingbox`, `url`) is not checked, so it runs while a navigation
-  commits;
+  a page that moved out of the list on its own (a timer, a redirect); only
+  a raw wait for the page to load (`waitforloadstate`) and a read of its
+  address (`url`, which a refusal names anyway) are not checked, so a wait
+  runs while a navigation commits; a box lookup (`boundingbox`, whose
+  selector can test whether a text shows) and a permission grant
+  (`permissions`) are checked like any call;
 - the page a call leaves the session on is checked after it, and a refused
   one is left, back or to `about:blank`, before the call reports
   `LeftRefusedPage` (the call ran: its effect may stand); a `navigate`

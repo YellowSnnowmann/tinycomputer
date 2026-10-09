@@ -36,10 +36,12 @@ const URL_IS_NO_PAGE: &[&str] = &[
     "waitforurl",
 ];
 
-/// The raw commands that neither act on the page nor read what it shows (a
-/// wait for it to load, a box's place on screen, its address): no check of
-/// the page goes around them, so a wait while a navigation commits runs.
-const NEITHER_ACTS_NOR_READS: &[&str] = &["boundingbox", "permissions", "url", "waitforloadstate"];
+/// The raw commands that neither act on the page nor read what it shows: a
+/// wait for it to load, and its address, which a refusal names anyway. No
+/// check of the page goes around them, so a wait while a navigation commits
+/// runs. A box's place on screen is checked: a selector can test whether a
+/// text shows. So is a permission grant, which changes what pages may do.
+const NEITHER_ACTS_NOR_READS: &[&str] = &["url", "waitforloadstate"];
 
 impl Browser {
     /// Navigates the session's active page.
@@ -180,10 +182,12 @@ impl Browser {
     /// This is the escape hatch for engine capabilities the typed calls do
     /// not cover. It carries no policy of its own beyond the allowed origins:
     /// a command that would open or fetch an address outside them is never
-    /// sent, nor any command while the session shows a refused page, and the
-    /// page a command leaves the session on is checked before its result is
-    /// returned. A caller exposing it to a model must still decide which
-    /// actions to allow.
+    /// sent, nor any command that acts on the page or reads what it shows
+    /// while the session shows a refused page (only a wait for the page to
+    /// load and a read of its address go ahead), and the page a command
+    /// leaves the session on is checked before its result is returned. A
+    /// caller exposing it to a model must still decide which actions to
+    /// allow.
     ///
     /// # Errors
     ///

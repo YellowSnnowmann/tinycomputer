@@ -610,11 +610,38 @@ async fn a_read_is_never_sent_to_a_page_that_moved_out_of_the_origins() {
             "{read}: {sent:?}"
         );
     }
-    // A raw command for the page's title reads what the page shows.
-    let fake = drifting("https://evil.test/");
-    let (browser, id) = open_within(&fake, "origins-drift-title", &[".flights.test"]).await;
-    blocked(
-        browser.command(&id, json!({"action": "title"})).await,
-        "https://evil.test/",
-    );
+    // A raw command for the page's title reads what the page shows, a box
+    // lookup can test whether a text shows, and a permission grant changes
+    // what pages may do.
+    for command in [
+        json!({"action": "title"}),
+        json!({"action": "boundingbox", "selector": "text=Account balance"}),
+        json!({"action": "permissions", "permissions": ["geolocation"]}),
+    ] {
+        let fake = drifting("https://evil.test/");
+        let (browser, id) = open_within(&fake, "origins-drift-raw-read", &[".flights.test"]).await;
+        let opened = fake.actions().len();
+        blocked(
+            browser.command(&id, command.clone()).await,
+            "https://evil.test/",
+        );
+        // Leaving the refused page reads the page it goes back to, title and
+        // all; neither a box lookup nor a grant is sent.
+        let sent = fake.actions().split_off(opened);
+        assert!(
+            !sent
+                .iter()
+                .any(|action| action == "boundingbox" || action == "permissions"),
+            "{sent:?}"
+        );
+    }
+    // Its address, and a wait for it to load, read nothing of what it shows.
+    for command in [
+        json!({"action": "url"}),
+        json!({"action": "waitforloadstate", "state": "load"}),
+    ] {
+        let fake = drifting("https://evil.test/");
+        let (browser, id) = open_within(&fake, "origins-drift-raw-wait", &[".flights.test"]).await;
+        browser.command(&id, command).await.unwrap();
+    }
 }
