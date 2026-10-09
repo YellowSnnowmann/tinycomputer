@@ -173,9 +173,11 @@ spent waiting for the caller does not count.
   mistake.
 - `origins`: the sites a browser session may open pages on, such as
   `https://.goindigo.in` for a site and its subdomains, or `*` for any public
-  site (private and local addresses stay refused). The session checks pages
-  itself: a navigation outside the list is refused before it is sent, and a
-  page a click or redirect lands on outside it is left before it is read. The
+  site (private and local addresses and names stay refused; a name is never
+  resolved, so a public name that leads to a local address is admitted). The
+  session checks pages itself: a navigation outside the list is refused
+  before it is sent, nothing is done on a page outside it, and a page a
+  click or redirect lands on outside it is left before it is read. The
   files a page loads from other hosts are not checked; agent-browser's domain
   filter is not used, as it refuses those files too and breaks the page. It
   is a guard rail, not a sandbox. `fill_then_approve` refuses `*`.

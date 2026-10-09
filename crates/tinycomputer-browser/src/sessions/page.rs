@@ -9,12 +9,44 @@ use tinycomputer_bus::browser::{
 
 use super::Browser;
 use crate::convert;
-
-/// The raw commands that open the page their `url` names.
-const OPENS_PAGE: &[&str] = &["navigate", "tab_new", "window_new"];
 use crate::error::{Error, Result};
 use crate::outputs::within_cap;
 use crate::reply;
+
+/// The fields of a raw command that can name a page to open or fetch.
+const URL_FIELDS: &[&str] = &["url", "url1", "url2"];
+
+/// The raw commands whose `url` names no page to open: a pattern to match
+/// (`route`, `waitforurl`), a file the page loads (`addscript`), or a place
+/// to file credentials under. Every other raw command that names one
+/// ([`URL_FIELDS`]) opens or fetches it (`navigate`, `tab_new`, `a11y`,
+/// `vitals`, `auth_login`, `recording_start`, `diff_url`), so its address is
+/// checked before it is sent; an action the engine adds later is checked
+/// too until it is listed here.
+const URL_IS_NO_PAGE: &[&str] = &[
+    "addscript",
+    "addstyle",
+    "auth_save",
+    "credentials_set",
+    "frame",
+    "pushstate",
+    "responsebody",
+    "route",
+    "unroute",
+    "wait",
+    "waitforurl",
+];
+
+/// The raw commands that neither act on the page nor read what it shows (a
+/// wait for it to load, a box's place on screen, its address): no check of
+/// the page goes around them, so a wait while a navigation commits runs.
+const NEITHER_ACTS_NOR_READS: &[&str] = &[
+    "boundingbox",
+    "permissions",
+    "title",
+    "url",
+    "waitforloadstate",
+];
 
 impl Browser {
     /// Navigates the session's active page.
@@ -33,10 +65,16 @@ impl Browser {
             return Err(Error::BlockedByPolicy { url: request.url });
         }
         let data = session.run(command).await?;
-        let page = PageState {
-            url: reply::text(&data, "url"),
-            title: reply::text(&data, "title"),
-            status: None,
+        // Under a list the page is read afresh: the engine reports the
+        // address it was asked for when the one it reached cannot be read.
+        let page = if session.origins.restricts() {
+            session.page().await?
+        } else {
+            PageState {
+                url: reply::text(&data, "url"),
+                title: reply::text(&data, "title"),
+                status: None,
+            }
         };
         let page = session.admit(page).await?;
         session.info.url.clone_from(&page.url);
@@ -71,11 +109,16 @@ impl Browser {
     ///
     /// [`Error::NoSuchSession`], [`Error::InvalidInput`] for an action the
     /// engine cannot express, [`Error::StaleRef`] for a ref from an earlier
-    /// snapshot, and whatever else the action reports.
+    /// snapshot, [`Error::BlockedByPolicy`] when the page it would act on, or
+    /// the page it leads to, is outside the allowed origins, and whatever
+    /// else the action reports.
     pub async fn perform(&self, id: &SessionId, action: Action) -> Result<ActionOutcome> {
         let session = self.session(id)?;
         let mut session = session.lock().await;
         let command = convert::action(&action, session.options.default_timeout_ms)?;
+        // The page may have moved on its own since the last call (a redirect,
+        // a timer): an action is never sent to a refused one.
+        session.check_if_readable(false).await?;
         let data = session.run(command).await?;
         let value = match &action {
             Action::GetText { .. } => data.get("text").cloned().unwrap_or(Value::Null),
@@ -140,11 +183,12 @@ impl Browser {
     /// `{"action": "inputvalue", "selector": "@e3"}`, and returns its `data`.
     ///
     /// This is the escape hatch for engine capabilities the typed calls do
-    /// not cover. It carries no policy of its own beyond the allowed origins,
-    /// which refuse a command that opens a page outside them before it is
-    /// sent; a caller exposing it to a model must decide which actions to
-    /// allow. The page a command leaves the session on is checked by the
-    /// next typed call, or the next observation.
+    /// not cover. It carries no policy of its own beyond the allowed origins:
+    /// a command that would open or fetch an address outside them is never
+    /// sent, nor any command while the session shows a refused page, and the
+    /// page a command leaves the session on is checked before its result is
+    /// returned. A caller exposing it to a model must still decide which
+    /// actions to allow.
     ///
     /// # Errors
     ///
@@ -161,15 +205,36 @@ impl Browser {
         };
         let session = self.session(id)?;
         let mut session = session.lock().await;
-        if OPENS_PAGE.contains(&action)
+        if !URL_IS_NO_PAGE.contains(&action) {
+            for field in URL_FIELDS {
+                if let Some(url) = command.get(*field).and_then(Value::as_str)
+                    && !session.origins.admits(url)
+                {
+                    return Err(Error::BlockedByPolicy {
+                        url: url.to_owned(),
+                    });
+                }
+            }
+        }
+        // `read` with an address fetches it from this process and follows
+        // its redirects, where no page is ever checked.
+        if action == "read"
+            && session.origins.restricts()
             && let Some(url) = command.get("url").and_then(Value::as_str)
-            && !session.origins.admits(url)
         {
             return Err(Error::BlockedByPolicy {
                 url: url.to_owned(),
             });
         }
-        session.run(command).await
+        if NEITHER_ACTS_NOR_READS.contains(&action) {
+            return session.run(command).await;
+        }
+        session.check_if_readable(false).await?;
+        let data = session.run(command).await?;
+        // What a command read or did on a page it then left for a refused
+        // one is never returned.
+        session.check_if_readable(true).await?;
+        Ok(data)
     }
 
     /// Evaluates JavaScript in the page and returns its value.
@@ -177,11 +242,16 @@ impl Browser {
     /// # Errors
     ///
     /// [`Error::NoSuchSession`], [`Error::InvalidInput`] for an empty
-    /// expression, and [`Error::PageError`] when the script throws.
+    /// expression, [`Error::BlockedByPolicy`] when the page it would run in,
+    /// or the page it leads to, is outside the allowed origins, and
+    /// [`Error::PageError`] when the script throws.
     pub async fn evaluate(&self, id: &SessionId, request: EvaluateRequest) -> Result<Value> {
         let session = self.session(id)?;
         let mut session = session.lock().await;
-        let data = session.run(convert::evaluate(&request)?).await?;
+        let command = convert::evaluate(&request)?;
+        session.check_if_readable(false).await?;
+        let data = session.run(command).await?;
+        session.check_if_readable(true).await?;
         Ok(data.get("result").cloned().unwrap_or(Value::Null))
     }
 
@@ -191,8 +261,9 @@ impl Browser {
     /// # Errors
     ///
     /// [`Error::NoSuchSession`], [`Error::InvalidInput`] for a bad quality or
-    /// a locator target, [`Error::LimitExceeded`] for an oversized image, and
-    /// whatever the capture reports.
+    /// a locator target, [`Error::LimitExceeded`] for an oversized image,
+    /// [`Error::BlockedByPolicy`] when the page shown is outside the allowed
+    /// origins, and whatever the capture reports.
     pub async fn screenshot(
         &self,
         id: &SessionId,
@@ -214,6 +285,8 @@ impl Browser {
         let bytes = std::fs::read(&written)
             .map_err(|error| Error::failed(format!("screenshot was not written: {error}")))?;
         let _removed = std::fs::remove_file(&written);
+        // A picture of a page that turned out refused is never handed over.
+        session.check_if_readable(true).await?;
         within_cap(bytes.len().div_ceil(3) * 4)?;
         let (width, height) = reply::image_size(&bytes);
         self.lock_outputs()?

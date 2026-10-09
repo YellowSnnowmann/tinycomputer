@@ -1,5 +1,6 @@
 //! Tests for a task's surface on a page its allowed origins refuse: the
 //! observation fails as blocked, and the page is left before it is read.
+//! A page whose address cannot be read is not read either.
 
 use std::sync::{Arc, Mutex};
 
@@ -10,17 +11,25 @@ use tinycomputer_core::surface::{Depth, Surface};
 use super::{Drawn, shown_harness};
 use crate::fake::{Fake, ok};
 
-/// A page at `start` that goes back to `back`, reporting where it is.
-fn page_at(start: &str, back: &'static str) -> Fake {
-    let at = Arc::new(Mutex::new(start.to_owned()));
+/// A page that opens at `back` and is at `then` from the second time its
+/// address is read (a page that moved on its own after the session
+/// opened), until the session goes back to `back`.
+fn page_at(then: &'static str, back: &'static str) -> Fake {
+    let state = Arc::new(Mutex::new((0_u32, back.to_owned())));
     Fake::scripted(move |command| {
-        let mut at = at.lock().unwrap();
+        let mut state = state.lock().unwrap();
         match command["action"].as_str().unwrap() {
             "back" => {
-                back.clone_into(&mut at);
+                back.clone_into(&mut state.1);
                 None
             }
-            "url" => Some(ok(&json!({"url": *at}))),
+            "url" => {
+                state.0 += 1;
+                if state.0 == 2 {
+                    then.clone_into(&mut state.1);
+                }
+                Some(ok(&json!({"url": state.1})))
+            }
             _ => None,
         }
     })
@@ -75,6 +84,52 @@ fn an_admitted_page_is_read_as_before() {
         within(&[".flights.test"]),
         &Drawn::default(),
     );
-    assert!(harness.surface.observe("", None, Depth::Full).is_ok());
+    let screen = harness
+        .surface
+        .observe("", None, Depth::Full)
+        .expect("an admitted page is read");
+    // The fake engine's page: one "Search" button.
+    assert!(
+        screen
+            .candidates
+            .iter()
+            .any(|candidate| candidate.name.as_deref() == Some("Search")),
+        "{:?}",
+        screen.candidates
+    );
     assert!(!harness.fake.actions().contains(&"back".to_owned()));
+}
+
+#[test]
+fn a_page_whose_address_cannot_be_read_is_not_read() {
+    let reads = Arc::new(Mutex::new(0_u32));
+    let fake = Fake::scripted(move |command| {
+        let mut reads = reads.lock().unwrap();
+        match command["action"].as_str().unwrap() {
+            // The address reads once as the session opens, then fails.
+            "url" => {
+                *reads += 1;
+                Some(if *reads == 1 {
+                    ok(&json!({"url": "https://flights.test/"}))
+                } else {
+                    crate::fake::failure("Execution context was destroyed")
+                })
+            }
+            _ => None,
+        }
+    });
+    let harness = shown_harness(
+        "origins-unreadable",
+        fake,
+        within(&[".flights.test"]),
+        &Drawn::default(),
+    );
+    assert!(harness.surface.observe("", None, Depth::Full).is_err());
+    let actions = harness.fake.actions();
+    assert!(
+        !actions
+            .iter()
+            .any(|action| action == "snapshot" || action == "evaluate"),
+        "nothing was read: {actions:?}"
+    );
 }

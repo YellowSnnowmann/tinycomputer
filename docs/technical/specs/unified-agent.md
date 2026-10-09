@@ -180,9 +180,12 @@ These are additive to the grammar in [`jev-intent-flows.md`](jev-intent-flows.md
 - Irreversible actions need `allow_destructive` or an explicit approval via
   `ContinueTask`.
 - The origin allow-list is enforced per task on pages, by the browser session
-  (`tinycomputer-browser` `origins/`): a navigation outside it is refused
-  before it is sent, and a page a task is taken to outside it is left before
-  it is read or acted on. agent-browser's domain filter is not used: it
+  (`tinycomputer-browser` `origins/`), reading addresses by the WHATWG URL
+  rules the browser does: a navigation outside it is refused before it is
+  sent, no call acts on or reads a page outside it, and a page a task is
+  taken to outside it is left before it is read or acted on. A name is never
+  resolved, so `*` refuses only what is local by how it is written.
+  agent-browser's domain filter is not used: it
   refuses every request outside the list, so a page's own CDN and APIs fail,
   it stalls or closes the browser when it cannot install itself on a new
   target, and it refuses a profile beside a list. It is a guard rail, not a

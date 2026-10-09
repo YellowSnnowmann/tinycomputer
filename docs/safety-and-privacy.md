@@ -56,7 +56,9 @@ the run:
 If you want the card form filled in, set `payment: "fill_then_approve"`. The
 task fills the form from secret details you gave it, then pauses as
 `needs_approval` before pressing Pay. This mode needs a list of allowed
-websites (`origins`), so card details are only typed on sites you named.
+websites (`origins`, never `*`), so card details are only typed on pages of
+sites you named, including the payment form such a page shows in a frame of
+its payment provider's.
 
 `allow_destructive: true` turns all of this off and lets the task press
 irreversible controls, payment included, without asking. Use it only when
@@ -113,7 +115,13 @@ rather than guessing. There's never a fallback click.
 
 - **Surfaces.** A task limited to the browser gets no desktop at all, and the
   other way round.
-- **Websites.** `origins` limits which sites the browser may load.
+- **Websites.** `origins` limits which sites the browser may open pages on;
+  the files a page loads from elsewhere (its pictures, scripts, and frames)
+  load as in any browser. `*` admits any public site and refuses addresses
+  and names that are local by how they are written (`localhost`, a
+  home-network address, a `.local` name). It never looks a name up, so a
+  public name that leads to your own network is not refused: where local
+  services must stay unreachable, run the browser where they are.
 - **Budgets.** Caps on actions, questions to Jev, time, and rescues apply to
   the whole task. Pausing never refills them.
 - **Your location.** When a task presses a page's own "use my current

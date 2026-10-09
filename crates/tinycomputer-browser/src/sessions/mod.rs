@@ -25,6 +25,10 @@ mod page;
 /// How many sessions may be open at once.
 pub const MAX_SESSIONS: usize = 8;
 
+/// How long a page check waits before reading the page's address a second
+/// time: a page committing a navigation has none for a moment.
+const ADDRESS_RETRY: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// Browser automation over agent-browser, one engine per session.
 #[derive(Debug)]
 pub struct Browser {
@@ -87,15 +91,69 @@ impl Session {
 
     /// `page`, the page a call left the session on, unless the allowed
     /// origins refuse it: then the session leaves it, and the call reports
-    /// [`Error::BlockedByPolicy`]. A click, a key, a redirect, or the page's
-    /// own script can take a session anywhere; only what it then shows is
-    /// checked, never the files it loads.
+    /// [`Error::LeftRefusedPage`], since it ran. A click, a key, a redirect,
+    /// or the page's own script can take a session anywhere; only what it
+    /// then shows is checked, never the files it loads.
     async fn admit(&mut self, page: PageState) -> Result<PageState> {
         if self.origins.admits(&page.url) {
             return Ok(page);
         }
         self.leave().await;
-        Err(Error::BlockedByPolicy { url: page.url })
+        Err(Error::LeftRefusedPage { url: page.url })
+    }
+
+    /// The address of the page the session shows, asked twice before its
+    /// failure is reported.
+    async fn address(&mut self) -> Result<String> {
+        if let Ok(data) = self.run(json!({"action": "url"})).await {
+            return Ok(reply::text(&data, "url"));
+        }
+        tokio::time::sleep(ADDRESS_RETRY).await;
+        Ok(reply::text(
+            &self.run(json!({"action": "url"})).await?,
+            "url",
+        ))
+    }
+
+    /// Checks the page the session shows against its allowed origins, and
+    /// leaves a refused one; free when the session has no list. A page found
+    /// `after` the call's own work is reported as [`Error::LeftRefusedPage`],
+    /// one found before it as [`Error::BlockedByPolicy`].
+    ///
+    /// # Errors
+    ///
+    /// The refusal, and whatever reading the page's address reports.
+    async fn check(&mut self, after: bool) -> Result<()> {
+        if !self.origins.restricts() {
+            return Ok(());
+        }
+        let url = self.address().await?;
+        if self.origins.admits(&url) {
+            return Ok(());
+        }
+        self.leave().await;
+        Err(if after {
+            Error::LeftRefusedPage { url }
+        } else {
+            Error::BlockedByPolicy { url }
+        })
+    }
+
+    /// [`Session::check`] around a call's own work, which goes ahead when
+    /// the page's address cannot be read: a page committing a navigation has
+    /// none for a moment, and a wait for it to load must not fail then.
+    /// What it reaches is checked after it, and before the next observation.
+    ///
+    /// # Errors
+    ///
+    /// The refusal alone.
+    async fn check_if_readable(&mut self, after: bool) -> Result<()> {
+        match self.check(after).await {
+            Err(refused @ (Error::BlockedByPolicy { .. } | Error::LeftRefusedPage { .. })) => {
+                Err(refused)
+            }
+            _ => Ok(()),
+        }
     }
 
     /// Leaves a refused page: back, or to `about:blank` when going back does
@@ -197,8 +255,23 @@ impl Browser {
         session.run(convert::launch(&session.options)).await?;
         session.run(convert::viewport(&session.options)).await?;
         let page = session.page().await?;
-        session.info.url = page.url;
-        session.info.title = page.title;
+        if session.origins.admits(&page.url) {
+            session.info.url = page.url;
+            session.info.title = page.title;
+        } else if session.info.launched {
+            // A profile that restores its last pages can open on a page the
+            // list refuses: it is left before anything reads it, and the
+            // session opens where that leads.
+            session.leave().await;
+        } else {
+            // A browser attached to is someone's own: their tab stays as it
+            // is, and the session works in a blank tab of its own.
+            let _opened = session.run(json!({"action": "tab_new"})).await;
+            if let Ok(page) = session.page().await {
+                session.info.url = page.url;
+                session.info.title = page.title;
+            }
+        }
         let info = session.info.clone();
         // The slot moves from the reservation to the table in one step under
         // the lock, so no concurrent check ever counts this launch twice.
@@ -253,15 +326,7 @@ impl Browser {
     pub(crate) async fn check_page(&self, id: &SessionId) -> Result<()> {
         let session = self.session(id)?;
         let mut session = session.lock().await;
-        if !session.origins.restricts() {
-            return Ok(());
-        }
-        let url = reply::text(&session.run(json!({"action": "url"})).await?, "url");
-        if session.origins.admits(&url) {
-            return Ok(());
-        }
-        session.leave().await;
-        Err(Error::BlockedByPolicy { url })
+        session.check(false).await
     }
 
     fn session(&self, id: &SessionId) -> Result<Arc<tokio::sync::Mutex<Session>>> {
