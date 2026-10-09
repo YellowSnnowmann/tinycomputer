@@ -97,9 +97,10 @@ agent-browser:
   `http:\\host\`, a host in percent escapes or full-width digits) is judged
   as the page it opens;
 - a navigation outside the list (`navigate`, or a raw command that names an
-  address to open or fetch in `url`, `url1`, or `url2`) is refused before
-  the browser is asked; a raw `read` of an address, which follows redirects
-  where no page is checked, is refused under any list;
+  address to open, fetch, or put into the page in `url`, `url1`, or `url2`,
+  `addscript` and `addstyle` included) is refused before the browser is
+  asked; a raw `read` of an address, which follows redirects where no page
+  is checked, is refused under any list;
 - every call that acts on or reads the page (`perform`, `evaluate`,
   `snapshot`, `read_page`, `screenshot`, a raw command, its `title`
   included) first checks the page the session shows, so nothing is sent to
@@ -112,9 +113,11 @@ agent-browser:
   `LeftRefusedPage` (the call ran: its effect may stand); a `navigate`
   reads the page it reached afresh rather than trusting the address the
   engine reports;
-- a page whose address cannot be read around a call's own work lets the
-  work go ahead (a page committing a navigation has none for a moment), and
-  the next check that can read it catches a refused one;
+- a page whose address cannot be read around a call's own work because it
+  is committing a navigation (the engine says its execution context was
+  destroyed) lets the work go ahead, and the next check that can read it
+  catches a refused one; any other failure to read the address fails the
+  call;
 - a task's surface checks the page before every observation, reading its
   address twice before giving up, and an observation fails rather than read
   a page it could not check;

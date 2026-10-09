@@ -29,6 +29,21 @@ pub const MAX_SESSIONS: usize = 8;
 /// time: a page committing a navigation has none for a moment.
 const ADDRESS_RETRY: std::time::Duration = std::time::Duration::from_millis(100);
 
+/// What the engine says when a page is committing a navigation and its
+/// address cannot be read for a moment, in lower case.
+const NAVIGATING: &[&str] = &[
+    "execution context was destroyed",
+    "cannot find default execution context",
+    "cannot find context with specified id",
+    "inspected target navigated or closed",
+];
+
+/// Whether `error` only says the page was committing a navigation.
+fn navigating(error: &Error) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+    NAVIGATING.iter().any(|said| message.contains(said))
+}
+
 /// Browser automation over agent-browser, one engine per session.
 #[derive(Debug)]
 pub struct Browser {
@@ -140,19 +155,20 @@ impl Session {
     }
 
     /// [`Session::check`] around a call's own work, which goes ahead when
-    /// the page's address cannot be read: a page committing a navigation has
-    /// none for a moment, and a wait for it to load must not fail then.
-    /// What it reaches is checked after it, and before the next observation.
+    /// the page's address cannot be read because the page is committing a
+    /// navigation ([`NAVIGATING`]): it has none for a moment, and a wait for
+    /// it to load must not fail then. What it reaches is checked after it,
+    /// and before the next observation. Any other failure to read the
+    /// address fails the call.
     ///
     /// # Errors
     ///
-    /// The refusal alone.
+    /// The refusal, and a failure to read the address other than a
+    /// navigation's.
     async fn check_if_readable(&mut self, after: bool) -> Result<()> {
         match self.check(after).await {
-            Err(refused @ (Error::BlockedByPolicy { .. } | Error::LeftRefusedPage { .. })) => {
-                Err(refused)
-            }
-            _ => Ok(()),
+            Err(error) if navigating(&error) => Ok(()),
+            other => other,
         }
     }
 

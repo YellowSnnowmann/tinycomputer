@@ -17,15 +17,14 @@ use crate::reply;
 const URL_FIELDS: &[&str] = &["url", "url1", "url2"];
 
 /// The raw commands whose `url` names no page to open: a pattern to match
-/// (`route`, `waitforurl`), a file the page loads (`addscript`), or a place
-/// to file credentials under. Every other raw command that names one
-/// ([`URL_FIELDS`]) opens or fetches it (`navigate`, `tab_new`, `a11y`,
-/// `vitals`, `auth_login`, `recording_start`, `diff_url`), so its address is
-/// checked before it is sent; an action the engine adds later is checked
-/// too until it is listed here.
+/// (`route`, `waitforurl`), a same-origin history entry (`pushstate`), or a
+/// place to file credentials under. Every other raw command that names one
+/// ([`URL_FIELDS`]) opens, fetches, or runs it (`navigate`, `tab_new`,
+/// `a11y`, `vitals`, `auth_login`, `recording_start`, `diff_url`, and
+/// `addscript`/`addstyle`, which put a caller's chosen file into the page),
+/// so its address is checked before it is sent; an action the engine adds
+/// later is checked too until it is listed here.
 const URL_IS_NO_PAGE: &[&str] = &[
-    "addscript",
-    "addstyle",
     "auth_save",
     "credentials_set",
     "frame",

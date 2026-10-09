@@ -406,12 +406,21 @@ async fn every_address_a_raw_command_names_is_checked_and_a_fetch_is_refused() {
             .await,
         "https://flights.test/",
     );
-    assert!(
-        !fake
-            .actions()
-            .iter()
-            .any(|action| action == "diff_url" || action == "read")
-    );
+    // A script or style the caller puts into the page comes from the list.
+    for action in ["addscript", "addstyle"] {
+        blocked(
+            browser
+                .command(
+                    &id,
+                    json!({"action": action, "url": "https://evil.test/x.js"}),
+                )
+                .await,
+            "https://evil.test/x.js",
+        );
+    }
+    assert!(!fake.actions().iter().any(|action| {
+        ["diff_url", "read", "addscript", "addstyle"].contains(&action.as_str())
+    }));
 }
 
 #[tokio::test]
@@ -444,7 +453,7 @@ async fn a_page_that_cannot_say_where_it_is_still_gets_its_wait_and_its_action()
         .command(&id, json!({"action": "evaluate", "script": "1"}))
         .await
         .unwrap();
-    let _reported = browser
+    let reported = browser
         .perform(
             &id,
             Action::Click {
@@ -457,8 +466,46 @@ async fn a_page_that_cannot_say_where_it_is_still_gets_its_wait_and_its_action()
     for sent in ["waitforloadstate", "evaluate", "click"] {
         assert!(actions.contains(&sent.to_owned()), "{sent}: {actions:?}");
     }
+    // The click went ahead; the page it left could not be read to report.
+    assert!(
+        reported.as_ref().is_err_and(|error| error
+            .to_string()
+            .contains("Execution context was destroyed")),
+        "{reported:?}"
+    );
     // The observation's own check reads twice, then reports it cannot.
     assert!(browser.check_page(&id).await.is_err());
+}
+
+#[tokio::test]
+async fn a_page_that_cannot_be_read_for_another_reason_gets_nothing() {
+    // Only a navigation's passing failure lets work go ahead.
+    let reads = Arc::new(Mutex::new(0_u32));
+    let fake = Fake::scripted(move |command| {
+        let mut reads = reads.lock().unwrap();
+        match command["action"].as_str().unwrap() {
+            "url" => {
+                *reads += 1;
+                Some(if *reads == 1 {
+                    ok(&json!({"url": "https://flights.test/"}))
+                } else {
+                    crate::fake::failure("CDP response could not be parsed")
+                })
+            }
+            _ => None,
+        }
+    });
+    let (browser, id) = open_within(&fake, "origins-unreadable-other", &[".flights.test"]).await;
+    assert!(
+        browser
+            .command(&id, json!({"action": "evaluate", "script": "1"}))
+            .await
+            .is_err()
+    );
+    assert!(
+        !fake.actions().contains(&"evaluate".to_owned()),
+        "nothing ran on a page that could not be checked"
+    );
 }
 
 #[tokio::test]
@@ -498,7 +545,10 @@ async fn a_session_is_never_handed_out_on_a_refused_page_it_cannot_leave() {
         .await;
     blocked(opened, "https://evil.test/");
     assert!(fake.actions().contains(&"close".to_owned()));
-    assert!(browser.list_sessions().await.unwrap().is_empty());
+    assert_eq!(
+        browser.list_sessions().await.unwrap(),
+        [] as [tinycomputer_bus::browser::SessionInfo; 0]
+    );
 
     // An attached browser that cannot open a tab of the session's own.
     let fake = Fake::scripted(|command| match command["action"].as_str().unwrap() {
@@ -514,7 +564,12 @@ async fn a_session_is_never_handed_out_on_a_refused_page_it_cannot_leave() {
             ..SessionOptions::default()
         })
         .await;
-    assert!(opened.is_err());
+    assert!(
+        opened
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("Target.createTarget failed")),
+        "the tab that could not be opened fails the open: {opened:?}"
+    );
     assert!(
         !fake
             .actions()
