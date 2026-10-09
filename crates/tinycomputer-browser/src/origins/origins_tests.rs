@@ -102,8 +102,11 @@ fn a_star_admits_any_public_host_but_never_a_local_or_private_one() {
 fn a_page_that_is_no_site_shows_and_other_schemes_never_do_under_a_list() {
     let list = origins(&["https://.example.com"]);
     assert!(list.admits("about:blank"));
+    assert!(list.admits("about:blank#top"));
     assert!(list.admits("chrome-error://chromewebdata/"));
     for url in [
+        "about:settings",
+        "about:version",
         "file:///Users/someone/.ssh/id_rsa",
         "data:text/html,<script>1</script>",
         "javascript:alert(1)",
@@ -120,4 +123,82 @@ fn a_list_whose_entries_name_no_host_admits_nothing() {
     let list = origins(&["https://", "   ", "."]);
     assert!(!list.admits("https://example.com/"));
     assert!(list.admits("about:blank"));
+}
+
+#[test]
+fn an_address_written_another_way_is_judged_as_the_one_it_opens() {
+    // A browser reads every one of these as a loopback or local address.
+    let list = origins(&["*"]);
+    for url in [
+        "http://2130706433/",
+        "http://127.1/",
+        "http://0x7f.0.0.1/",
+        "http://0177.0.0.1/",
+        "http://%31%32%37.0.0.1/",
+        "http:\\\\127.0.0.1\\",
+        "http:/127.0.0.1",
+        "http://\u{ff11}\u{ff12}\u{ff17}.\u{ff10}.\u{ff10}.\u{ff11}/",
+        "HTTP://LOCALHOST/",
+        "http://[::ffff:7f00:1]/",
+        "http://[::127.0.0.1]/",
+        "http://[64:ff9b::7f00:1]/",
+        "http://[2002:c0a8:101::1]/",
+        "http://[fec0::1]/",
+    ] {
+        assert!(!list.admits(url), "{url}");
+    }
+    for url in [
+        "http://1.1.1.1/",
+        "http://16843009/",
+        "http://[64:ff9b::101:101]/",
+    ] {
+        assert!(list.admits(url), "{url}");
+    }
+}
+
+#[test]
+fn a_name_only_a_local_network_resolves_is_refused_under_a_star() {
+    let list = origins(&["*"]);
+    for url in [
+        "http://router/",
+        "http://metadata.google.internal/",
+        "http://nas.home.arpa/",
+        "http://printer.local./",
+    ] {
+        assert!(!list.admits(url), "{url}");
+    }
+    for url in ["https://internal.example.com/", "https://local.example/"] {
+        assert!(list.admits(url), "{url}");
+    }
+}
+
+#[test]
+fn a_host_is_compared_as_the_browser_reads_it() {
+    // The browser opens evil.test here: a backslash ends the host.
+    let list = origins(&["https://example.com"]);
+    assert!(!list.admits("https://evil.test\\@example.com/"));
+    assert!(list.admits("https://example.com\\@evil.test/"));
+    // An address entry admits that address however it is written, and an
+    // international name its ASCII form.
+    let loopback = origins(&["http://127.0.0.1:3000"]);
+    assert!(loopback.admits("http://2130706433:3000/"));
+    assert!(!loopback.admits("http://127.0.0.2/"));
+    let international = origins(&["https://B\u{fc}cher.example"]);
+    assert!(international.admits("https://xn--bcher-kva.example/"));
+}
+
+#[test]
+fn a_blob_page_shows_when_the_site_that_made_it_does() {
+    let list = origins(&["https://.example.com"]);
+    assert!(list.admits("blob:https://www.example.com/1f0c"));
+    assert!(!list.admits("blob:https://evil.test/1f0c"));
+    assert!(!list.admits("blob:null/1f0c"));
+}
+
+#[test]
+fn an_address_no_browser_could_open_is_refused() {
+    let list = origins(&["*"]);
+    for url in ["http://999.1.1.1/", "https://", "http://ex ample.com/", ""] {
+        assert!(!list.admits(url), "{url:?}");
+    }
 }
