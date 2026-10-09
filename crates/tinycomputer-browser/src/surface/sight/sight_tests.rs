@@ -5,5 +5,6 @@
 
 mod live_calendar_tests;
 mod live_controls_tests;
+mod live_day_label_tests;
 mod live_tests;
 mod reading_tests;

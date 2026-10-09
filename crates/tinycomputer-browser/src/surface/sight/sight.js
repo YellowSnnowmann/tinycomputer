@@ -149,7 +149,7 @@
   const calendarDays = new Map();
   const calendars = [];
   // The month and year a grid of days shows: the nearest short text before
-  // it, or before one of its four nearest ancestors, that names one, as
+  // it, or before one of its five nearest ancestors, that names one, as
   // `{ element, months: [[month, year], …] }`. A longer block (another
   // month's whole grid) ends the search at its level. A calendar already
   // `found` is passed over, however short, but a title beyond it names this
@@ -159,7 +159,7 @@
   const gridTitle = (grid, found, uses) => {
     let node = grid;
     let passed = false;
-    for (let depth = 0; node && node !== base && depth < 4; depth += 1, node = node.parentElement) {
+    for (let depth = 0; node && node !== base && depth < 6; depth += 1, node = node.parentElement) {
       let sibling = node.previousElementSibling;
       for (let step = 0; sibling && step < 3; step += 1, sibling = sibling.previousElementSibling) {
         // A hidden element's text still reads out (a template, a month
@@ -289,6 +289,17 @@
       if (picker && picker !== document.body && !calendars.includes(picker)
         && calendars.filter((other) => other !== picker && picker.contains(other)).length > 1) {
         calendars.push(picker);
+      }
+    }
+    // A month's title is its calendar's too, and pages it with the arrows
+    // drawn in it (live, a flight site's "‹ October 2026 – November 2026 ›"
+    // bar sat above both months, outside either), unless it holds a form's
+    // fields. Added last, so no block around a title and its grid is taken
+    // for a picker of two months.
+    for (const { title } of titled) {
+      const block = title.element;
+      if (!calendars.includes(block) && !block.querySelector('input, select, textarea')) {
+        calendars.push(block);
       }
     }
   };
@@ -549,13 +560,17 @@
 
   // The page's label on the one element inside a control that carries the
   // words it shows: a calendar day drawn as "18" whose inner span says
-  // "Sunday, 18 October 2026". Several labels inside make it a container,
-  // whose labels belong to what it holds.
+  // "Sunday, 18 October 2026", also when a fare follows its number ("23
+  // 6757" labelled "October 23, 2026"). Several labels inside make it a
+  // container, whose labels belong to what it holds. Live, two sites'
+  // priced days carried their date only so, and none read as a date.
   const innerLabel = (element, text) => {
     const labelled = [...element.querySelectorAll('[aria-label]')];
     if (labelled.length !== 1) return '';
     const said = squash(labelled[0].getAttribute('aria-label'));
-    return said.includes(text) ? said : '';
+    if (said.includes(text)) return said;
+    const day = /^(\d{1,2})(?:\s|$)/.exec(text);
+    return day && MONTH_WORD.test(said) && new RegExp(`\\b${day[1]}\\b`).test(said) ? said : '';
   };
 
   // What a person reads as the element's name, and a description when the

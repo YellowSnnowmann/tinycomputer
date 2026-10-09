@@ -173,7 +173,17 @@ page's own label for it already names a month ("Thu Oct 01 2026"), which
 stands alone; a label that names none ("Sold out", or only the day's
 number) follows the date ("24 October 2026, Sold out"). Live, a hotel site
 drew its open days as a number over a fare in rows of a week: none read as a
-date, and the step paged the calendar a year past the month it wanted.
+date, and the step paged the calendar a year past the month it wanted. The
+one labelled element inside a day is its date also when a fare follows its
+number ("23 6757" holding a label "October 23, 2026"), as long as that label
+names a month and the day's number. The title may sit before the grid or
+before any of its five nearest ancestors, and the title's own block is a
+calendar too, so arrows drawn in it page the month, unless it holds a form's
+fields; it is added after the pickers, so no block around a title and its
+grid reads as a picker of two months, and a wizard's "Next" beside the grid
+stays its own. Live, a flight site drew "‹ October 2026 – November 2026 ›"
+above both months, outside either, and its priced days carried their date
+only in an inner label.
 
 A label that wraps its field, and any text block holding a dropdown, is read
 without the dropdown's own text: a closed dropdown shows one choice, but its
