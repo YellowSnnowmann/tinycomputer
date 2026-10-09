@@ -141,13 +141,17 @@ const PLACE_LEADS: &[&str] = &["to", "via"];
 /// sentence's ("Read our tips to search faster"), and a press there leaves
 /// the form.
 ///
-/// Of several, the one whose label holds the word soonest, then the one
-/// that says least: a control wrapping others names them all, and the
-/// first one found is no better than any other. Live, for the slot "from
-/// city" a trip-type tab "Multi City" came first and was refused; the `do`
-/// loop that followed pressed the button wrapping the whole form ("From
-/// DEL … To BLR … Departure … Return …") at its centre, twice, and picked
-/// a return date that made a one-way search a round trip.
+/// Of several, the first, in document order, after ranking: one on screen
+/// before one scrolled away, then the one holding more of the slot's words
+/// ("Check-in …" over "Check availability" for "check-in date"), then the
+/// one holding the slot's first word (its most particular: "Departure …"
+/// over "Date Change" for "departure date", "From DEL" over "Multi City"
+/// for "from city"), then one that wraps no other match (a button wrapping
+/// the whole form names every box inside it). Live, for "from city" the
+/// "Multi City" tab came first and was refused; the `do` loop that followed
+/// pressed the button wrapping the whole form ("From DEL … To BLR …
+/// Departure … Return …") at its centre, twice, and picked a return date
+/// that made a one-way search a round trip.
 pub(in crate::agentic::flow) fn named_opener(
     screen: &Screen,
     slots: &[Slot],
@@ -172,7 +176,7 @@ pub(in crate::agentic::flow) fn named_opener(
         return None;
     }
     let fields = editable(screen);
-    screen
+    let matches = screen
         .candidates
         .iter()
         .filter(|candidate| {
@@ -191,15 +195,37 @@ pub(in crate::agentic::flow) fn named_opener(
         })
         .filter_map(|candidate| {
             let label = words(candidate.name.as_deref().unwrap_or_default());
-            let at = if label.first().is_some_and(|word| leads.contains(word)) {
-                Some(0)
-            } else {
-                label.iter().take(3).position(|word| wanted.contains(word))
-            }?;
-            Some(((at, label.len()), candidate))
+            let opens = |word: &String| {
+                (wanted.contains(word) && label.iter().take(3).any(|said| said == word))
+                    || (leads.contains(word) && label.first() == Some(word))
+            };
+            let first = named.iter().position(opens)?;
+            let held = named
+                .iter()
+                .filter(|word| !BOX_WORDS.contains(&word.as_str()))
+                .filter(|word| label.iter().take(3).any(|said| said == *word))
+                .count();
+            Some((candidate, label, first, held))
         })
-        .min_by_key(|(rank, _)| *rank)
-        .map(|(_, candidate)| candidate.clone())
+        .collect::<Vec<_>>();
+    let wraps = |label: &[String]| {
+        let outer = format!(" {} ", label.join(" "));
+        matches.iter().any(|(_, inner, _, _)| {
+            inner.len() >= 2
+                && inner.len() < label.len()
+                && outer.contains(&format!(" {} ", inner.join(" ")))
+        })
+    };
+    matches
+        .iter()
+        .min_by_key(|(candidate, label, first, held)| {
+            let away = candidate
+                .states
+                .iter()
+                .any(|state| state.eq_ignore_ascii_case("offscreen"));
+            (away, std::cmp::Reverse(*held), *first, wraps(label))
+        })
+        .map(|(candidate, ..)| (*candidate).clone())
 }
 
 /// The lower-case words of `text`.
