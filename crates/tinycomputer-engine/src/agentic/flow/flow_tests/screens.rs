@@ -471,9 +471,33 @@ pub(super) fn result_cards(
     text_nodes
 }
 
-/// What lies over the simulated page: a promo toast, or something that
-/// covers the New Message button.
+/// What lies over the simulated page: a promo toast, something that covers
+/// the New Message button (a backdrop over the page, with the header a
+/// refused press scrolled in under it, or a control of the page's own).
 pub(super) fn overlays(sim: &Sim, root: &str, candidates: &mut Vec<Candidate>) {
+    if [
+        Quirk::Backdrop,
+        Quirk::ControlOver,
+        Quirk::StubbornBackdrop,
+        Quirk::FleetingBackdrop,
+    ]
+    .into_iter()
+    .any(|quirk| sim.has(quirk))
+    {
+        for candidate in candidates.iter_mut() {
+            if candidate.name.as_deref() == Some("New Message") {
+                candidate.states = vec!["covered".to_owned()];
+            }
+        }
+    }
+    if sim.has(Quirk::HeaderUnderBackdrop) {
+        let header = [root, "banner"];
+        for (name, y) in [("Basket", 10.0), ("Sign in", 20.0), ("Help", 30.0)] {
+            let mut control = node(name, "button", &["Click"], &header, y);
+            control.states = vec!["covered".to_owned()];
+            candidates.push(control);
+        }
+    }
     if sim.has(Quirk::Covered) {
         for candidate in candidates.iter_mut() {
             if candidate.name.as_deref() == Some("New Message") {

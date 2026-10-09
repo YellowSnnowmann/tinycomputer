@@ -325,6 +325,10 @@ impl Surface for BrowserSurface {
     fn back(&self, _app: &str) -> DesktopResponse {
         self.perform("back", Action::Back)
     }
+
+    fn dismiss_cover(&self, target: &Candidate) -> DesktopResponse {
+        self.press_cover(&target.ref_id)
+    }
 }
 
 impl BrowserSurface {

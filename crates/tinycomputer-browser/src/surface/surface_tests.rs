@@ -15,6 +15,7 @@ use crate::fake::{Fake, ok};
 use crate::sessions::Browser;
 
 mod card_tests;
+mod cover_tests;
 mod cursor_tests;
 mod native_select_tests;
 mod operations_tests;
