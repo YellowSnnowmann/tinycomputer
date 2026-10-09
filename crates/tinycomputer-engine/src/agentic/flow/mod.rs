@@ -286,6 +286,9 @@ pub(super) struct FlowRun<'r, B> {
     /// field holding text the flow typed shows no choice the page made
     /// (`steps::already_holds`).
     pub(super) typed: BTreeSet<String>,
+    /// The field the run's last action typed into, while nothing else has
+    /// acted since but waits: the focus is still in it.
+    pub(super) typed_last: Option<Candidate>,
     /// How much the run deliberates before acting on a decision.
     deliberation: Deliberation,
     /// Every framing's own answer to each question, under the original
@@ -314,7 +317,8 @@ pub(super) struct FlowRun<'r, B> {
     /// Escape or a close that did not clear it once will not the next time.
     pub(super) step_cleared: BTreeSet<String>,
     /// What is in front, and whether the run's own press put it there
-    /// (`front.rs`).
+    /// (`front.rs`); built knowing whether the task's run before this one
+    /// left its own dialog in front ([`RunFlowRequest::dialog_left_open`]).
     pub(in crate::agentic::flow) front: Front,
 }
 

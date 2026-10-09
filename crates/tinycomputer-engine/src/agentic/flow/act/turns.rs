@@ -36,7 +36,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         // choose a heading in it: live, rescues kept choosing a language
         // heading above a format dialog's buttons.
         match ended {
-            Err(Halt::Failed(note)) if self.front.opened_dialog => {
+            Err(Halt::Failed(note)) if self.front.opened_dialog() => {
                 let offers = match self.look().await {
                     Ok(screen) => front_controls(&screen),
                     Err(_) => Vec::new(),
@@ -96,7 +96,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             // The root of the turn's tree: what needs attention first. A
             // distraction cleared means a fresh look before judging. A dialog
             // the step's own press just opened is the step's to work in.
-            if !self.front.opened_dialog
+            if !self.front.opened_dialog()
                 && self
                     .attend(log, &screen, intent, &mut state.cleared)
                     .await?

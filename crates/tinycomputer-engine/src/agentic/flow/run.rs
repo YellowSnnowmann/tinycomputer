@@ -132,6 +132,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
             read: request.collected.keys().cloned().collect(),
             refused: BTreeSet::new(),
             typed: BTreeSet::new(),
+            typed_last: None,
             deliberation: request.deliberation,
             ballots: BTreeMap::new(),
             asked: BTreeMap::new(),
@@ -140,7 +141,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
             expecting: None,
             step_location: None,
             step_cleared: BTreeSet::new(),
-            front: Front::default(),
+            front: Front::new(request.dialog_left_open),
         }
     }
 
@@ -346,6 +347,7 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
                 actions: self.actions,
                 metrics: self.metrics,
                 trace: self.trace,
+                dialog_left_open: self.front.left_open(),
             },
         )
     }

@@ -178,6 +178,9 @@ pub(super) async fn drive(cell: Arc<Cell>, runner: Arc<dyn FlowRunner>, runs: Ve
             if let Some(rescue) = run.rescue.and_then(|index| state.rescues.get_mut(index)) {
                 rescue.outcome = rescue_outcome(&reached, rescue.steps.len());
             }
+            state.dialog_left_open = result
+                .as_ref()
+                .is_some_and(|result| result.dialog_left_open);
             if let Some(result) = result {
                 state.spent.actions = state.spent.actions.saturating_add(result.actions);
                 state.spent.model_calls =

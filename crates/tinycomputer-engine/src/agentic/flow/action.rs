@@ -28,7 +28,13 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             return Err(Halt::Stop(FlowStopReason::ActionBudget));
         }
         self.actions = self.actions.saturating_add(1);
-        self.front.act(action, target.is_some());
+        self.front.act(action, target);
+        if action != "wait" {
+            let typing = ["fill", "type", "paste"]
+                .iter()
+                .any(|verb| action.starts_with(verb));
+            self.typed_last = target.filter(|_| typing).cloned();
+        }
         let started = Instant::now();
         let reply = self.backend_call(call).await;
         let acted_ms = millis(started.elapsed());

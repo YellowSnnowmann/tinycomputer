@@ -3,7 +3,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::{
-    Criterion, Price, Record, parse_clock, parse_duration, parse_price, parse_stops, rank,
+    Criterion, Price, Record, closest_to, parse_clock, parse_duration, parse_price, parse_stops,
+    rank, rank_closest,
 };
 
 fn price(text: &str) -> (f64, Option<&'static str>) {
@@ -237,4 +238,29 @@ fn first_and_last_alone_are_the_lists_own_order() {
         Some((0..count).rev().collect::<Vec<_>>())
     );
     assert_eq!(rank(&[], Criterion::First), None, "nothing to rank");
+}
+
+#[test]
+fn closest_to_reads_the_number_a_criterion_comes_nearest_to() {
+    assert_eq!(closest_to("closest to 9"), Some(9.0));
+    assert_eq!(closest_to("Nearest to size 42"), Some(42.0));
+    assert_eq!(closest_to("the size nearest to UK 8.5"), Some(8.5));
+    assert_eq!(closest_to("closest to the station"), None);
+    assert_eq!(closest_to("cheapest"), None);
+}
+
+#[test]
+fn nearness_ranks_by_distance_and_numberless_records_go_last() {
+    let sizes = [
+        Record::from_pairs([("size", "6")]),
+        Record::from_pairs([("label", "Size chart")]),
+        Record::from_pairs([("size", "10"), ("stock", "1 left")]),
+        Record::from_pairs([("size", "8"), ("stock", "2 left")]),
+    ];
+    // 10 and 8 are as near to 9: the list's own order breaks the tie.
+    assert_eq!(rank_closest(&sizes, 9.0), Some(vec![2, 3, 0, 1]));
+    assert_eq!(
+        rank_closest(&[Record::from_pairs([("label", "Size chart")])], 9.0),
+        None
+    );
 }

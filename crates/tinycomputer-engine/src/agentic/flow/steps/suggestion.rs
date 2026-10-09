@@ -334,7 +334,10 @@ pub(in crate::agentic::flow) fn suggests(slot: &str, _field: &Candidate) -> bool
 /// press. For a `place` box, a row that was already showing counts too when
 /// it matches the text: a ride app lists popular places as soon as its box
 /// has the focus, and live, the place typed was among them, so nothing new
-/// appeared and nothing was picked.
+/// appeared and nothing was picked. Such a row is in view and in front, as
+/// a list under the box is: live, a footer link "hotels in Goa", off screen
+/// at the foot of the page, was pressed as the place typed, and the box's
+/// own rows were never waited for.
 pub(in crate::agentic::flow) fn fresh_rows(
     screen: &Screen,
     shown: &BTreeSet<(&str, Option<&str>)>,
@@ -347,8 +350,12 @@ pub(in crate::agentic::flow) fn fresh_rows(
         .into_iter()
         .filter(|candidate| {
             let new = !shown.contains(&(candidate.role.as_str(), candidate.name.as_deref()));
-            let matches =
-                place && (mentions(candidate, text) || shares_most_words(candidate, text));
+            let in_view = !candidate.states.iter().any(|state| {
+                state.eq_ignore_ascii_case("offscreen") || state.eq_ignore_ascii_case("covered")
+            });
+            let matches = place
+                && in_view
+                && (mentions(candidate, text) || shares_most_words(candidate, text));
             let a_box = candidate
                 .available_actions
                 .iter()

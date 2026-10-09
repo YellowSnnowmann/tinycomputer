@@ -653,7 +653,7 @@ async fn a_step_finding_nothing_to_press_answers_the_dialog_the_task_opened() {
     let run = run_with(
         App::with(|sim| sim.obstacle = true),
         json!({"app": "browser", "steps": ["choose Wednesday 7 October 2026 in the date picker"]}),
-        |_| {},
+        |request| request.dialog_left_open = true,
         |id, question, sim| {
             let answering = serde_json::to_string(question)
                 .unwrap()
@@ -689,7 +689,8 @@ async fn a_step_finding_nothing_to_press_answers_the_dialog_the_task_opened() {
 async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_not() {
     // Live, a seat table's lower rows sat under its "Pay" bar and were never
     // offered; a press scrolls such a control out from under the bar. A
-    // browser run takes a dialog at its first look as the task's own.
+    // browser run takes a dialog at its first look as the task's own when
+    // the run before it left that dialog open.
     let pressing = |wanted: &'static str| {
         move |id: &str, question: &Question, sim: &Sim| match id {
             "done" => Some(noul(if sim.obstacle { 0.05 } else { 0.95 })),
@@ -707,7 +708,7 @@ async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_no
             sim.quirks.insert(Quirk::BarOverSheet);
         }),
         json!({"app": "browser", "steps": ["keep editing the draft"]}),
-        |_| {},
+        |request| request.dialog_left_open = true,
         pressing("Keep Editing"),
     )
     .await;
@@ -734,7 +735,7 @@ async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_no
             sim.quirks.insert(Quirk::Covered);
         }),
         json!({"app": "browser", "steps": ["start a new email message"]}),
-        |_| {},
+        |request| request.dialog_left_open = true,
         pressing("New Message"),
     )
     .await;
@@ -743,6 +744,59 @@ async fn a_control_the_dialogs_own_bar_covers_is_pressed_and_one_behind_it_is_no
         "{:?}",
         behind.app.sim().clicks
     );
+}
+
+#[tokio::test]
+async fn return_in_a_search_box_runs_the_search_with_a_sheet_in_front() {
+    // Live, a store's search opened as a full-window sheet, and the step to
+    // press Enter in the box just typed into was refused 154 times, as if
+    // Return would press the sheet's default button.
+    let pressing_return = |id: &str, question: &Question, sim: &Sim| match id {
+        "done" => Some(noul(if sim.presses.iter().any(|key| key == "return") {
+            0.95
+        } else {
+            0.05
+        })),
+        "move" => Some(pick(question, "shortcut", 0.9)),
+        "shortcut" => Some(pick(question, "confirm", 0.95)),
+        _ => None,
+    };
+    let run = run_with(
+        App::with(|sim| {
+            sim.quirks.insert(Quirk::SearchBehindLink);
+            sim.quirks.insert(Quirk::SearchOpen);
+            sim.quirks.insert(Quirk::SearchSheet);
+        }),
+        json!({"app": "Mail", "steps": [
+            {"enter": {"search": "invoices"}},
+            "press Enter in the search box"
+        ]}),
+        |request| request.disabled_loops.push(FlowLoop::Attention),
+        pressing_return,
+    )
+    .await;
+    let presses = run.app.sim().presses.clone();
+    assert!(presses.iter().any(|key| key == "return"), "{presses:?}");
+    assert_eq!(run.result.stop, FlowStopReason::Completed);
+
+    // Without a search box typed into, Return in front of a sheet stays
+    // refused: it would press the sheet's default button.
+    let run = run_with(
+        App::with(|sim| {
+            sim.quirks.insert(Quirk::SearchBehindLink);
+            sim.quirks.insert(Quirk::SearchOpen);
+            sim.quirks.insert(Quirk::SearchSheet);
+        }),
+        json!({"app": "Mail", "steps": ["press Enter"]}),
+        |request| {
+            request.disabled_loops.push(FlowLoop::Attention);
+            request.max_actions = 3;
+        },
+        pressing_return,
+    )
+    .await;
+    let presses = run.app.sim().presses.clone();
+    assert!(!presses.iter().any(|key| key == "return"), "{presses:?}");
 }
 
 /// A page at `surface`, its `covered` controls drawn under something.
@@ -780,48 +834,209 @@ fn a_dialog_the_task_worked_in_is_in_the_way_of_the_next_step() {
     use crate::agentic::flow::front::Front;
     let at = Some("https://flights.test/");
     let (window, sheet) = (page_at("window", 0), page_at("sheet", 3));
+    let press = node("Control 4", "button", &["Click"], &["main"], 4.0);
     let mut front = Front::default();
-    front.act("browse https://flights.test/", false);
-    assert!(front.look(&window, at, true).is_none());
-    front.act("click", true);
-    assert!(
-        front.look(&sheet, at, true).is_some(),
-        "the press opened it"
-    );
+    front.act("browse https://flights.test/", None);
+    assert!(front.look(&window, at).is_none());
+    front.act("click", Some(&press));
+    assert!(front.look(&sheet, at).is_some(), "the press opened it");
     front.next_step();
-    assert!(front.opened_dialog, "the next step answers what it asks");
-    front.act("click", true);
-    front.look(&sheet, at, true);
+    assert!(front.opened_dialog(), "the next step answers what it asks");
+    front.act("click", Some(&press));
+    front.look(&sheet, at);
     assert!(
-        front.opened_dialog,
+        front.opened_dialog(),
         "still its own within the step that works in it"
     );
     front.next_step();
-    assert!(!front.opened_dialog, "a step later, it is in the way");
-    front.look(&sheet, at, true);
+    assert!(!front.opened_dialog(), "a step later, it is in the way");
+    front.look(&sheet, at);
     assert!(
-        !front.opened_dialog,
+        !front.opened_dialog(),
         "and it does not become the task's again"
     );
 
     // A scroll or the run's own housekeeping opens no dialog of the task's.
     for action in ["scroll", "click (clear distraction)", "click (dismiss)"] {
         let mut front = Front::default();
-        front.act("browse https://flights.test/", false);
-        front.look(&window, at, true);
-        front.act(action, true);
-        assert!(front.look(&sheet, at, true).is_none(), "{action}");
-        assert!(!front.opened_dialog, "{action}");
+        front.act("browse https://flights.test/", None);
+        front.look(&window, at);
+        front.act(action, Some(&press));
+        assert!(front.look(&sheet, at).is_none(), "{action}");
+        assert!(!front.opened_dialog(), "{action}");
     }
 
     // Opening an address leaves what was in front behind.
     let mut front = Front::default();
-    front.act("browse https://flights.test/", false);
-    front.look(&window, at, true);
-    front.act("click", true);
-    front.look(&sheet, at, true);
-    front.act("browse https://flights.test/next", false);
-    assert!(!front.opened_dialog);
+    front.act("browse https://flights.test/", None);
+    front.look(&window, at);
+    front.act("click", Some(&press));
+    front.look(&sheet, at);
+    front.act("browse https://flights.test/next", None);
+    assert!(!front.opened_dialog());
+}
+
+#[test]
+fn a_dialog_at_a_runs_first_look_is_the_tasks_only_when_the_run_before_left_it() {
+    use crate::agentic::flow::front::Front;
+    let at = Some("https://flights.test/");
+    let sheet = page_at("sheet", 3);
+    // A pop-up the page opened itself, at a rescue's first look.
+    let mut front = Front::new(false);
+    assert!(front.look(&sheet, at).is_none());
+    assert!(
+        !front.opened_dialog(),
+        "the page's own, cleared like any other"
+    );
+    // The dialog the task's run before left open.
+    let mut front = Front::new(true);
+    assert!(front.look(&sheet, at).is_some());
+    assert!(front.opened_dialog(), "the task's current stage");
+}
+
+/// A sheet of ten grid cells named by bare numbers, under `month` when
+/// given.
+fn days_at(month: Option<&str>) -> Screen {
+    let mut screen = page_at("sheet", 3);
+    screen.candidates.extend((1..=10).map(|day: u32| {
+        node(
+            &day.to_string(),
+            "gridcell",
+            &["Click"],
+            &["main"],
+            f64::from(100 + day),
+        )
+    }));
+    screen.context.extend(month.map(str::to_owned));
+    screen
+}
+
+#[test]
+fn turning_a_calendars_month_answers_nothing_it_asks() {
+    // An arrow pressed is no day chosen: the calendar still asks for one,
+    // and nothing it covers may be pressed through it yet.
+    use crate::agentic::flow::front::Front;
+    let at = Some("https://flights.test/");
+    let calendar = days_at(Some("October 2026"));
+    let mut front = Front::default();
+    front.act("browse https://flights.test/", None);
+    front.look(&page_at("window", 0), at);
+    front.act(
+        "click",
+        Some(&node("Departure", "button", &["Click"], &["main"], 0.0)),
+    );
+    assert!(front.look(&calendar, at).is_some(), "the press opened it");
+    front.act(
+        "click",
+        Some(&node("Next month", "button", &["Click"], &["main"], 90.0)),
+    );
+    front.look(&calendar, at);
+    assert!(!front.served_calendar(), "a month turned is no day chosen");
+    assert!(front.opened_dialog());
+    front.act(
+        "click",
+        Some(&node("5", "gridcell", &["Click"], &["main"], 105.0)),
+    );
+    front.look(&calendar, at);
+    assert!(front.served_calendar(), "a day chosen serves its field");
+}
+
+#[test]
+fn a_grid_of_bare_numbers_is_a_calendar_only_beside_a_month() {
+    // A seat map's cells are numbers in a grid too: pressed in, it is no
+    // calendar that has served its field and may be closed for a press
+    // behind it.
+    use crate::agentic::flow::front::Front;
+    let at = Some("https://cinema.test/");
+    for (month, calendar) in [(None, false), (Some("October 2026"), true)] {
+        let grid = days_at(month);
+        let mut front = Front::default();
+        front.act("browse https://cinema.test/", None);
+        front.look(&page_at("window", 0), at);
+        front.act(
+            "click",
+            Some(&node("Select seats", "button", &["Click"], &["main"], 0.0)),
+        );
+        front.look(&grid, at);
+        front.act(
+            "click",
+            Some(&node("5", "gridcell", &["Click"], &["main"], 105.0)),
+        );
+        front.look(&grid, at);
+        assert_eq!(front.served_calendar(), calendar, "{month:?}");
+    }
+}
+
+#[test]
+fn a_calendar_reads_its_days_from_labels_that_name_their_month() {
+    // Day cells named whole dates, the day not first ("Thu Oct 01 2026",
+    // "Choose Thursday, October 22nd, 2026"), are a calendar's days too.
+    use crate::agentic::flow::front::Front;
+    let at = Some("https://stays.test/");
+    let mut calendar = page_at("sheet", 3);
+    calendar.candidates.extend((1..=7).map(|day: u32| {
+        node(
+            &format!("Choose Thursday, October {day}th, 2026"),
+            "button",
+            &["Click"],
+            &["main"],
+            f64::from(100 + day),
+        )
+    }));
+    let mut front = Front::default();
+    front.act("browse https://stays.test/", None);
+    front.look(&page_at("window", 0), at);
+    front.act(
+        "click",
+        Some(&node("Check-in", "button", &["Click"], &["main"], 0.0)),
+    );
+    front.look(&calendar, at);
+    // An arrow named "Next" and described "next month" turns the month.
+    let next = Candidate {
+        description: Some("next month".to_owned()),
+        ..node("Next", "button", &["Click"], &["main"], 90.0)
+    };
+    front.act("click", Some(&next));
+    front.look(&calendar, at);
+    assert!(!front.served_calendar(), "a month turned is no day chosen");
+    front.act(
+        "click",
+        Some(&node(
+            "Choose Thursday, October 2th, 2026",
+            "button",
+            &["Click"],
+            &["main"],
+            102.0,
+        )),
+    );
+    front.look(&calendar, at);
+    assert!(front.served_calendar(), "its days are read as a calendar's");
+}
+
+#[test]
+fn a_search_box_typed_into_counts_only_while_it_shows_uncovered() {
+    use crate::agentic::flow::act::still_shows;
+    let field = node("Search Lenskart", "textbox", &["SetValue"], &["main"], 0.0);
+    let mut screen = page_at("sheet", 0);
+    screen.candidates.push(field.clone());
+    assert!(still_shows(&screen, &field));
+    screen.candidates.last_mut().unwrap().states = vec!["covered".to_owned()];
+    assert!(
+        !still_shows(&screen, &field),
+        "a dialog over it takes the keys"
+    );
+    screen.candidates.pop();
+    assert!(!still_shows(&screen, &field), "nor once it is gone");
+}
+
+#[test]
+fn a_run_that_never_looked_hands_on_the_dialog_it_was_left() {
+    use crate::agentic::flow::front::Front;
+    assert!(Front::new(true).left_open(), "nothing changed in front");
+    assert!(!Front::new(false).left_open());
+    let mut front = Front::new(true);
+    front.look(&page_at("window", 0), Some("https://flights.test/"));
+    assert!(!front.left_open(), "the window is in front once it looked");
 }
 
 #[tokio::test]

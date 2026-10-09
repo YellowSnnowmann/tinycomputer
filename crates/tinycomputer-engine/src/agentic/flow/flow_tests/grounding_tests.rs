@@ -58,6 +58,75 @@ async fn a_large_screen_is_narrowed_by_region_before_choosing() {
     );
 }
 
+#[test]
+fn a_small_region_is_never_cut_from_a_crowded_knockout() {
+    use crate::agentic::flow::ground::{Regions, knockout_groups};
+
+    let member = |name: String, region: &str| {
+        node(
+            &name,
+            "button",
+            &["Click"],
+            &["window \"Flights\"", region],
+            10.0,
+        )
+    };
+    let routes = (0..450)
+        .map(|index| member(format!("Route {index}"), "list \"Popular routes\""))
+        .collect::<Vec<_>>();
+    let airports = (0..5)
+        .map(|index| member(format!("Airport {index}"), "listbox \"Airports\""))
+        .collect::<Vec<_>>();
+    let pool = [routes.clone(), airports.clone()].concat();
+    let regions: Regions = vec![
+        ("list \"Popular routes\"".to_owned(), routes),
+        ("listbox \"Airports\"".to_owned(), airports),
+    ];
+    let groups = knockout_groups(&pool, Some(&regions));
+    assert!(groups.len() <= ask::CAP, "{}", groups.len());
+    let offered = groups
+        .iter()
+        .flat_map(|(_, group)| group)
+        .filter_map(|candidate| candidate.name.clone())
+        .collect::<Vec<_>>();
+    for index in 0..5 {
+        assert!(
+            offered.contains(&format!("Airport {index}")),
+            "the small region, last on the page, is offered whole"
+        );
+    }
+    // With no regions, the knockout takes the first groups in page order.
+    assert_eq!(knockout_groups(&pool, None).len(), ask::CAP);
+
+    // Many small regions out of view give up their chunks before a region in
+    // view: live, a travellers pop-up drawn after twenty regions of links out
+    // of view lost its "Done".
+    let mut regions: Regions = (0..30)
+        .map(|index| {
+            let mut link = member(format!("Link {index}"), "contentinfo");
+            link.states = vec!["offscreen".to_owned()];
+            (format!("list {index}"), vec![link])
+        })
+        .collect();
+    regions.push((
+        "dialog \"Travellers\"".to_owned(),
+        vec![member("Done".to_owned(), "dialog \"Travellers\"")],
+    ));
+    let pool = regions
+        .iter()
+        .flat_map(|(_, members)| members.clone())
+        .collect::<Vec<_>>();
+    let groups = knockout_groups(&pool, Some(&regions));
+    assert_eq!(groups.len(), ask::CAP);
+    assert!(
+        groups
+            .iter()
+            .flat_map(|(_, group)| group)
+            .any(|candidate| candidate.name.as_deref() == Some("Done")),
+        "the region in view keeps its chunk"
+    );
+}
+
 #[tokio::test]
 async fn one_crowded_region_falls_back_to_a_knockout() {
     let run = run_with(

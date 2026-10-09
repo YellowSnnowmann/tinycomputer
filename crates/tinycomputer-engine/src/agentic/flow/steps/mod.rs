@@ -21,13 +21,15 @@ mod stop;
 mod suggestion;
 mod typing;
 
+pub(super) use date::{looks_like_date, names_a_month};
 pub(super) use matching::left_unchosen;
 #[cfg(test)]
 pub(super) use {
-    date::{date_words, looks_like_date, shows_date},
+    date::{date_words, shows_date},
     list::{first_meeting, leaning},
     matching::{
-        already_chosen, already_holds, closest, in_region, lists_more_than, redacted, search_text,
+        already_chosen, already_holds, closest, date_shown_in, in_region, lists_more_than,
+        redacted, search_text,
     },
     read::chosen_together,
     read::readable,

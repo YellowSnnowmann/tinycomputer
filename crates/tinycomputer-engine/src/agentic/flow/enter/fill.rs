@@ -4,100 +4,56 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value;
-use tinycomputer_bus::{JevOperation, Slot};
+use tinycomputer_bus::Slot;
 use tinycomputer_core::reformat_date;
 
 use crate::agentic::flow::{
     AgentBackend, FlowRun, Halt, StepLog,
-    ask::{self, Questions, corroborate, probability},
     backend::deliver_text,
     memory::{learn, remember},
-    view::{Candidate, Screen, element_kind, is_destructive, label},
+    steps::looks_like_date,
+    view::{Candidate, Screen, element_kind, label},
 };
 
-use super::{BLIND_PICK_MISSES, OPENER_FLOOR, REVEAL_TURNS, editable, names};
+use super::{BLIND_PICK_MISSES, editable, names};
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
-    /// Presses the control on `screen` whose label holds a pending slot's
-    /// own word (`named_opener`); `true` when it did. A control named by
-    /// the slot, a search link for the "search box", is how the field
-    /// shows: live, the turns that look for a way in hesitated over it, and
-    /// the search was never typed.
-    async fn open_by_name(
+    /// Picks each pending date of `untried` from the calendar showing,
+    /// before any box is looked for, and says whether one arrived: the box
+    /// looked for is the calendar's own button, and pressing it closes the
+    /// calendar. Live, a check-out date's step found the calendar open from
+    /// the check-in and pressed its button four times, and a departure's
+    /// calendar opened by the step's own press was closed again the same way.
+    async fn pick_shown_dates(
         &mut self,
         log: &mut StepLog,
-        screen: &Screen,
         slots: &[Slot],
-        pending: &BTreeSet<usize>,
+        private: &[bool],
+        pending: &mut BTreeSet<usize>,
+        untried: &mut BTreeSet<usize>,
     ) -> Result<bool, Halt> {
-        let Some(opener) = named_opener(screen, slots, pending)
-            .filter(|opener| !is_destructive(opener, screen, &self.stop_before))
-        else {
-            return Ok(false);
-        };
-        // A shared word is a hint, not a reason to press: a link named
-        // "Email us" shares the slot "email", and pressing it left the form.
-        let purpose = format!("click to show the box for: {}", names(slots, pending));
-        let answers = self
-            .ask(
-                log,
-                ask::request(
-                    self.model(),
-                    self.state(screen, &purpose),
-                    Questions::default().with(
-                        "confirm",
-                        corroborate(&purpose, &opener, self.include_values),
-                    ),
-                ),
-            )
-            .await?;
-        if probability(&answers, "confirm").is_none_or(|yes| yes < OPENER_FLOOR) {
-            return Ok(false);
-        }
-        let pressed = opener.clone();
-        let reply = self
-            .act(
-                log,
-                "click (show the field)",
-                Some(&opener),
-                move |backend| backend.execute(JevOperation::Click, Some(pressed), None),
-            )
-            .await?;
-        if reply.ok {
-            self.history.push(format!(
-                "pressed {} to show the field for {}",
-                label(&opener),
-                names(slots, pending)
-            ));
-        }
-        Ok(reply.ok)
-    }
-
-    /// Runs a short `do` loop that shows the fields for the `pending` slots,
-    /// any field at all when `no_fields` showed. A field that cannot be revealed
-    /// is looked for another way, or found not to be asked for; it is not a
-    /// failure.
-    async fn reveal_fields(
-        &mut self,
-        log: &mut StepLog,
-        slots: &[Slot],
-        pending: &BTreeSet<usize>,
-        no_fields: bool,
-    ) -> Result<(), Halt> {
-        let reveal = if no_fields {
-            format!("show the editable fields for: {}", names(slots, pending))
-        } else {
-            format!("show the fields for: {}", names(slots, pending))
-        };
-        match self.accomplish(log, &reveal, REVEAL_TURNS).await {
-            Err(Halt::Failed(note)) => self
-                .history
-                .push(format!("could not reveal the fields ({note})")),
-            other => {
-                other?;
+        let dates = pending
+            .iter()
+            .copied()
+            .filter(|index| untried.contains(index) && looks_like_date(&slots[*index].text))
+            .collect::<Vec<_>>();
+        let mut picked = false;
+        for index in dates {
+            untried.remove(&index);
+            let slot = &slots[index];
+            match self
+                .pick_option(log, &slot.slot, &slot.text, private[index], false)
+                .await
+            {
+                Ok(_) => {
+                    pending.remove(&index);
+                    picked = true;
+                }
+                Err(Halt::Failed(_)) => {}
+                Err(halt) => return Err(halt),
             }
         }
-        Ok(())
+        Ok(picked)
     }
 
     /// Fills every slot in `pending` it can find a field or an option for,
@@ -110,7 +66,14 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         pending: &mut BTreeSet<usize>,
     ) -> Result<(), Halt> {
         let mut revealed = false;
-        let mut opened = false;
+        // The dates not yet picked from a calendar showing, each tried once.
+        let mut dates = pending.clone();
+        // The slots whose own opener was looked for, each once: a form that
+        // draws its place boxes as buttons ("From DEL", "To BLR") opens one
+        // box at a time. Live, the "to" box was never opened once "from"
+        // had been, and the place was pressed in a link at the foot of the
+        // page instead.
+        let mut opened: BTreeSet<usize> = BTreeSet::new();
         // The fields this step already filled: one slot's box is never
         // another's. Live, a pickup box that had not yet become the place
         // chosen was the only box on screen in the next round, and the drop
@@ -125,11 +88,19 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         // by the city it holds, are struck together rather than one at a
         // time (`a_row_that_refused_the_text_is_never_pressed_while_revealing_a_field`).
         let mut struck: BTreeSet<String> = BTreeSet::new();
-        for _ in 0..3 {
+        // Each slot may take a round to open its box and one to fill it.
+        for _ in 0..3.max(2 * pending.len() + 1) {
             if pending.is_empty() {
                 break;
             }
             let mut screen = self.look().await?;
+            if self.front.calendar
+                && self
+                    .pick_shown_dates(log, slots, private, pending, &mut dates)
+                    .await?
+            {
+                continue;
+            }
             if editable(&screen).len() < pending.len() && !screen.unexplored.is_empty() {
                 self.explore(&mut screen).await;
             }
@@ -141,11 +112,11 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 self.assign(log, &screen, slots, pending, &fields).await?
             };
             if assignments.is_empty() {
-                if !opened {
-                    opened = true;
-                    if self.open_by_name(log, &screen, slots, pending).await? {
-                        continue;
-                    }
+                if self
+                    .open_next_box(log, &screen, slots, pending, &mut opened)
+                    .await?
+                {
+                    continue;
                 }
                 if revealed {
                     break;
@@ -189,12 +160,24 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 }
             }
         }
-        // A value with no field to type into is picked instead, as a date
-        // from a calendar or a city from a list of suggestions. Only a "the
-        // value was not found" failure is safe to shrug off and move to the
-        // next slot; a budget stop or a backend error means acting further
-        // is unsafe or pointless, and must end the step instead of being
-        // read as "this slot has no picker".
+        self.pick_unboxed(log, slots, private, pending, saw_fields)
+            .await
+    }
+
+    /// Picks each slot still `pending` instead of typing it, as a date from a
+    /// calendar or a city from a list of suggestions, when no field took it.
+    /// Only a "the value was not found" failure is safe to shrug off and move
+    /// to the next slot; a budget stop or a backend error means acting
+    /// further is unsafe or pointless, and must end the step instead of being
+    /// read as "this slot has no picker".
+    async fn pick_unboxed(
+        &mut self,
+        log: &mut StepLog,
+        slots: &[Slot],
+        private: &[bool],
+        pending: &mut BTreeSet<usize>,
+        saw_fields: bool,
+    ) -> Result<(), Halt> {
         let mut missed = 0;
         for index in pending.clone() {
             if !saw_fields && missed >= BLIND_PICK_MISSES {
@@ -269,59 +252,6 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
         Ok(reply.ok)
     }
-}
-
-/// Words of a slot's name that say only that it is a box, or name a kind
-/// of control rather than what the slot is.
-const BOX_WORDS: &[&str] = &[
-    "field", "box", "input", "bar", "the", "your", "text", "here", "link", "button", "menu", "icon",
-];
-
-/// A control on `screen` that is no field itself and whose label holds a
-/// word of a pending slot's name (four letters or more, not a box word):
-/// the link or button that shows the slot's field, such as a store's
-/// search link for the slot "search box".
-fn named_opener(screen: &Screen, slots: &[Slot], pending: &BTreeSet<usize>) -> Option<Candidate> {
-    let wanted = pending
-        .iter()
-        .filter_map(|index| slots.get(*index))
-        .flat_map(|slot| words(&slot.slot))
-        .filter(|word| word.chars().count() > 3 && !BOX_WORDS.contains(&word.as_str()))
-        .collect::<BTreeSet<_>>();
-    if wanted.is_empty() {
-        return None;
-    }
-    let fields = editable(screen);
-    screen
-        .candidates
-        .iter()
-        .filter(|candidate| {
-            matches!(candidate.role.as_str(), "link" | "button")
-                && candidate
-                    .available_actions
-                    .iter()
-                    .any(|action| action == "Click")
-                && !fields.iter().any(|field| field.ref_id == candidate.ref_id)
-                && !candidate
-                    .states
-                    .iter()
-                    .any(|state| state.eq_ignore_ascii_case("covered"))
-        })
-        .find(|candidate| {
-            words(candidate.name.as_deref().unwrap_or_default())
-                .iter()
-                .take(3)
-                .any(|word| wanted.contains(word))
-        })
-        .cloned()
-}
-
-/// The lower-case words of `text`.
-fn words(text: &str) -> Vec<String> {
-    text.split(|character: char| !character.is_alphanumeric())
-        .filter(|word| !word.is_empty())
-        .map(str::to_lowercase)
-        .collect()
 }
 
 /// The `fields` a slot may still take: of no kind struck this step, and

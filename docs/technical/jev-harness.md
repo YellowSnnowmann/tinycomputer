@@ -76,7 +76,9 @@ framing of every request together: one round trip. In order:
 
 1. **Build.** A step's code builds the questions (`ask/questions.rs`) and the
    shared state (`ask::state`, in `ask/screen_state.rs`: app, window, surface, current step, visible text,
-   up to 120 elements, the last eight history lines, and field contents when
+   up to 120 elements (on a longer screen, those in view first, up to three
+   quarters of them, then the rest as the page orders them, all listed in
+   screen order), the last eight history lines, and field contents when
    `include_values` is set). Screen text is always wrapped as
    `untrusted_accessibility_data`.
 2. **Budget.** The run's call budget is checked first; a spent budget stops

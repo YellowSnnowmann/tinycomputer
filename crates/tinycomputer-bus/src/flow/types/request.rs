@@ -146,6 +146,10 @@ pub struct GroundingHint {
 ///
 /// Requires confidential delivery, like `RunGoal`: the texts a flow enters
 /// travel with it.
+// Each flag is an independent switch a caller sets by name; folding them
+// into one enum would rename `allow_destructive`, `include_values` and
+// `trace` on the wire, a major bump, for a tidiness no caller gains from.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RunFlowRequest {
@@ -207,6 +211,13 @@ pub struct RunFlowRequest {
     /// knows what it has done.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub collected: BTreeMap<String, String>,
+    /// Whether the run before this one, of the same task, left the task's
+    /// own dialog in front ([`FlowRunResult::dialog_left_open`]): a dialog
+    /// in front at this run's first look is then the task's current stage,
+    /// to work within. Otherwise such a dialog is the page's (a promotion or
+    /// a sign-up the page opened itself, a menu), never the task's.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub dialog_left_open: bool,
 }
 
 impl Default for RunFlowRequest {
@@ -227,6 +238,7 @@ impl Default for RunFlowRequest {
             strategy: FlowStrategy::Narrow,
             deliberation: Deliberation::Deep,
             collected: BTreeMap::new(),
+            dialog_left_open: false,
         }
     }
 }

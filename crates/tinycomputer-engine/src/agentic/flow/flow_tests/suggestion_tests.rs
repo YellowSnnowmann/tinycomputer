@@ -456,3 +456,102 @@ fn a_box_that_appears_beside_the_suggestions_is_never_taken_for_one() {
         [row]
     );
 }
+
+#[test]
+fn a_matching_row_already_shown_counts_only_in_view_and_in_front() {
+    // A place box's own list is in view and in front: live, a footer link
+    // "hotels in Goa" at the foot of the page was pressed as the place typed.
+    // A new row still counts out of view, as one its list scrolled away.
+    use super::steps::fresh_rows;
+    let place_box = node("Where to?", "textbox", &["Click", "SetValue"], &[], 0.0);
+    let row = |name: &str, role: &str, states: &[&str], y: f64| {
+        let mut row = node(name, role, &["Click"], &[], y);
+        row.states = states.iter().map(|state| (*state).to_owned()).collect();
+        row
+    };
+    let before = vec![
+        place_box.clone(),
+        row("Goa beaches", "button", &[], 1.0),
+        row("hotels in Goa", "link", &["offscreen"], 2.0),
+        row("Goa villas", "link", &["covered"], 3.0),
+    ];
+    let shown = before
+        .iter()
+        .map(|candidate| (candidate.role.as_str(), candidate.name.as_deref()))
+        .collect::<BTreeSet<_>>();
+    let mut candidates = before.clone();
+    candidates.push(row(
+        "Goa International Airport",
+        "option",
+        &["offscreen"],
+        4.0,
+    ));
+    let screen = Screen {
+        app: "browser".to_owned(),
+        window: None,
+        surface: "window".to_owned(),
+        candidates,
+        context: Vec::new(),
+        unexplored: Vec::new(),
+        text_nodes: Vec::new(),
+    };
+    let fresh = fresh_rows(&screen, &shown, &place_box, "Goa", &[], true);
+    assert_eq!(
+        fresh
+            .iter()
+            .filter_map(|candidate| candidate.name.as_deref())
+            .collect::<Vec<_>>(),
+        ["Goa beaches", "Goa International Airport"]
+    );
+}
+
+#[tokio::test]
+async fn enter_opens_each_place_box_behind_its_own_button_in_turn() {
+    // Live, a flight form drew its place boxes as buttons ("From DEL", "To
+    // BLR"), each box showing only once its button is pressed. The "to" box
+    // was never opened, and the place was pressed in a link at the foot of
+    // the page instead.
+    let run = run_with(
+        App::with(|sim| {
+            sim.places = Some(Places {
+                behind_buttons: true,
+                ..Places::default()
+            });
+        }),
+        json!({"app": "Mail", "steps": [
+            {"enter": {"from": "Connaught Place", "to": "Indira Gandhi International Airport"}}
+        ]}),
+        |_| {},
+        |id, question, sim| {
+            if id.starts_with("slot_") {
+                let purpose = text_of(question, "purpose");
+                let field = if purpose.contains("the from ") {
+                    "Pickup location"
+                } else {
+                    "Dropoff location"
+                };
+                return Some(pick(question, field, 0.9));
+            }
+            suggesting(id, question, sim, 0.9)
+        },
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    let sim = run.app.sim();
+    assert_eq!(
+        sim.fields["Pickup location"],
+        "Connaught Place New Delhi, Delhi, India"
+    );
+    assert_eq!(
+        sim.fields["Dropoff location"],
+        "Indira Gandhi International Airport New Delhi, Delhi, India",
+        "{:?} {:?}",
+        run.result.steps[0].actions,
+        sim.clicks
+    );
+}

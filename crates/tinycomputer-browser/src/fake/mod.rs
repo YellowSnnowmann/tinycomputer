@@ -66,15 +66,15 @@ impl Fake {
         self.sent.lock().unwrap().clone()
     }
 
-    /// Whether a page script ran besides the one that keeps a press in the
-    /// tab, which runs before every click.
-    pub(crate) fn evaluated_besides_keeping_the_tab(&self) -> bool {
+    /// Whether a page script ran besides those every press runs: the one
+    /// that keeps a press in the tab, and the one that brings a control
+    /// sight found into the window.
+    pub(crate) fn evaluated_besides_every_press(&self) -> bool {
         self.sent().iter().any(|command| {
+            let script = command["script"].as_str().unwrap_or_default();
             command["action"] == "evaluate"
-                && !command["script"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .contains("__tcOpen")
+                && !script.contains("__tcOpen")
+                && !script.starts_with(crate::surface::INTO_VIEW_JS)
         })
     }
 

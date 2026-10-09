@@ -121,7 +121,11 @@ The exact rankings are:
 - lowest or highest price,
 - earliest or latest time,
 - fewest stops,
-- shortest duration.
+- shortest duration,
+- nearest to a number ("closest to 9", "nearest to size 42"): each card's
+  first number, by its distance, within the list `from` names (asked for
+  first when several show, as for "first"), since numbers show in every
+  list.
 
 When it parses ("lowest price"), the parsers in
 `tinycomputer-core/src/records/` read prices with currency symbols, clock

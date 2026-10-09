@@ -31,6 +31,7 @@ mod hedge_tests;
 mod helpers_tests;
 mod journal_tests;
 mod pick_tests;
+mod picker_tests;
 mod quorum_tests;
 mod reflection_tests;
 mod split_tests;

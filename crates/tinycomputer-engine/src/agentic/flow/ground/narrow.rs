@@ -16,7 +16,7 @@ use crate::agentic::flow::{
     view::{Candidate, Screen, distinct, label, named_first},
 };
 
-use super::{AGREED, BRANCH_MARGIN, First, Grounded, Opening, split, winners};
+use super::{AGREED, BRANCH_MARGIN, First, Grounded, Opening, Regions, split, winners};
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// Picks the element of `pool` that serves `purpose`, or `None` when no
@@ -127,25 +127,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// round trip of its own.
     fn narrowing(&self, screen: &Screen, purpose: &str, pool: &[Candidate]) -> First {
         let regions = split(pool, 0).map(|(_, regions)| regions);
-        let aligned = regions.as_ref().map(|regions| {
-            regions
-                .iter()
-                .enumerate()
-                .flat_map(|(index, (_, members))| {
-                    members
-                        .chunks(CAP)
-                        .map(move |chunk| (Some(index), chunk.to_vec()))
-                })
-                .collect::<Vec<_>>()
-        });
-        let groups = match aligned {
-            Some(groups) if groups.len() <= CAP => groups,
-            _ => pool
-                .chunks(CAP)
-                .take(CAP)
-                .map(|chunk| (None, chunk.to_vec()))
-                .collect(),
-        };
+        let groups = knockout_groups(pool, regions.as_ref());
         let mut questions = Questions::default();
         for (index, (_, group)) in groups.iter().enumerate() {
             questions = questions.with(
@@ -327,4 +309,61 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         }
         kept
     }
+}
+
+/// The groups of one knockout over `pool`: along `regions` when the screen
+/// has them, each region in [`CAP`]-sized chunks, at most [`CAP`] chunks in
+/// all; otherwise the pool's first [`CAP`] chunks. When the regions need more
+/// chunks than that, the regions with nothing in view give up their last
+/// chunks first, the largest first, then the largest of the rest, so a small
+/// region (the list in front, a dialog's rows) is offered whole: live, the
+/// rows of an airport list that came after a page's 400 route links were cut
+/// off unseen, and so was a travellers pop-up's "Done" drawn after twenty
+/// regions of links out of view.
+pub(in crate::agentic::flow) fn knockout_groups(
+    pool: &[Candidate],
+    regions: Option<&Regions>,
+) -> Vec<(Option<usize>, Vec<Candidate>)> {
+    let Some(regions) = regions else {
+        return pool
+            .chunks(CAP)
+            .take(CAP)
+            .map(|chunk| (None, chunk.to_vec()))
+            .collect();
+    };
+    let mut kept = regions
+        .iter()
+        .map(|(_, members)| members.len().div_ceil(CAP))
+        .collect::<Vec<_>>();
+    let unseen = regions
+        .iter()
+        .map(|(_, members)| {
+            !members
+                .iter()
+                .any(|member| denoise::tier(member) == denoise::Tier::InView)
+        })
+        .collect::<Vec<_>>();
+    while kept.iter().sum::<usize>() > CAP {
+        let Some(largest) = kept
+            .iter()
+            .enumerate()
+            .filter(|(_, chunks)| **chunks > 0)
+            .max_by_key(|(index, chunks)| (unseen[*index], **chunks))
+            .map(|(index, _)| index)
+        else {
+            break;
+        };
+        kept[largest] -= 1;
+    }
+    regions
+        .iter()
+        .zip(kept)
+        .enumerate()
+        .flat_map(|(index, ((_, members), chunks))| {
+            members
+                .chunks(CAP)
+                .take(chunks)
+                .map(move |chunk| (Some(index), chunk.to_vec()))
+        })
+        .collect()
 }

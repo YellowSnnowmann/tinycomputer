@@ -58,11 +58,17 @@
   // step choosing it never saw it chosen. Never `unselected`.
   const SELECTED_CLASS = /(?:^|[-_])(?:selected|checked)$/i;
   const UNSELECTED_CLASS = /(?:^|[-_])(?:un|not[-_]?)(?:selected|checked)$/i;
-  const classChosen = (element) => [...element.classList]
+  // A class behind a variant (`placeholder:text-disabled`, which colours
+  // only the placeholder; `disabled:opacity-50`, which applies only once
+  // disabled) says nothing of the element's own state: live, a flight
+  // site's place box carried `placeholder:text-disabled`, was read as
+  // disabled, and its box was never seen.
+  const stateClasses = (element) => [...element.classList].filter((name) => !name.includes(':'));
+  const classChosen = (element) => stateClasses(element)
     .some((name) => SELECTED_CLASS.test(name) && !UNSELECTED_CLASS.test(name));
   const disabled = (element) =>
     element.disabled === true || element.getAttribute('aria-disabled') === 'true'
-    || [...element.classList].some((name) => DISABLED_CLASS.test(name));
+    || stateClasses(element).some((name) => DISABLED_CLASS.test(name));
 
   const insideText = (element) => {
     for (let parent = element; parent; parent = parent.parentElement) {
@@ -101,22 +107,33 @@
 
   const pointer = (element) => style(element).cursor === 'pointer';
   // A click handler a script framework keeps on the element itself (React
-  // stores each element's props on it), on a box smaller than a quarter of
-  // the window: a page can wire a plain `div` to a click with neither a
-  // cursor nor a tab stop. Live, a store's "Add to cart" and "Buy now" read
-  // as plain words, and the step to add to the cart had nothing to press.
-  // Only a press handler: a carousel's track or a select's menu listens for
-  // the mouse going down and is no button to press.
+  // stores each element's props on it, Preact its listeners), on a box
+  // smaller than a quarter of the window: a page can wire a plain `div` to a
+  // click with neither a cursor nor a tab stop. Live, a store's "Add to
+  // cart" and "Buy now" read as plain words, and the step to add to the cart
+  // had nothing to press. Only a press handler: a carousel's track or a
+  // select's menu listens for the mouse going down and is no button to press.
   const HANDLERS = ['onClick', 'onPress'];
+  // Preact keeps them by event name (`_listeners`, `l` once minified), a
+  // capture flag after it in newer releases ("clickfalse"). Live, a hotel
+  // site's place suggestions were rows with only such a listener, read as
+  // page text, and the place typed was never chosen.
+  const PREACT_PRESS = /^click(true|false)?$/;
+  const pressHandler = (element) => {
+    const key = Object.keys(element).find((name) => name.startsWith('__reactProps$'));
+    const props = key && element[key];
+    if (props && HANDLERS.some((handler) => typeof props[handler] === 'function')) return true;
+    const own = ['_listeners', 'l'].find((name) => Object.prototype.hasOwnProperty.call(element, name));
+    const listeners = own && element[own];
+    return !!listeners && typeof listeners === 'object' && Object.keys(listeners)
+      .some((name) => PREACT_PRESS.test(name) && typeof listeners[name] === 'function');
+  };
   // What is a control only by such a handler: it hides nothing pressable
   // inside it, since a page can wire a whole card to a click around its own
   // "Add" button.
   const scriptedOnly = new Set();
   const scripted = (element) => {
-    if (!element || element === document.body) return false;
-    const key = Object.keys(element).find((name) => name.startsWith('__reactProps$'));
-    const props = key && element[key];
-    if (!props || !HANDLERS.some((handler) => typeof props[handler] === 'function')) return false;
+    if (!element || element === document.body || !pressHandler(element)) return false;
     const rect = element.getBoundingClientRect();
     return rect.width * rect.height < window.innerWidth * window.innerHeight * 0.25;
   };
@@ -131,6 +148,28 @@
   const MONTH_AND_YEAR = new RegExp(`\\b(${MONTHS.join('|')})\\s+(\\d{4})\\b`, 'i');
   const calendarDays = new Map();
   const calendars = [];
+  // The month and year a grid of days shows: the nearest short text before
+  // it, or before one of its four nearest ancestors, that names one, as
+  // `{ element, months: [[month, year], …] }`. A longer block (another
+  // month's whole grid) ends the search at its level.
+  const MONTHS_AND_YEARS = new RegExp(MONTH_AND_YEAR.source, 'gi');
+  const gridTitle = (grid) => {
+    let node = grid;
+    for (let depth = 0; node && node !== base && depth < 4; depth += 1, node = node.parentElement) {
+      let sibling = node.previousElementSibling;
+      for (let step = 0; sibling && step < 3; step += 1, sibling = sibling.previousElementSibling) {
+        // A hidden element's text still reads out (a template, a month
+        // menu): only what shows titles a grid.
+        if (!shown(sibling)) continue;
+        const said = shownWords(sibling);
+        if (said.length > 120) break;
+        const months = [...said.matchAll(MONTHS_AND_YEARS)]
+          .map((found) => [MONTHS.indexOf(found[1].toLowerCase()), Number(found[2])]);
+        if (months.length) return { element: sibling, months };
+      }
+    }
+    return null;
+  };
   const findCalendars = () => {
     for (const table of base.querySelectorAll('table')) {
       // A week-number column is numbers too, but no day.
@@ -139,12 +178,14 @@
       if (cells.length < 28 || !shown(table)) continue;
       // The month is named in the table's own heading, or in a short header
       // drawn just before it; never by words elsewhere on the page, nor by a
-      // calendar that happens to come before it.
+      // calendar that happens to come before it. A header is read as shown:
+      // live, one held a hidden month list for the picker's own menu, whose
+      // twelve names hid the month it showed.
       const before = table.previousElementSibling;
-      const header = before && !before.querySelector('table') && squash(before.innerText).length <= 80
+      const header = before && !before.querySelector('table') && shownWords(before).length <= 80
         ? before : null;
       const titled = MONTH_AND_YEAR.exec(squash([table.caption, table.tHead, header]
-        .filter(Boolean).map((part) => part.innerText).join(' ')));
+        .filter(Boolean).map((part) => shownWords(part)).join(' ')));
       if (!titled) continue;
       const holder = table.parentElement;
       calendars.push(holder && holder !== document.body && holder !== document.documentElement ? holder : table);
@@ -161,6 +202,60 @@
         const date = new Date(Date.UTC(year, month + offset, day));
         const spelled = MONTHS[date.getUTCMonth()];
         calendarDays.set(cell, `${day} ${spelled[0].toUpperCase()}${spelled.slice(1)} ${date.getUTCFullYear()}`);
+      }
+    }
+    // A calendar drawn without a table: a grid whose cells each begin with
+    // their day number (a fare may follow, "22 6529"), numbered from 1 to the
+    // month's last day, below the month and year it shows. A title naming
+    // two months, one header over two grids, names them in order. Live, a
+    // flight site drew its days as buttons in such a grid, no day read as a
+    // date, and the departure was never picked.
+    const titleUses = new Map();
+    const grids = [];
+    for (const grid of base.querySelectorAll('div, ul, ol, tbody')) {
+      const kids = grid.children;
+      if (kids.length < 28 || kids.length > 49
+        || [...calendars, ...grids].some((calendar) => calendar.contains(grid))) continue;
+      const days = [...kids].map((kid) => {
+        const leading = /^(\d{1,2})(?:\s|$)/.exec(squash(kid.innerText));
+        return leading && shown(kid) ? { cell: kid, day: Number(leading[1]) } : null;
+      });
+      const start = days.findIndex((entry) => entry && entry.day === 1);
+      if (start < 0) continue;
+      const run = [];
+      for (const entry of days.slice(start)) {
+        if (!entry || entry.day !== run.length + 1) break;
+        run.push(entry);
+      }
+      const title = run.length >= 28 && gridTitle(grid);
+      if (!title) continue;
+      const used = titleUses.get(title.element) || 0;
+      titleUses.set(title.element, used + 1);
+      const [month, year] = title.months[Math.min(used, title.months.length - 1)];
+      const spelled = MONTHS[month];
+      grids.push(grid);
+      for (const { cell, day } of run) {
+        const pressed = cell.matches(NESTED) ? cell : cell.querySelector(NESTED) || cell;
+        calendarDays.set(pressed, `${day} ${spelled[0].toUpperCase()}${spelled.slice(1)} ${year}`);
+      }
+    }
+    // Each month is the block holding its grid, with its heading and
+    // arrows, once every grid is found: a block holding two months' grids
+    // side by side, with no box of each month's own, is no one month, and
+    // is added as the picker below.
+    for (const grid of grids) {
+      const holder = grid.parentElement;
+      const shared = holder && grids.some((other) => other !== grid && holder.contains(other));
+      calendars.push(holder && holder !== document.body && !shared ? holder : grid);
+    }
+    // A picker showing two months beside each other pages both with one
+    // pair of arrows, drawn beside the months rather than inside either:
+    // the block that holds more than one month pages them too.
+    for (const holder of [...calendars]) {
+      const picker = holder.parentElement;
+      if (picker && picker !== document.body && !calendars.includes(picker)
+        && calendars.filter((other) => other !== picker && picker.contains(other)).length > 1) {
+        calendars.push(picker);
       }
     }
   };
@@ -212,7 +307,11 @@
     // is still a button.
     if ((GROUP_ROLES.includes(claimed) || claimed === 'dialog' || claimed === 'alertdialog')
       && !element.hasAttribute('onclick') && !pointer(element)) return null;
-    if (insideControl) return null;
+    // Inside another control, what a press handler of its own wires is a
+    // control too, as a native button inside a pressable card is: live, a
+    // sort menu's options sat inside its pointer-cursor trigger, each wired
+    // to a click by itself, and the menu read as one button naming them all.
+    if (insideControl && !pressHandler(element)) return null;
     const tabindex = element.getAttribute('tabindex');
     const byPage = element.hasAttribute('onclick')
       || (tabindex !== null && tabindex !== '-1')
@@ -241,6 +340,10 @@
   ];
   // A picture-only control's meaning, from the words in its own or its
   // icon's class, id, or test id: all a person would see is the picture.
+  // Words run together in camel case are words too ("icClose",
+  // "closeIcon"): live, a sign-up pop-up's only way out was a sprite with
+  // the class "icClose", dropped as a blank box, and nothing closed it. A
+  // generated class ("fCarEc", "cUpXyz") has no two such words in a row.
   const iconWords = (element) => {
     const sources = [element, ...element.querySelectorAll('svg, use, i, img, span')].slice(0, 8);
     const words = new Set();
@@ -257,7 +360,7 @@
         source.getAttribute('data-icon') || '',
         tag(source) === 'use' ? used : '',
         file,
-      ].join(' ').toLowerCase();
+      ].join(' ').replace(/([a-z]{2,})(?=[A-Z][a-z]{2,})/g, '$1 ').toLowerCase();
       for (const word of text.split(/[^a-z]+/)) {
         if (ICON_WORDS.includes(word)) words.add(word);
       }
@@ -807,6 +910,38 @@
     return rect.bottom <= 0 || rect.top >= height || rect.right <= 0 || rect.left >= width;
   };
 
+  // The nearest container that scrolls its content (a popover's list), or
+  // null. Each container is looked at once. An element fixed to the window
+  // moves with no container, and none of them clips it: a fixed pop-up
+  // drawn from inside a scrolling list shows wherever it is placed.
+  const scrollers = new Map();
+  const scrollerOf = (element) => {
+    if (style(element).position === 'fixed') return null;
+    const parent = element.parentElement;
+    if (!parent || parent === document.body || parent === document.documentElement) return null;
+    if (scrollers.has(parent)) return scrollers.get(parent);
+    const overflow = style(parent);
+    const scrolls = (/(auto|scroll)/.test(overflow.overflowY) && parent.scrollHeight > parent.clientHeight)
+      || (/(auto|scroll)/.test(overflow.overflowX) && parent.scrollWidth > parent.clientWidth);
+    const found = scrolls ? parent : scrollerOf(parent);
+    scrollers.set(parent, found);
+    return found;
+  };
+  // Whether the element's middle is scrolled out of its container's view:
+  // what shows at that point is the container's neighbour or the page,
+  // neither of which covers the element, and a press scrolls it back. Live,
+  // a popover's airport rows below its list's fold read as covered, ranked
+  // last, and were never offered.
+  const scrolledAway = (element) => {
+    const scroller = scrollerOf(element);
+    if (!scroller) return false;
+    const rect = box(element);
+    const view = scroller.getBoundingClientRect();
+    const x = (rect.left + rect.right) / 2;
+    const y = (rect.top + rect.bottom) / 2;
+    return x < view.left || x > view.right || y < view.top || y > view.bottom;
+  };
+
   const statesOf = (element, what) => {
     const states = [];
     const input = standIn(element) || element;
@@ -818,7 +953,7 @@
     if (aria('selected') === 'true' || (aria('current') && aria('current') !== 'false')
       || (!states.includes('checked') && classChosen(element))) states.push('selected');
     if (input.required === true || aria('required') === 'true') states.push('required');
-    if (offscreen(element)) states.push('offscreen');
+    if (offscreen(element) || scrolledAway(element)) states.push('offscreen');
     else if (covered(element)) states.push('covered');
     return states;
   };
@@ -1124,6 +1259,26 @@
     nodes.push(record);
     seen.push({ element, record });
     offerChoices(element, record);
+  }
+  // A control repeated on every card ("ADD" on each product), kept inside
+  // the card that is a control itself, says nothing of which card it acts
+  // on: it is described by that card's name. Live, "add the first Maggi"
+  // pressed the first card's "ADD", on a ramen above the Maggi.
+  const recordOf = new Map(seen.map(({ element, record }) => [element, record]));
+  const copies = new Map();
+  for (const { record } of seen) {
+    const key = `${record.role}\u0000${record.name}`;
+    copies.set(key, (copies.get(key) || 0) + 1);
+  }
+  for (const { element, record } of seen) {
+    if (record.description || !record.name
+      || copies.get(`${record.role}\u0000${record.name}`) < 2) continue;
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      const card = recordOf.get(parent);
+      if (!card) continue;
+      if (card.name && card.name !== record.name) record.description = clip(`in ${card.name}`, limits.name);
+      break;
+    }
   }
   window.__tinycomputerSeen = next;
 

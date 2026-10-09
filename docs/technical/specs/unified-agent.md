@@ -104,7 +104,8 @@ These are additive to the grammar in [`jev-intent-flows.md`](jev-intent-flows.md
 - `in "<surface>" {steps}`
 - `extract {what, fields, into}`
 - `pick {from, by, into}` (implemented): chooses the best result card and
-  opens it; prices, times, durations, and stops are ranked exactly
+  opens it; prices, times, durations, stops, and nearness to a number
+  ("closest to 9") are ranked exactly
 - `ask [slots]`
 - `checkpoint "<why>"`
 

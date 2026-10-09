@@ -32,6 +32,37 @@ async fn pick_ranks_a_measurable_criterion_exactly_and_opens_the_winner() {
     }
 }
 
+#[tokio::test]
+async fn pick_ranks_nearness_to_a_number_by_distance() {
+    // Live, a store's sizes 9 and 10 were sold out, and "closest to 9",
+    // judged item by item, took none of 6, 7, and 8.
+    let run = run(
+        App::with(|sim| {
+            sim.results = vec![
+                ("6", "₹255", "in stock"),
+                ("7", "₹255", "3 left"),
+                ("8", "₹255", "2 left"),
+            ];
+        }),
+        json!({"app": "Mail", "steps": [
+            {"pick": {"from": "the size options", "by": "closest to 9", "into": "size"}}
+        ]}),
+    )
+    .await;
+    assert_eq!(run.app.sim().picked, ["@s:select-3"]);
+    assert!(
+        run.result.steps[0].note.contains("ranked"),
+        "{}",
+        run.result.steps[0].note
+    );
+    assert!(
+        !run.requests
+            .iter()
+            .any(|request| request.questions.contains_key("record")),
+        "nearness to a number needs no judgement"
+    );
+}
+
 /// Says an item belongs to the list picked from only when it shows `brand`.
 fn belongs_when(brand: &'static str) -> impl Fn(&str, &Question, &Sim) -> Option<Answer> {
     move |id, question, _| {
@@ -118,6 +149,29 @@ async fn pick_ranks_the_list_that_has_prices_not_the_longest_one() {
     assert_eq!(run.app.sim().picked, ["@s:select-1"]);
     assert!(run.result.vars["flight"].starts_with("IndiGo"));
     assert!(run.result.steps[0].note.contains("ranked"));
+}
+
+#[tokio::test]
+async fn pick_ranks_a_list_it_can_open_not_bare_fares() {
+    // Live, "the cheapest flight" ranked a list of bare fares and took
+    // "₹ 6,054", which had nothing to open.
+    let app = flights();
+    app.sim().fare_chips = 8;
+    let run = run(
+        app,
+        json!({"app": "Mail", "steps": [
+            {"pick": {"from": "the flight results", "by": "lowest price", "into": "flight"}}
+        ]}),
+    )
+    .await;
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::Completed,
+        "{:?}",
+        run.result.steps
+    );
+    assert_eq!(run.app.sim().picked, ["@s:select-1"]);
+    assert!(run.result.vars["flight"].starts_with("IndiGo"));
 }
 
 #[tokio::test]

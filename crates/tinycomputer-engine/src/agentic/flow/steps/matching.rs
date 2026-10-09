@@ -29,6 +29,9 @@ pub(super) fn held_text(screen: &Screen) -> Vec<(Candidate, String)> {
 /// The matches whose labels say little besides the option: a container
 /// whose label strings together everything inside it (a calendar button
 /// named with every day of the month) is dropped when a plainer match exists.
+/// A list's option is one option however much its label says: live, an
+/// airport row ("BOM Mumbai, India … 3 Nearby Airports found") was dropped
+/// for a footer link that only said "Mumbai".
 pub(in crate::agentic::flow) fn closest(matches: Vec<Candidate>) -> Vec<Candidate> {
     let length = |candidate: &Candidate| candidate.name.as_deref().map_or(0, str::len);
     let Some(shortest) = matches.iter().map(length).min() else {
@@ -36,7 +39,10 @@ pub(in crate::agentic::flow) fn closest(matches: Vec<Candidate>) -> Vec<Candidat
     };
     matches
         .into_iter()
-        .filter(|candidate| length(candidate) <= shortest.saturating_mul(3).max(shortest + 40))
+        .filter(|candidate| {
+            is_one_option(candidate)
+                || length(candidate) <= shortest.saturating_mul(3).max(shortest + 40)
+        })
         .collect()
 }
 
@@ -123,6 +129,49 @@ pub(in crate::agentic::flow) fn already_holds(
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|value| plain(value) == wanted)
                 && !typed.contains(&element_kind(candidate))
+        })
+        .cloned()
+}
+
+/// The control that shows `option`, a date, under the name of `what`: the
+/// box or button a picker writes its day into ("Departure Thu, 22 Oct" for
+/// "departure date"), never a day of the calendar, which names no field.
+/// Live, the day was pressed and the departure button showed it, but the
+/// step looked for a box to type the date into and failed.
+pub(in crate::agentic::flow) fn date_shown_in(
+    screen: &Screen,
+    what: &str,
+    option: &str,
+) -> Option<Candidate> {
+    if !looks_like_date(option) {
+        return None;
+    }
+    let wanted = date_words(option);
+    let named = plain(what)
+        .split(' ')
+        .filter(|word| word.chars().count() > 3 && *word != "date")
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if named.is_empty() {
+        return None;
+    }
+    screen
+        .candidates
+        .iter()
+        .find(|candidate| {
+            let shown = [
+                candidate.name.as_deref(),
+                candidate.value.as_ref().and_then(serde_json::Value::as_str),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" ");
+            let words = plain(&shown);
+            named
+                .iter()
+                .any(|word| words.split(' ').any(|said| said == word))
+                && shows_date(&shown, &wanted)
         })
         .cloned()
 }
@@ -309,14 +358,35 @@ pub(super) fn within(pool: Vec<Candidate>, what: &str) -> Vec<Candidate> {
     if regional.is_empty() { pool } else { regional }
 }
 
+/// Words that place one thing against another ("from Delhi to Mumbai"),
+/// too common in labels to say which region an option is in.
+const PLACING_WORDS: &[&str] = &[
+    "to", "from", "via", "at", "in", "on", "for", "of", "by", "with",
+];
+
 /// Whether `candidate` sits inside — or itself names — the region `what`
 /// describes. A page rarely echoes a description such as "the outbound
 /// flight list" on an option's own label, so this also checks the option's
 /// ancestor labels (`path`), which the snapshot records outermost first.
+///
+/// A region named by a placing word alone ("to", "from") holds only what
+/// sits under a container whose name begins with it, never a control that
+/// names it itself (the "To" box's own button is no option of its list):
+/// live, "to" kept a page's "Delhi to Mumbai flights" links and dropped
+/// the airport list.
 pub(in crate::agentic::flow) fn in_region(candidate: &Candidate, what: &str) -> bool {
     let wanted = plain(what);
     if wanted.is_empty() {
         return true;
+    }
+    if PLACING_WORDS.contains(&wanted.as_str()) {
+        return candidate.path.iter().any(|ancestor| {
+            let name = ancestor
+                .split_once('"')
+                .map_or("", |(_, quoted)| quoted.trim_end_matches('"'));
+            let name = plain(name);
+            name == wanted || name.starts_with(&format!("{wanted} "))
+        });
     }
     let names = |text: &str| format!(" {} ", plain(text)).contains(&format!(" {wanted} "));
     [candidate.name.as_deref(), candidate.description.as_deref()]

@@ -106,6 +106,11 @@ pub struct FlowRunResult {
     /// Every Jev exchange, when [`RunFlowRequest::trace`] asked for them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub trace: Vec<JevExchange>,
+    /// Whether the run ended with the task's own dialog in front: one a
+    /// press of the run opened, still asking its question. The task hands
+    /// it to its next run as [`RunFlowRequest::dialog_left_open`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dialog_left_open: bool,
 }
 
 /// One Jev request and its answers, as recorded by a traced run.

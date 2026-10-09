@@ -188,6 +188,7 @@ fn finished_run(
         actions: 3,
         metrics: JevMetrics::default(),
         trace: Vec::new(),
+        dialog_left_open: false,
     };
     DesktopResponse::ok("run-flow", serde_json::to_value(result).unwrap())
 }

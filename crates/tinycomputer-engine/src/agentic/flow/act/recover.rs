@@ -34,7 +34,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     ) -> Result<bool, Halt> {
         if judged.blocked.unwrap_or_default() >= BLOCKED
             && state.obstacles < MAX_OBSTACLES
-            && !self.front.opened_dialog
+            && !self.front.opened_dialog()
         {
             state.obstacles += 1;
             log.used(FlowLoop::Obstacles);
@@ -99,7 +99,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         // A press that opened a dialog of the task's (the seat count after
         // a showtime) moved the flow on, whatever the judge made of it:
         // undoing it with Escape closed the dialog live.
-        if !self.enabled(FlowLoop::Undo) || state.undos >= MAX_UNDOS || self.front.opened_dialog {
+        if !self.enabled(FlowLoop::Undo) || state.undos >= MAX_UNDOS || self.front.opened_dialog() {
             return Ok(false);
         }
         state.undos += 1;

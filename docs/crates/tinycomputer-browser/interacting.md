@@ -54,6 +54,15 @@ than clicking through it and reporting success on a click that landed
 nowhere useful. That refusal message is what `reply::classify` turns into
 `Error::NotActionable`.
 
+A selector's element that shows at all is not scrolled, though, and its
+press lands on its middle whether the window shows that point or not, with
+success reported. So before pressing a control sight found, the surface
+brings it to the middle of the window when its middle lies outside the
+window (`INTO_VIEW_JS` in `surface/uncover.rs`), and leaves a control in
+view where it is. Live, a store's "Add to cart" sat at the window's foot
+with its middle below it, and was pressed again and again with nothing
+happening. A ref of the tree is brought into view by agent-browser itself.
+
 ### Click-through on result cards
 
 A refusal because something is "covered" is not always the end of the

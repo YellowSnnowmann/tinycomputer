@@ -32,6 +32,9 @@
 mod decide;
 mod narrow;
 
+#[cfg(test)]
+pub(super) use narrow::knockout_groups;
+
 use std::collections::BTreeMap;
 
 use tinyinference_decisions::{Answer, EvaluationRequest};

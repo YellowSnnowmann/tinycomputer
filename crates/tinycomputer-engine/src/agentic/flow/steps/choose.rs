@@ -15,9 +15,11 @@ use crate::agentic::flow::{
 
 use super::{
     LOCATE_FLOOR,
+    date::looks_like_date,
     matching::{
-        already_chosen, already_holds, clickable, closest, editable, held_text, is_checked,
-        is_one_option, lists_more_than, mentions, one_option, plainest, redacted, within,
+        already_chosen, already_holds, clickable, closest, date_shown_in, editable, held_text,
+        is_checked, is_one_option, lists_more_than, mentions, one_option, plainest, redacted,
+        within,
     },
 };
 
@@ -166,22 +168,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             if !private && let Some(ended) = self.made_already(&screen, what, option, attempt) {
                 return Ok(ended);
             }
-            let pool = clickable(&screen.candidates)
-                .into_iter()
-                .filter(|candidate| !is_destructive(candidate, &screen, &self.stop_before))
-                .collect::<Vec<_>>();
-            // A field that holds the typed option is where it was typed,
-            // not one of the options it offers.
-            let pool = closest(
-                pool.into_iter()
-                    .filter(|candidate| {
-                        mentions(candidate, option)
-                            && !editable(candidate)
-                            && !lists_more_than(candidate, option)
-                    })
-                    .collect(),
-            );
-            let pool = within(pool, what);
+            let pool = option_pool(&screen, what, option, into_focus, &self.stop_before);
             // Matches that all name one option leave nothing to judge; a
             // private option is never judged, since Jev is not told it. An
             // option no control names is a description ("the lowest fare"),
@@ -275,6 +262,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                 (attempt == 0)
                     .then(|| already_holds(screen, option, &self.typed))
                     .flatten()
+                    .or_else(|| date_shown_in(screen, what, option))
                     .map(|holder| format!("{} already shows {option:?}", label(&holder)))
             })?;
         self.history.push(shown);
@@ -308,5 +296,51 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             .ground(log, screen, &purpose, &purpose, options)
             .await?
             .filter(|grounded| grounded.confidence >= LOCATE_FLOOR))
+    }
+}
+
+/// The controls on `screen` that could be `option` in `what`: pressable and
+/// not irreversible, naming the option, no box it was typed into, the
+/// closest matches, within `what` when the page says where; for an `enter`
+/// value with no box (`into_focus` unset), only those the screen shows.
+fn option_pool(
+    screen: &Screen,
+    what: &str,
+    option: &str,
+    into_focus: bool,
+    stop_before: &[String],
+) -> Vec<Candidate> {
+    let pool = clickable(&screen.candidates)
+        .into_iter()
+        .filter(|candidate| !is_destructive(candidate, screen, stop_before))
+        .collect::<Vec<_>>();
+    // A field that holds the typed option is where it was typed,
+    // not one of the options it offers.
+    let pool = closest(
+        pool.into_iter()
+            .filter(|candidate| {
+                mentions(candidate, option)
+                    && !editable(candidate)
+                    && !lists_more_than(candidate, option)
+            })
+            .collect(),
+    );
+    let pool = within(pool, what);
+    // An `enter` value with no box to type it into is picked from
+    // what the screen shows, a date aside (a calendar can scroll its
+    // days out of its own view): live, the only "Mumbai" was a link
+    // out of view at the foot of the page, pressed as the place to
+    // fly to, and the search went from Mumbai instead.
+    if into_focus || looks_like_date(option) {
+        pool
+    } else {
+        pool.into_iter()
+            .filter(|candidate| {
+                !candidate
+                    .states
+                    .iter()
+                    .any(|state| state.eq_ignore_ascii_case("offscreen"))
+            })
+            .collect()
     }
 }

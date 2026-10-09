@@ -13,7 +13,7 @@ mod rank;
 mod schedule;
 
 pub use price::{Price, parse_price};
-pub use rank::{Criterion, rank};
+pub use rank::{Criterion, closest_to, rank, rank_closest};
 pub use schedule::{parse_clock, parse_duration, parse_stops};
 
 /// One extracted item: field name to the text shown for it.

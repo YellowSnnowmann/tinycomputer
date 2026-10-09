@@ -6,11 +6,15 @@
 //! (`deliver_text`), top to bottom in screen order. A slot with no visible
 //! field first runs a short `do` loop to reveal one.
 //!
-//! `assign` matches slots to fields and asks which the form wants; `fill`
-//! delivers each text and verifies it.
+//! `assign` matches slots to fields and asks which the form wants; `open`
+//! shows a slot's box when the screen has none for it; `fill` delivers each
+//! text and verifies it.
 
 mod assign;
 mod fill;
+mod open;
+#[cfg(test)]
+pub(super) use open::named_opener;
 
 use std::collections::BTreeSet;
 

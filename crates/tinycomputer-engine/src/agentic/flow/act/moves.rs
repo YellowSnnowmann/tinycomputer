@@ -70,7 +70,15 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
                     ));
                     return Ok(Move::Skipped);
                 }
-                if combo == "return" && screen.surface != "window" {
+                // Return in a search box runs its search wherever the box
+                // sits: live, a store's search opened as a full-window
+                // sheet, and its step to press Enter in the box just typed
+                // into was refused 154 times.
+                let searching = self
+                    .typed_last
+                    .as_ref()
+                    .is_some_and(|field| is_search_box(field) && still_shows(screen, field));
+                if combo == "return" && screen.surface != "window" && !searching {
                     self.history.push(format!(
                         "refused return while a {} is showing: it would press its default button",
                         screen.surface
@@ -151,10 +159,12 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             // a press scrolls it out from under the bar (live, a seat table's
             // lower rows sat under its "Pay" bar).
             && !in_dialog(candidate);
-        if covered && self.front.surface != "window" {
+        // A calendar the task has picked in is closed for such a press
+        // (`press_uncovering`), so what it covers can be pressed.
+        if covered && self.front.surface != "window" && !self.front.served_calendar() {
             return false;
         }
-        !(self.front.opened_dialog && closes(candidate) && !asks_to_close(intent))
+        !(self.front.opened_dialog() && closes(candidate) && !asks_to_close(intent))
     }
 
     /// Grounds and performs an `activate`, `expand`, or `scroll` move; the
@@ -201,7 +211,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         // front: the dialog asks something first, and what answers it is
         // pressed instead, though not remembered as the step's control.
         let (grounded, answers_dialog) = match grounded {
-            None if operation == "activate" && self.front.opened_dialog => {
+            None if operation == "activate" && self.front.opened_dialog() => {
                 (self.answer_dialog(log, screen, intent, banned).await?, true)
             }
             grounded => (grounded, false),
@@ -340,4 +350,34 @@ fn asks_to_close(intent: &str) -> bool {
                 "close" | "dismiss" | "cancel" | "exit" | "leave" | "back"
             )
         })
+}
+
+/// Whether `field` is a search box: a `searchbox`, or a box that takes text
+/// and names itself for searching ("Search Lenskart", "Search for atta dal
+/// and more"). Return there runs the search, never a dialog's default
+/// button.
+pub(in crate::agentic::flow) fn is_search_box(field: &Candidate) -> bool {
+    let takes_text = field
+        .available_actions
+        .iter()
+        .any(|action| action == "SetValue" || action == "TypeText");
+    let named = [field.name.as_deref(), field.description.as_deref()]
+        .into_iter()
+        .flatten()
+        .any(|text| text.to_lowercase().contains("search"));
+    field.role.eq_ignore_ascii_case("searchbox") || (takes_text && named)
+}
+
+/// Whether `field` still shows on `screen` with nothing covering it: a
+/// dialog that has come up over it since it was typed into takes the keys
+/// itself.
+pub(in crate::agentic::flow) fn still_shows(screen: &Screen, field: &Candidate) -> bool {
+    screen.candidates.iter().any(|candidate| {
+        candidate.role == field.role
+            && candidate.name == field.name
+            && !candidate
+                .states
+                .iter()
+                .any(|state| state.eq_ignore_ascii_case("covered"))
+    })
 }

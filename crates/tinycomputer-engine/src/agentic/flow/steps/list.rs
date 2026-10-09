@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde_json::json;
 use tinycomputer_bus::{FlowLoop, JevOperation, PickStep, ReadStep, StepOutcome};
 use tinycomputer_core::surface::{Group, result_families};
-use tinycomputer_core::{Criterion, Record, rank};
+use tinycomputer_core::{Criterion, Record, closest_to, rank, rank_closest};
 use tinyinference_decisions::Answer;
 
 use crate::agentic::flow::{
@@ -23,18 +23,19 @@ use super::{
 
 impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     /// Picks the best of a list of results by `pick.by`, stores its text,
-    /// and opens it. A criterion over prices, times, durations, or stops is
-    /// ranked exactly, and the first ranked item that Jev confirms belongs
-    /// to `pick.from` is taken: the ranking reads only its measure, and
-    /// live, "the cheapest of the results rated 4 stars or more" took a
-    /// 3.1-star item of another brand. Anything else, or a ranking none of
-    /// whose leaders belongs, is judged by Jev among the records.
+    /// and opens it. A criterion over prices, times, durations, or stops,
+    /// or nearness to a number ("closest to 9"), is ranked exactly, and the
+    /// first ranked item that Jev confirms belongs to `pick.from` is taken:
+    /// the ranking reads only its measure, and live, "the cheapest of the
+    /// results rated 4 stars or more" took a 3.1-star item of another brand.
+    /// Anything else, or a ranking none of whose leaders belongs, is judged
+    /// by Jev among the records.
     pub(super) async fn pick(&mut self, log: &mut StepLog, pick: &PickStep) -> Result<Ended, Halt> {
         let from = substitute_safe(&pick.from, &self.vars, &self.facts);
         let by = substitute_safe(&pick.by, &self.vars, &self.facts);
         let mut screen = self.look().await?;
         self.explore(&mut screen).await;
-        let families = result_families(&screen);
+        let families = openable(result_families(&screen));
         if families.is_empty() {
             return Err(Halt::Failed(format!("no list of {from} is showing")));
         }
@@ -47,22 +48,25 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         let condition = first_meeting(&by);
         let criterion =
             Criterion::parse(&by).or_else(|| condition.as_ref().map(|_| Criterion::First));
-        let ranked = match criterion {
+        let ranked = match (closest_to(&by), criterion) {
+            // Nearness to a number ranks by distance, within the list `from`
+            // names, since numbers show in every list. Live, a store's sizes
+            // 9 and 10 were sold out, and "closest to 9", judged item by
+            // item, took none of 6, 7, and 8.
+            (Some(target), _) => {
+                let groups = self.named_list(log, &screen, &from, &families).await?;
+                rank_closest(&records_of(groups), target).map(|order| (groups, order))
+            }
             // The list's own order fits every list on the page, so the one
             // `from` names is asked for first, as a judged pick does.
-            Some(order @ (Criterion::First | Criterion::Last)) => {
-                let list = if families.len() > 1 {
-                    self.judge_list(log, &screen, &from, &families).await?
-                } else {
-                    0
-                };
-                let groups = &families[list];
+            (None, Some(order @ (Criterion::First | Criterion::Last))) => {
+                let groups = self.named_list(log, &screen, &from, &families).await?;
                 rank(&records_of(groups), order).map(|ranking| (groups, ranking))
             }
-            Some(criterion) => families.iter().find_map(|groups| {
+            (None, Some(criterion)) => families.iter().find_map(|groups| {
                 rank(&records_of(groups), criterion).map(|order| (groups, order))
             }),
-            None => None,
+            (None, None) => None,
         };
         let meets =
             condition.map_or_else(|| from.clone(), |condition| format!("{from}, {condition}"));
@@ -78,12 +82,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         } else {
             // Several lists show (a chat list beside the open chat's
             // messages): judge within the one `from` names.
-            let list = if families.len() > 1 {
-                self.judge_list(log, &screen, &from, &families).await?
-            } else {
-                0
-            };
-            let groups = &families[list];
+            let groups = self.named_list(log, &screen, &from, &families).await?;
             let best = self.judge_pick(log, &screen, &from, &by, groups).await?;
             (groups, best, "judged")
         };
@@ -195,6 +194,23 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
             StepOutcome::Done,
             format!("extracted {} items into {}", rows.len(), read.into),
         ))
+    }
+
+    /// The list of `families` that `from` names: the only one, or the one
+    /// Jev chooses when several show.
+    async fn named_list<'f>(
+        &mut self,
+        log: &mut StepLog,
+        screen: &crate::agentic::flow::view::Screen,
+        from: &str,
+        families: &'f [Vec<Group>],
+    ) -> Result<&'f Vec<Group>, Halt> {
+        let list = if families.len() > 1 {
+            self.judge_list(log, screen, from, families).await?
+        } else {
+            0
+        };
+        Ok(&families[list])
     }
 
     /// Asks Jev which of the lists showing is `what`, each shown by its
@@ -341,7 +357,29 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     }
 }
 
-/// Each card's text as a record, its fields numbered in reading order.
+/// The lists of `families` a pick can open an item of: those whose items
+/// mostly hold something to press, when any list's do. A pick opens what
+/// it takes, and a list of bare fares (a strip above the flights, or each
+/// card's price read apart from it) has nothing to open: live, "the
+/// cheapest flight" ranked such a list and took "₹ 6,054".
+fn openable(families: Vec<Vec<Group>>) -> Vec<Vec<Group>> {
+    let opens = |groups: &Vec<Group>| {
+        groups
+            .iter()
+            .filter(|group| group.primary.is_some())
+            .count()
+            * 2
+            > groups.len()
+    };
+    if families.iter().any(opens) {
+        families.into_iter().filter(opens).collect()
+    } else {
+        families
+    }
+}
+
+/// Each card's text as a record, its fields numbered in reading order, and
+/// numbered so that their keys sort in that order too.
 fn records_of(groups: &[Group]) -> Vec<Record> {
     groups
         .iter()
@@ -350,7 +388,7 @@ fn records_of(groups: &[Group]) -> Vec<Record> {
                 .fields
                 .iter()
                 .enumerate()
-                .map(|(index, text)| (format!("field {index}"), text.clone()))
+                .map(|(index, text)| (format!("field {index:03}"), text.clone()))
                 .collect(),
         })
         .collect()

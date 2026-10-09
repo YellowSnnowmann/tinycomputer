@@ -426,3 +426,61 @@ async fn a_control_named_by_the_slot_opens_its_box_only_when_jev_agrees() {
         refused.result.steps[0].actions
     );
 }
+
+#[test]
+fn a_short_place_word_names_its_box_only_as_a_labels_first_word() {
+    // Live, a flight form drew its place boxes as buttons ("From DEL",
+    // "To BLR"), and the "to" box was never opened: "to" is too short a
+    // word to look for anywhere in a label ("Tap to add a return date").
+    use super::enter::named_opener;
+    let slots = vec![tinycomputer_bus::Slot {
+        slot: "to".to_owned(),
+        text: "Mumbai".to_owned(),
+    }];
+    let screen = Screen {
+        app: "browser".to_owned(),
+        window: None,
+        surface: "window".to_owned(),
+        candidates: vec![
+            node(
+                "From DEL, Delhi Airport India",
+                "button",
+                &["Click"],
+                &["form"],
+                0.0,
+            ),
+            node(
+                "Return Tap to add a return date",
+                "button",
+                &["Click"],
+                &["form"],
+                1.0,
+            ),
+            node(
+                "To BLR, Bengaluru Airport India",
+                "button",
+                &["Click"],
+                &["form"],
+                2.0,
+            ),
+        ],
+        context: Vec::new(),
+        unexplored: Vec::new(),
+        text_nodes: Vec::new(),
+    };
+    let opener = named_opener(&screen, &slots, &BTreeSet::from([0])).unwrap();
+    assert_eq!(
+        opener.name.as_deref(),
+        Some("To BLR, Bengaluru Airport India")
+    );
+    // However the surface spells the role.
+    let mut screen = screen;
+    for candidate in &mut screen.candidates {
+        candidate.role = "Button".to_owned();
+    }
+    let opener = named_opener(&screen, &slots, &BTreeSet::from([0])).unwrap();
+    assert_eq!(
+        opener.name.as_deref(),
+        Some("To BLR, Bengaluru Airport India")
+    );
+}

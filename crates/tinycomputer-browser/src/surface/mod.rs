@@ -24,6 +24,9 @@ mod tree;
 mod uncover;
 mod watch;
 
+#[cfg(test)]
+pub(crate) use uncover::INTO_VIEW_JS;
+
 pub use sight::Denoised;
 
 use std::sync::atomic::{AtomicBool, Ordering};

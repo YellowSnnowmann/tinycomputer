@@ -64,7 +64,8 @@ Sight decides what is a control by behavior, not by role:
   those (so a `<span>` inside a button does not become a second control just
   because it inherits the button's pointer cursor).
 - A small element (under a quarter of the window) whose React props hold a
-  press handler (`onClick`, `onPress`) is a control too: a page can wire a
+  press handler (`onClick`, `onPress`), or whose Preact listeners (`l` once
+  minified, `_listeners`) hold a click one, is a control too: a page can wire a
   plain `div` to a click with neither a cursor nor a tab stop. A handler for
   the mouse going down alone (a carousel's track) makes no control, and a
   control made only by such a handler hides nothing pressable inside it.
@@ -73,12 +74,20 @@ Sight decides what is a control by behavior, not by role:
   `aria-disabled="true"` and a class name that *ends* in `disabled`. That last
   rule exists because plenty of date pickers grey out a past day purely
   through a CSS class, `rdrDay rdrDayDisabled` on a real calendar widget,
-  with no ARIA attribute at all.
+  with no ARIA attribute at all. A class behind a variant prefix
+  (`placeholder:text-disabled`, `disabled:opacity-50`) is never read this
+  way, nor for `selected` below: it styles a part or a state the element may
+  not be in.
 - Chosen controls read `selected` by the same reasoning: besides
   `aria-selected`, `aria-current`, `aria-checked`, and `aria-pressed`, a class
   name ending in `-selected` or `-checked` (never `unselected` or
   `not-selected`) marks one, as a store's picked size
   (`size-buttons-size-button-selected`) carries no ARIA state at all.
+- A control repeated on every card ("ADD" on each product), inside a card
+  that is a control itself, is described by that card's name (`in Maggi
+  Double Masala 95 g ₹20`) when it has no description of its own: by its
+  name alone, every copy is the same, and live, "add the first Maggi"
+  pressed the first card's "ADD", on a ramen above the Maggi.
 
 The IndiGo case above is the sharpest illustration of the next rule: **a
 claimed text box that takes no text is a button, not a text box.** Sight

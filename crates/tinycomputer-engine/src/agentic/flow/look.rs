@@ -37,8 +37,7 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
         match observed {
             Ok(screen) => {
                 self.blind_looks = 0;
-                let browsing = self.app.eq_ignore_ascii_case("browser");
-                if let Some(note) = self.front.look(&screen, self.location.as_deref(), browsing) {
+                if let Some(note) = self.front.look(&screen, self.location.as_deref()) {
                     self.history.push(note.to_owned());
                 }
                 Ok(screen)
