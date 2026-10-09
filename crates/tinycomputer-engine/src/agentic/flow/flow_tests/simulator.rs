@@ -36,7 +36,8 @@ pub(super) enum Quirk {
     /// A promo toast with a Close button sits over the page until closed.
     PromoToast,
     /// A cookie bar drawn without a dialog's role, its "Accept all" button
-    /// the way out, sits over the page until accepted.
+    /// the way out, shows until accepted; like the promo toast, it covers
+    /// no control.
     CookieBar,
     /// The inbox's search, once open, fills the window as a sheet.
     SearchSheet,

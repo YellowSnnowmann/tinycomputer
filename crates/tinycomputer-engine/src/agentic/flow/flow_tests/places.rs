@@ -174,11 +174,12 @@ pub(super) fn await_place_rows(sim: &mut Sim) -> bool {
 }
 
 /// Closes the open list, dropping its box's text unless a suggestion was
-/// picked for it.
+/// picked for it; a box shown behind its button closes with it.
 pub(super) fn drop_unpicked(sim: &mut Sim) {
     let Some(places) = sim.places.as_mut() else {
         return;
     };
+    places.door = None;
     if let Some(open) = places.open.take()
         && !places.picked.contains(&open)
     {
