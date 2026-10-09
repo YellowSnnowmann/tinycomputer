@@ -151,23 +151,31 @@
   // The month and year a grid of days shows: the nearest short text before
   // it, or before one of its four nearest ancestors, that names one, as
   // `{ element, months: [[month, year], …] }`. A longer block (another
-  // month's whole grid) ends the search at its level, as does a calendar
-  // already `found`, however short: its month is its own.
+  // month's whole grid) ends the search at its level. A calendar already
+  // `found` is passed over, however short, but a title beyond it names this
+  // grid only while it has a month left to give (`uses` counts the grids
+  // each title has named).
   const MONTHS_AND_YEARS = new RegExp(MONTH_AND_YEAR.source, 'gi');
-  const gridTitle = (grid, found) => {
+  const gridTitle = (grid, found, uses) => {
     let node = grid;
+    let passed = false;
     for (let depth = 0; node && node !== base && depth < 4; depth += 1, node = node.parentElement) {
       let sibling = node.previousElementSibling;
       for (let step = 0; sibling && step < 3; step += 1, sibling = sibling.previousElementSibling) {
         // A hidden element's text still reads out (a template, a month
         // menu): only what shows titles a grid.
         if (!shown(sibling)) continue;
-        if (found.some((calendar) => sibling === calendar || sibling.contains(calendar))) break;
+        if (found.some((calendar) => sibling === calendar || sibling.contains(calendar))) {
+          passed = true;
+          continue;
+        }
         const said = shownWords(sibling);
         if (said.length > 120) break;
         const months = [...said.matchAll(MONTHS_AND_YEARS)]
           .map((found) => [MONTHS.indexOf(found[1].toLowerCase()), Number(found[2])]);
-        if (months.length) return { element: sibling, months };
+        if (!months.length) continue;
+        return passed && (uses.get(sibling) || 0) >= months.length
+          ? null : { element: sibling, months };
       }
     }
     return null;
@@ -214,17 +222,23 @@
     // date, and the departure was never picked.
     const titleUses = new Map();
     const grids = [];
+    const titled = [];
     for (const grid of base.querySelectorAll('div, ul, ol, tbody')) {
-      if ([...calendars, ...grids].some((calendar) => calendar.contains(grid))) continue;
       // A month drawn as its weeks, each a row of up to seven days, is read
-      // as the run of its days, as a flat grid is. Live, a hotel site's open
-      // days held a fare and no month, inside week rows: none read as a
-      // date, and a date step paged a year past the month it wanted.
+      // as the run of its days, as a flat grid is: four to six weeks, after
+      // a row of day names when the month draws one there. Live, a hotel
+      // site's open days held a fare and no month, inside week rows: none
+      // read as a date, and a date step paged a year past the month it
+      // wanted.
       const weeks = [...grid.children];
-      const weekly = weeks.length >= 4 && weeks.length <= 6
+      const weekly = weeks.length >= 4 && weeks.length <= 7
         && weeks.every((week) => week.children.length >= 1 && week.children.length <= 7);
       const kids = weekly ? weeks.flatMap((week) => [...week.children]) : weeks;
-      if (kids.length < 28 || kids.length > 49) continue;
+      // The cheap tests first: a month's first day is among its first two
+      // weeks' cells, read without laying the page out.
+      if (kids.length < 28 || kids.length > 49
+        || !kids.slice(0, 14).some((kid) => /^\s*1/.test(kid.textContent))
+        || [...calendars, ...grids].some((calendar) => calendar.contains(grid))) continue;
       const days = kids.map((kid) => {
         const leading = /^(\d{1,2})(?:\s|$)/.exec(squash(kid.innerText));
         return leading && shown(kid) ? { cell: kid, day: Number(leading[1]) } : null;
@@ -236,13 +250,23 @@
         if (!entry || entry.day !== run.length + 1) break;
         run.push(entry);
       }
-      const title = run.length >= 28 && gridTitle(grid, [...calendars, ...grids]);
+      const title = run.length >= 28 && gridTitle(grid, [...calendars, ...grids], titleUses);
       if (!title) continue;
-      const used = titleUses.get(title.element) || 0;
-      titleUses.set(title.element, used + 1);
-      const [month, year] = title.months[Math.min(used, title.months.length - 1)];
-      const spelled = MONTHS[month];
+      titleUses.set(title.element, (titleUses.get(title.element) || 0) + 1);
       grids.push(grid);
+      titled.push({ run, title });
+    }
+    // A title's months go to its grids in order, and only when each month
+    // found its grid: one grid missed (a "Today" over its first day, a week
+    // hidden) would give the next grid's days the month before's name. Its
+    // grids then stay calendars, with their arrows, and their days undated.
+    const given = new Map();
+    for (const { run, title } of titled) {
+      const index = given.get(title.element) || 0;
+      given.set(title.element, index + 1);
+      if (titleUses.get(title.element) !== title.months.length) continue;
+      const [month, year] = title.months[index];
+      const spelled = MONTHS[month];
       for (const { cell, day } of run) {
         const pressed = cell.matches(NESTED) ? cell : cell.querySelector(NESTED) || cell;
         calendarDays.set(pressed, `${day} ${spelled[0].toUpperCase()}${spelled.slice(1)} ${year}`);
@@ -268,9 +292,8 @@
       }
     }
   };
-  // Whether `said` names the month of `date` ("23 October 2026"), in full or
-  // by its first three letters ("Fri Oct 23 2026").
-  const namesMonthOf = (said, date) => new RegExp(`\\b${date.split(' ')[1].slice(0, 3)}`, 'i').test(said);
+  // A month's name as a whole word, in full or cut short ("Oct", "Sept").
+  const MONTH_WORD = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i;
   // A calendar's paging arrow, read as what it does: an arrow glyph, or a
   // bare "Next", inside a calendar turns its month.
   const NEXT_GLYPHS = /^(?:next|[›»>→⟩▶❯])$/i;
@@ -561,11 +584,12 @@
     const text = withoutGlyphs(element, ownText(element));
     if (text) {
       // A calendar's day is described by its date unless what the page says
-      // of it already names its month: a number and a fare name none, and
-      // anything more it says ("Sold out") follows the date.
+      // of it already names a month, which stands alone: a number and a
+      // fare name none, and anything more it says ("Sold out") follows the
+      // date.
       const dated = calendarDays.get(element);
       const own = aria || innerLabel(element, text);
-      const said = !dated || (own && namesMonthOf(own, dated)) ? own || dated
+      const said = !dated || (own && MONTH_WORD.test(own)) ? own || dated
         : [dated, own].filter((part) => part && !text.includes(part)).join(', ');
       const description = said && said !== text && !text.includes(said) ? clip(said, limits.name) : '';
       return { name: clip(text, limits.name), description };

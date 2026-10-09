@@ -160,16 +160,20 @@ before this; the flow looped and rescued for minutes.
 
 A calendar drawn without a table is read the same way: a block whose cells
 each begin with a day number (a fare may follow, "22 6529"), numbered from 1
-to the month's last day, under a short text naming its month and year (never
-text inside another calendar before it). One header naming two months titles
-two such blocks in order. The cells may sit
-in the block itself or in its rows of a week (four to six rows of up to seven
-days each), as React-style pickers draw them. A day is described by its date
-unless the page's own label for it already names its month ("Thu Oct 01
-2026"); a label that names none ("Sold out", or only the day's number)
-follows the date ("24 October 2026, Sold out"). Live, a hotel site drew its
-open days as a number over a fare in rows of a week: none read as a date, and
-the step paged the calendar a year past the month it wanted.
+to the month's last day, under a short text naming its month and year. A
+calendar already found before it is passed over, but a header beyond it
+titles the block only while it has a month left to give. One header naming
+two months titles two such blocks in order, and only when it found a block
+for each month: one block missed (a "Today" over its first day) would give
+the next block's days the month before's name, so then no day of either is
+dated. The cells may sit in the block itself or in its rows of a week (four
+to six weeks, after a row of day names when the month draws one there), as
+React-style pickers draw them. A day is described by its date unless the
+page's own label for it already names a month ("Thu Oct 01 2026"), which
+stands alone; a label that names none ("Sold out", or only the day's
+number) follows the date ("24 October 2026, Sold out"). Live, a hotel site
+drew its open days as a number over a fare in rows of a week: none read as a
+date, and the step paged the calendar a year past the month it wanted.
 
 A label that wraps its field, and any text block holding a dropdown, is read
 without the dropdown's own text: a closed dropdown shows one choice, but its

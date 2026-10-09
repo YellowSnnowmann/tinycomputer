@@ -60,14 +60,84 @@ async fn live_a_calendar_drawn_as_grids_of_buttons_reads_its_days_as_dates() {
     }
 }
 
+/// Two months as grids of bare day numbers under one header naming both:
+/// October's first day reads "Today 1" when `today_first`, so October's
+/// grid is no run of days from 1.
+#[cfg(feature = "agent-browser")]
+fn shared_header_page(today_first: bool) -> String {
+    let grid = |blanks: u32, days: u32, first: &str| {
+        let cells = (0..blanks)
+            .map(|_| "<span></span>".to_owned())
+            .chain((1..=days).map(|day| {
+                if day == 1 {
+                    format!("<button>{first}</button>")
+                } else {
+                    format!("<button>{day}</button>")
+                }
+            }))
+            .collect::<String>();
+        format!(
+            "<div style=\"display: grid; grid-template-columns: repeat(7, 44px)\">{cells}</div>"
+        )
+    };
+    let october_first = if today_first { "Today 1" } else { "1" };
+    format!(
+        "<div style=\"width: 700px\"><div><span>October 2026</span> <span>November 2026</span></div>\
+         <div style=\"display: flex; gap: 20px\">{}{}</div></div>",
+        grid(4, 31, october_first),
+        grid(0, 30, "1")
+    )
+}
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_bare_grids_under_one_header_take_its_months_in_order_or_none() {
+    for today_first in [false, true] {
+        let Some(reading) = live_reading(&shared_header_page(today_first)).await else {
+            return;
+        };
+        let descriptions = |name: &str| {
+            reading["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|node| node["name"] == name)
+                .map(|node| node["description"].as_str().unwrap_or_default().to_owned())
+                .collect::<Vec<_>>()
+        };
+        if today_first {
+            // October's grid is missed, so November's must not be read as
+            // October: no day of either is dated.
+            assert_eq!(descriptions("18"), ["", ""], "{:?}", shown_names(&reading));
+        } else {
+            assert_eq!(
+                descriptions("18"),
+                ["18 October 2026", "18 November 2026"],
+                "{:?}",
+                shown_names(&reading)
+            );
+        }
+    }
+}
+
 /// Two months drawn as a hotel site's were: each month's days in rows of
 /// a week, each open day its number over a fare and no month, each past
 /// day labelled by the page with its date. October's 24th is labelled "Sold
 /// out" and its 25th only by its number. Each month sits under a heading
-/// of its own when `boxed`, or one header names both.
+/// of its own when `boxed`; otherwise one header names both, and each
+/// month's rows start with a row of day names (November's six weeks make
+/// seven rows).
 #[cfg(feature = "agent-browser")]
 fn week_row_calendar_page(boxed: bool) -> String {
     use std::fmt::Write as _;
+    let names = if boxed {
+        String::new()
+    } else {
+        let cells = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+            .map(|name| format!("<div class=\"day\">{name}</div>"))
+            .concat();
+        format!("<div class=\"week\" role=\"row\">{cells}</div>")
+    };
     let body = |blanks: u32, days: u32, fares: u32, past: u32| {
         let cells = (0..blanks)
             .map(|_| "<div class=\"day\"></div>".to_owned())
@@ -90,7 +160,7 @@ fn week_row_calendar_page(boxed: bool) -> String {
                 )
             }))
             .collect::<Vec<_>>();
-        let weeks = cells.chunks(7).fold(String::new(), |mut weeks, week| {
+        let weeks = cells.chunks(7).fold(names.clone(), |mut weeks, week| {
             let _ = write!(
                 weeks,
                 "<div class=\"week\" role=\"row\">{}</div>",
