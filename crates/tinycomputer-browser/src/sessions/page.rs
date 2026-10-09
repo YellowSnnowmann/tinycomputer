@@ -40,13 +40,7 @@ const URL_IS_NO_PAGE: &[&str] = &[
 /// The raw commands that neither act on the page nor read what it shows (a
 /// wait for it to load, a box's place on screen, its address): no check of
 /// the page goes around them, so a wait while a navigation commits runs.
-const NEITHER_ACTS_NOR_READS: &[&str] = &[
-    "boundingbox",
-    "permissions",
-    "title",
-    "url",
-    "waitforloadstate",
-];
+const NEITHER_ACTS_NOR_READS: &[&str] = &["boundingbox", "permissions", "url", "waitforloadstate"];
 
 impl Browser {
     /// Navigates the session's active page.
@@ -90,6 +84,7 @@ impl Browser {
     pub async fn snapshot(&self, id: &SessionId, request: SnapshotRequest) -> Result<Snapshot> {
         let session = self.session(id)?;
         let mut session = session.lock().await;
+        session.check_if_readable(false).await?;
         let data = session.run(convert::snapshot(&request)).await?;
         let page = session.page().await?;
         let page = session.admit(page).await?;
@@ -156,6 +151,7 @@ impl Browser {
     pub async fn read_page(&self, id: &SessionId, request: ReadRequest) -> Result<PageText> {
         let session = self.session(id)?;
         let mut session = session.lock().await;
+        session.check_if_readable(false).await?;
         let data = session.run(convert::read(&request)).await?;
         let content = ["content", "text", "html"]
             .into_iter()
@@ -277,7 +273,9 @@ impl Browser {
             tinycomputer_bus::browser::ImageFormat::Webp => "webp",
         };
         let path = session.scratch_file("shot", self.next(), extension)?;
-        let data = session.run(convert::screenshot(&request, &path)?).await?;
+        let command = convert::screenshot(&request, &path)?;
+        session.check_if_readable(false).await?;
+        let data = session.run(command).await?;
         let written = data
             .get("path")
             .and_then(Value::as_str)

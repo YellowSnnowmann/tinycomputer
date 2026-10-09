@@ -219,8 +219,10 @@ impl Browser {
     ///
     /// # Errors
     ///
-    /// [`Error::LimitExceeded`] when [`MAX_SESSIONS`] are open, and whatever
-    /// the engine reports when the browser cannot be launched or reached.
+    /// [`Error::LimitExceeded`] when [`MAX_SESSIONS`] are open,
+    /// [`Error::BlockedByPolicy`] when the browser shows a page the allowed
+    /// origins refuse and it cannot be left, and whatever the engine reports
+    /// when the browser cannot be launched or reached.
     pub async fn open_session(&self, options: SessionOptions) -> Result<SessionInfo> {
         // Checked and reserved under the table's lock, so the check and the
         // claim are one step for every concurrent caller.
@@ -255,23 +257,28 @@ impl Browser {
         session.run(convert::launch(&session.options)).await?;
         session.run(convert::viewport(&session.options)).await?;
         let page = session.page().await?;
-        if session.origins.admits(&page.url) {
-            session.info.url = page.url;
-            session.info.title = page.title;
-        } else if session.info.launched {
-            // A profile that restores its last pages can open on a page the
-            // list refuses: it is left before anything reads it, and the
-            // session opens where that leads.
-            session.leave().await;
+        let page = if session.origins.admits(&page.url) {
+            page
         } else {
-            // A browser attached to is someone's own: their tab stays as it
-            // is, and the session works in a blank tab of its own.
-            let _opened = session.run(json!({"action": "tab_new"})).await;
-            if let Ok(page) = session.page().await {
-                session.info.url = page.url;
-                session.info.title = page.title;
+            if session.info.launched {
+                // A profile that restores its last pages can open on a page
+                // the list refuses: it is left before anything reads it.
+                session.leave().await;
+            } else {
+                // A browser attached to is someone's own: their tab stays as
+                // it is, and the session works in a blank tab of its own.
+                session.run(json!({"action": "tab_new"})).await?;
             }
-        }
+            let left = session.page().await?;
+            if !session.origins.admits(&left.url) {
+                // A session is never handed out on a page the list refuses.
+                let _closed = session.run(json!({"action": "close"})).await;
+                return Err(Error::BlockedByPolicy { url: left.url });
+            }
+            left
+        };
+        session.info.url = page.url;
+        session.info.title = page.title;
         let info = session.info.clone();
         // The slot moves from the reservation to the table in one step under
         // the lock, so no concurrent check ever counts this launch twice.

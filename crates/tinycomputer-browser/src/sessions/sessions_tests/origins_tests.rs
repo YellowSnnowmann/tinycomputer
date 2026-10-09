@@ -481,3 +481,85 @@ async fn a_page_read_once_more_after_a_moment_passes_the_check() {
     let (browser, id) = open_within(&fake, "origins-retry", &[".flights.test"]).await;
     browser.check_page(&id).await.unwrap();
 }
+
+#[tokio::test]
+async fn a_session_is_never_handed_out_on_a_refused_page_it_cannot_leave() {
+    // Neither going back nor a blank page leaves it.
+    let fake = Fake::scripted(|command| match command["action"].as_str().unwrap() {
+        "url" => Some(ok(&json!({"url": "https://evil.test/"}))),
+        _ => None,
+    });
+    let browser = Browser::with_scratch(Arc::new(fake.clone()), scratch("origins-stuck"));
+    let opened = browser
+        .open_session(SessionOptions {
+            allowed_origins: vec![".flights.test".to_owned()],
+            ..SessionOptions::default()
+        })
+        .await;
+    blocked(opened, "https://evil.test/");
+    assert!(fake.actions().contains(&"close".to_owned()));
+    assert!(browser.list_sessions().await.unwrap().is_empty());
+
+    // An attached browser that cannot open a tab of the session's own.
+    let fake = Fake::scripted(|command| match command["action"].as_str().unwrap() {
+        "url" => Some(ok(&json!({"url": "https://mail.test/inbox"}))),
+        "tab_new" => Some(crate::fake::failure("Target.createTarget failed")),
+        _ => None,
+    });
+    let browser = Browser::with_scratch(Arc::new(fake.clone()), scratch("origins-no-tab"));
+    let opened = browser
+        .open_session(SessionOptions {
+            endpoint: Some("ws://127.0.0.1:9222/devtools/browser".to_owned()),
+            allowed_origins: vec![".flights.test".to_owned()],
+            ..SessionOptions::default()
+        })
+        .await;
+    assert!(opened.is_err());
+    assert!(
+        !fake
+            .actions()
+            .iter()
+            .any(|action| action == "back" || action == "navigate"),
+        "the person's tab was never moved"
+    );
+}
+
+#[tokio::test]
+async fn a_read_is_never_sent_to_a_page_that_moved_out_of_the_origins() {
+    // The engine actions each read would send; none goes to the refused page.
+    for (read, actions) in [
+        ("snapshot", &["snapshot"][..]),
+        ("read", &["read", "gettext", "content", "innerhtml"][..]),
+        ("screenshot", &["screenshot"][..]),
+    ] {
+        let fake = drifting("https://evil.test/");
+        let (browser, id) = open_within(&fake, "origins-drift-read", &[".flights.test"]).await;
+        let refused = match read {
+            "snapshot" => browser
+                .snapshot(&id, SnapshotRequest::default())
+                .await
+                .map(|_| ()),
+            "read" => browser
+                .read_page(&id, tinycomputer_bus::browser::ReadRequest::default())
+                .await
+                .map(|_| ()),
+            _ => browser
+                .screenshot(&id, ScreenshotRequest::default())
+                .await
+                .map(|_| ()),
+        };
+        blocked(refused, "https://evil.test/");
+        let sent = fake.actions();
+        assert!(
+            !sent.iter().any(|action| actions.contains(&action.as_str())),
+            "{read}: {sent:?}"
+        );
+    }
+    // A raw command for the page's title reads what the page shows.
+    let fake = drifting("https://evil.test/");
+    let (browser, id) = open_within(&fake, "origins-drift-title", &[".flights.test"]).await;
+    blocked(
+        browser.command(&id, json!({"action": "title"})).await,
+        "https://evil.test/",
+    );
+}

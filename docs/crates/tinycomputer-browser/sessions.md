@@ -101,11 +101,12 @@ agent-browser:
   the browser is asked; a raw `read` of an address, which follows redirects
   where no page is checked, is refused under any list;
 - every call that acts on or reads the page (`perform`, `evaluate`,
-  `screenshot`, a raw command) first checks the page the session shows, so
-  nothing is sent to a page that moved out of the list on its own (a timer,
-  a redirect); a raw wait or lookup that neither acts nor reads
-  (`waitforloadstate`, `boundingbox`) is not checked, so it runs while a
-  navigation commits;
+  `snapshot`, `read_page`, `screenshot`, a raw command, its `title`
+  included) first checks the page the session shows, so nothing is sent to
+  a page that moved out of the list on its own (a timer, a redirect); a raw
+  wait or lookup that neither acts nor reads (`waitforloadstate`,
+  `boundingbox`, `url`) is not checked, so it runs while a navigation
+  commits;
 - the page a call leaves the session on is checked after it, and a refused
   one is left, back or to `about:blank`, before the call reports
   `LeftRefusedPage` (the call ran: its effect may stand); a `navigate`
@@ -120,7 +121,8 @@ agent-browser:
 - a session opens on its browser's first page only if the list admits it: a
   launched browser (a profile can restore its last pages) leaves it, and an
   attached browser keeps the person's tab as it is and opens a blank tab of
-  the session's own.
+  the session's own; a session that cannot leave such a page is closed, and
+  the open fails `BlockedByPolicy`.
 
 Only pages are checked. The files a page loads from other hosts (its CDN, its
 APIs, its maps, its frames) load as they would in any browser.
