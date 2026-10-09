@@ -55,9 +55,7 @@ covered in more depth in [Safety and privacy](../../safety-and-privacy.md).
     "origins": {"type": "array", "items": {"type": "string"}},
     "allow_destructive": {"type": "boolean"},
     "browser_endpoint": {"type": "string"},
-    "headed": {"type": "boolean"},
-    "browser_executable": {"type": "string", ...},
-    "browser_profile": {"type": "string", ...}
+    "headed": {"type": "boolean"}
   }
 }
 ```
@@ -77,9 +75,9 @@ covered in more depth in [Safety and privacy](../../safety-and-privacy.md).
 - `browser_endpoint` and `headed` control how the browser itself is run: an
   existing browser connection to reuse, or whether to show the browser
   window rather than running it invisibly.
-- `browser_executable` and `browser_profile` name the browser binary to
-  launch and an absolute folder to keep its profile in, so sign-ins last from
-  one task to the next.
+- The browser binary and the profile folder a task launches with
+  (`browser_executable`, `browser_profile` in the contract) are the host's
+  settings, never a model's, so the skill's schema leaves them out.
 
 ## `budget`: how much the task is allowed to do
 

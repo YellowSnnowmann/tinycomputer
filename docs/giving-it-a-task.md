@@ -124,10 +124,14 @@ Two more settings trade speed for care:
   person's own. When the task ends, it disconnects and leaves your browser
   open.
 - `headed`: show the browser window so you can watch.
-- `browser_executable`: the Chrome to start, when it isn't where the module
-  looks.
-- `browser_profile`: a folder the browser keeps its profile in, so a site you
-  signed into once stays signed in for the next task.
+- `browser_executable`: the full path of the Chrome to start, when it isn't
+  where the module looks.
+- `browser_profile`: a folder, given as a full path, the browser keeps its
+  profile in, so a site you signed into once stays signed in for the next
+  task.
+
+Your app sets these two from its own settings; they don't go with
+`browser_endpoint`, which starts no browser.
 
 ### How it treats irreversible actions and payment
 

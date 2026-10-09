@@ -19,14 +19,12 @@
     "constraints": {
       "type": "object",
       "properties": {
-        "payment": {"enum": ["stop_at_payment", "fill_then_approve"], "description": "Stop at the control that pays (default), or fill the payment form from secret facts and wait for approval to pay; the latter needs origins."},
+        "payment": {"enum": ["stop_at_payment", "fill_then_approve"], "description": "Stop at the control that pays (default), or fill the payment form from secret facts and wait for approval to pay; the latter needs origins that name sites, never *."},
         "surfaces": {"type": "array", "items": {"enum": ["desktop", "browser"]}},
         "origins": {"type": "array", "items": {"type": "string"}, "description": "Sites the task's browser may open pages on: an origin (https://example.com), a host with its subdomains (https://.example.com), or * for any public site. Only pages are checked, never the files a page loads. Empty means any."},
         "allow_destructive": {"type": "boolean"},
         "browser_endpoint": {"type": "string"},
-        "headed": {"type": "boolean"},
-        "browser_executable": {"type": "string", "description": "The Chrome or Chromium binary the task's browser launches."},
-        "browser_profile": {"type": "string", "description": "An absolute folder the task's browser keeps its profile in, so sign-ins last between tasks. Absent, each task starts in a fresh profile."}
+        "headed": {"type": "boolean"}
       }
     },
     "budget": {

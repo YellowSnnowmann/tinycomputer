@@ -248,15 +248,75 @@ async fn constraints_that_cannot_start_a_task_are_refused() {
             .message
             .contains("absolute folder")
     );
-    let blank_binary = tasks.start(&StartTaskRequest {
-        flow: Some(flow(json!({"app": "Mail", "steps": ["x"]}))),
-        constraints: TaskConstraints {
-            browser_executable: Some("  ".to_owned()),
+    let refused = |constraints: TaskConstraints| {
+        tasks.start(&StartTaskRequest {
+            flow: Some(flow(json!({"app": "Mail", "steps": ["x"]}))),
+            constraints,
+            ..StartTaskRequest::default()
+        })
+    };
+    // A binary is an absolute path to a file on this machine: never a name
+    // looked up on the `PATH`, a folder, a file that is not there, or a
+    // path with a space before it (a different, relative path).
+    let here = std::env::current_exe()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let profile = std::env::temp_dir()
+        .join("tinycomputer-profile")
+        .to_string_lossy()
+        .into_owned();
+    for binary in [
+        "  ".to_owned(),
+        "chrome".to_owned(),
+        std::env::temp_dir().to_string_lossy().into_owned(),
+        "/nonexistent/tinycomputer/chrome".to_owned(),
+        format!(" {here}"),
+    ] {
+        let reply = refused(TaskConstraints {
+            browser_executable: Some(binary.clone()),
+            ..TaskConstraints::default()
+        });
+        assert_eq!(code(&reply), "INVALID_REQUEST", "{binary:?}");
+    }
+    assert_eq!(
+        code(&refused(TaskConstraints {
+            browser_profile: Some(format!(" {profile}")),
+            ..TaskConstraints::default()
+        })),
+        "INVALID_REQUEST",
+        "a space before the folder makes it relative"
+    );
+    // A browser attached to is not launched: no binary or profile goes with it.
+    for constraints in [
+        TaskConstraints {
+            browser_endpoint: Some("ws://127.0.0.1:9222".to_owned()),
+            browser_profile: Some(profile.clone()),
             ..TaskConstraints::default()
         },
-        ..StartTaskRequest::default()
+        TaskConstraints {
+            browser_endpoint: Some("ws://127.0.0.1:9222".to_owned()),
+            browser_executable: Some(here.clone()),
+            ..TaskConstraints::default()
+        },
+    ] {
+        let reply = refused(constraints);
+        assert_eq!(code(&reply), "INVALID_REQUEST");
+        assert!(
+            reply
+                .error
+                .unwrap()
+                .message
+                .contains("browser_endpoint attaches")
+        );
+    }
+    // A binary that is there, and an absolute folder, start the task.
+    let started = refused(TaskConstraints {
+        browser_executable: Some(here),
+        browser_profile: Some(profile),
+        ..TaskConstraints::default()
     });
-    assert_eq!(code(&blank_binary), "INVALID_REQUEST");
+    assert!(started.ok, "{:?}", started.error);
 }
 
 #[tokio::test]

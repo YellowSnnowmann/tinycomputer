@@ -81,7 +81,8 @@ fn start_task_input() -> Value {
             "constraints": {"type": "object", "properties": {
                 "payment": {
                     "enum": ["stop_at_payment", "fill_then_approve"],
-                    "default": "stop_at_payment"
+                    "default": "stop_at_payment",
+                    "description": "fill_then_approve needs origins that name the sites card details may be typed on, never *"
                 },
                 "surfaces": surfaces(),
                 "origins": {
@@ -92,10 +93,13 @@ fn start_task_input() -> Value {
                 "allow_destructive": {"type": "boolean"},
                 "browser_endpoint": {"type": "string"},
                 "headed": {"type": "boolean"},
-                "browser_executable": {"type": "string"},
+                "browser_executable": {
+                    "type": "string",
+                    "description": "the host's setting, never a model's: the absolute path of the browser binary to launch; not with browser_endpoint"
+                },
                 "browser_profile": {
                     "type": "string",
-                    "description": "an absolute folder the browser keeps its profile in, so sign-ins last between tasks"
+                    "description": "the host's setting, never a model's: an absolute folder the browser keeps its profile in, so sign-ins last between tasks; not with browser_endpoint"
                 }
             }},
             "budget": {"type": "object", "properties": {

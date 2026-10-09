@@ -123,14 +123,18 @@ pub struct TaskConstraints {
     pub browser_endpoint: Option<String>,
     /// Show the browser rather than running it headless.
     pub headed: bool,
-    /// The Chrome or Chromium binary the task's browser launches, where the
-    /// module's own configuration or discovery would not find the one the
-    /// caller means.
+    /// The absolute path of the Chrome or Chromium binary the task's browser
+    /// launches, in place of the module's configured one. A host's setting:
+    /// a host that relays a model's request never takes it from the model.
+    /// Not with `browser_endpoint`, which launches nothing.
     pub browser_executable: Option<String>,
     /// An absolute folder the task's browser keeps its profile in between
     /// tasks, so a site signed into once stays signed in. Absent, each task
-    /// starts in a fresh profile removed when it ends. One browser can hold a
-    /// folder at a time.
+    /// starts in a fresh profile removed when it ends. A host's setting, like
+    /// `browser_executable`, and not with `browser_endpoint`. One browser can
+    /// hold a folder at a time: a task started on a folder another task's
+    /// browser still holds fails when its browser starts, so a host cancels
+    /// the earlier task first.
     pub browser_profile: Option<String>,
 }
 

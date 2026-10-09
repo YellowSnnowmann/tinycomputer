@@ -193,10 +193,18 @@ spent waiting for the caller does not count.
   browser but serve a person's own. Closing an attached session only
   disconnects; it never closes the person's browser.
 - `headed`: show the browser.
-- `browser_executable`: the Chrome or Chromium binary to launch.
+- `browser_executable`: the absolute path of the Chrome or Chromium binary to
+  launch, in place of the module's configured `browser.executable`
+  (`INVALID_REQUEST` for a bare name, a relative path, or no file there).
 - `browser_profile`: an absolute folder to keep the browser's profile in, so
   sign-ins last between tasks (`INVALID_REQUEST` for a relative folder). One
-  browser can hold a folder at a time.
+  browser can hold a folder at a time: cancel a task still holding the folder
+  before starting another on it, or the new task fails as its browser starts.
+  A task's own profile is a browser the module launched, so a press of a
+  page's "use my current location" grants it the location while it runs.
+- `browser_executable` and `browser_profile` are the host's settings: a host
+  that relays a model's request never takes them from the model, and neither
+  goes with `browser_endpoint` (`INVALID_REQUEST`), which launches nothing.
 
 ## Private values
 
