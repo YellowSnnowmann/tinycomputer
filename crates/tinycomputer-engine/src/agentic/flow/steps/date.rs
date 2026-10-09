@@ -14,6 +14,10 @@ pub(super) const HEADING_REACH: usize = 8;
 /// month) for its heading to stand in for theirs: a week's worth.
 pub(super) const BARE_DAYS: usize = 7;
 
+/// How far, in document order, a calendar's days sit from the arrow that
+/// pages it: two months' cells, their day names, and their headings.
+pub(super) const DAYS_REACH: usize = 100;
+
 /// Month names, as a date option spells them.
 const MONTHS: &[&str] = &[
     "january",

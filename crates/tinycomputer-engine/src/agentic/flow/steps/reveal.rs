@@ -12,8 +12,8 @@ use crate::agentic::flow::{
 use super::{
     REVEAL_TURNS,
     date::{
-        BARE_DAYS, HEADING_REACH, MAX_MONTHS, heads_month_of, is_next_month, looks_like_date,
-        names_a_month,
+        BARE_DAYS, DAYS_REACH, HEADING_REACH, MAX_MONTHS, heads_month_of, is_next_month,
+        looks_like_date, names_a_month,
     },
     matching::{clickable, lists_more_than, mentions, search_text},
 };
@@ -192,12 +192,12 @@ const CHOICE_ROLES: &[&str] = &[
 ];
 
 /// Whether the calendar `next` pages heads the month of `date` while its
-/// days name none: [`BARE_DAYS`] days or more show only their number, and a
-/// heading ([`heads_month_of`]) that is no choice of month sits within
-/// [`HEADING_REACH`] nodes of that arrow in document order. A calendar whose
-/// days name their month is paged by them alone, and the same words
-/// elsewhere on the page (months to fly in, a past booking) say nothing of
-/// which month the calendar shows.
+/// days name none: [`BARE_DAYS`] days or more within [`DAYS_REACH`] nodes of
+/// that arrow show only their number, and a heading ([`heads_month_of`])
+/// that is no choice of month sits within [`HEADING_REACH`] nodes of it, in
+/// document order. A calendar whose days name their month is paged by them
+/// alone, and numbers or the same words elsewhere on the page (a results
+/// list's pages, months to fly in) say nothing of the month it shows.
 pub(in crate::agentic::flow) fn heads_its_month(
     screen: &Screen,
     next: &Candidate,
@@ -205,7 +205,9 @@ pub(in crate::agentic::flow) fn heads_its_month(
 ) -> bool {
     let bare = clickable(&screen.candidates)
         .iter()
-        .filter(|candidate| bare_day(candidate))
+        .filter(|candidate| {
+            candidate.order.abs_diff(next.order) <= DAYS_REACH && bare_day(candidate)
+        })
         .count();
     bare >= BARE_DAYS
         && screen

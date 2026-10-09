@@ -327,6 +327,17 @@ fn only_a_heading_beside_the_calendars_arrow_names_its_month() {
         &next,
         date
     ));
+    // A results list's page numbers, far from the arrow, are no calendar's
+    // days.
+    let paged = Screen {
+        candidates: (1..=7_u8)
+            .map(|day| placed(&day.to_string(), "button", 400 + usize::from(day)))
+            .chain([next.clone()])
+            .collect(),
+        text_nodes: vec![placed("October 2026", "text", 41)],
+        ..screen(Vec::new(), Vec::new())
+    };
+    assert!(!heads_its_month(&paged, &next, date));
     // A calendar whose days name their month is paged by them alone.
     let dated = Screen {
         candidates: (1..=7_u8)
