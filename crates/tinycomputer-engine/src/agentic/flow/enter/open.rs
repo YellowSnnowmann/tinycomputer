@@ -140,6 +140,14 @@ const PLACE_LEADS: &[&str] = &["to", "via"];
 /// "To BLR" for the slot "to". Further into a label, the slot's word is a
 /// sentence's ("Read our tips to search faster"), and a press there leaves
 /// the form.
+///
+/// Of several, the one whose label holds the word soonest, then the one
+/// that says least: a control wrapping others names them all, and the
+/// first one found is no better than any other. Live, for the slot "from
+/// city" a trip-type tab "Multi City" came first and was refused; the `do`
+/// loop that followed pressed the button wrapping the whole form ("From
+/// DEL … To BLR … Departure … Return …") at its centre, twice, and picked
+/// a return date that made a one-way search a round trip.
 pub(in crate::agentic::flow) fn named_opener(
     screen: &Screen,
     slots: &[Slot],
@@ -181,12 +189,17 @@ pub(in crate::agentic::flow) fn named_opener(
                     .iter()
                     .any(|state| state.eq_ignore_ascii_case("covered"))
         })
-        .find(|candidate| {
+        .filter_map(|candidate| {
             let label = words(candidate.name.as_deref().unwrap_or_default());
-            label.iter().take(3).any(|word| wanted.contains(word))
-                || label.first().is_some_and(|word| leads.contains(word))
+            let at = if label.first().is_some_and(|word| leads.contains(word)) {
+                Some(0)
+            } else {
+                label.iter().take(3).position(|word| wanted.contains(word))
+            }?;
+            Some(((at, label.len()), candidate))
         })
-        .cloned()
+        .min_by_key(|(rank, _)| *rank)
+        .map(|(_, candidate)| candidate.clone())
 }
 
 /// The lower-case words of `text`.
