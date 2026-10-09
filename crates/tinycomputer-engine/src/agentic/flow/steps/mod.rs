@@ -33,6 +33,7 @@ pub(super) use {
     },
     read::chosen_together,
     read::readable,
+    reveal::heads_its_month,
     stop::only_signs_in,
     suggestion::{fresh_rows, same_search, searches, shares_most_words, suggests},
     typing::typing,

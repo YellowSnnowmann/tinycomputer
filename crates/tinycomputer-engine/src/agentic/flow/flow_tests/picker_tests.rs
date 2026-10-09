@@ -269,6 +269,76 @@ fn a_calendars_heading_names_the_month_it_shows() {
     );
 }
 
+#[test]
+fn only_a_heading_beside_the_calendars_arrow_names_its_month() {
+    use super::steps::heads_its_month;
+    let placed = |name: &str, role: &str, order: usize| Candidate {
+        order,
+        ..node(name, role, &["Click"], &["main"], 0.0)
+    };
+    let next = placed("Next Month", "button", 40);
+    // A week of days that show a number and a fare, no month.
+    let bare_days = (1..=7_u8)
+        .map(|day| {
+            placed(
+                &format!("{day} 6,0{day}5"),
+                "gridcell",
+                50 + usize::from(day),
+            )
+        })
+        .collect::<Vec<_>>();
+    let screen = |candidates: Vec<Candidate>, text_nodes: Vec<Candidate>| Screen {
+        app: "browser".to_owned(),
+        window: None,
+        surface: "window".to_owned(),
+        candidates: candidates
+            .into_iter()
+            .chain([next.clone()])
+            .chain(bare_days.clone())
+            .collect(),
+        context: Vec::new(),
+        unexplored: Vec::new(),
+        text_nodes,
+    };
+    let date = "23 October 2026";
+    assert!(heads_its_month(
+        &screen(Vec::new(), vec![placed("October 2026", "text", 41)]),
+        &next,
+        date
+    ));
+    // A caption drawn as a button before the arrows.
+    assert!(heads_its_month(
+        &screen(
+            vec![placed("October 2026 Mo Tu We Th Fr Sa Su", "button", 39)],
+            Vec::new()
+        ),
+        &next,
+        date
+    ));
+    // Months to fly in, listed elsewhere on the page, say nothing of the
+    // month the calendar shows, nor does a month menu's choice beside it.
+    assert!(!heads_its_month(
+        &screen(vec![placed("October 2026", "button", 3)], Vec::new()),
+        &next,
+        date
+    ));
+    assert!(!heads_its_month(
+        &screen(vec![placed("October 2026", "option", 41)], Vec::new()),
+        &next,
+        date
+    ));
+    // A calendar whose days name their month is paged by them alone.
+    let dated = Screen {
+        candidates: (1..=7_u8)
+            .map(|day| placed(&format!("{day} September 2026"), "gridcell", 50))
+            .chain([next.clone()])
+            .collect(),
+        text_nodes: vec![placed("October 2026", "text", 41)],
+        ..screen(Vec::new(), Vec::new())
+    };
+    assert!(!heads_its_month(&dated, &next, date));
+}
+
 #[tokio::test]
 async fn a_calendar_whose_days_name_no_month_is_paged_no_further_than_its_heading() {
     // Live, a hotel site's open days showed a number and a fare: no day
@@ -325,4 +395,13 @@ async fn a_calendar_whose_days_name_no_month_is_paged_no_further_than_its_headin
         Some(9),
         "the calendar shows October"
     );
+    // A day that names no month is never pressed on its number alone: the
+    // step ends there, its date unpicked, rather than guessing at a day.
+    assert_eq!(
+        run.result.stop,
+        FlowStopReason::StepFailed,
+        "{:?}",
+        run.result.steps
+    );
+    assert!(!sim.fields.contains_key("Departure"), "{:?}", sim.fields);
 }

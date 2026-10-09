@@ -255,7 +255,8 @@ impl App {
             city_rows(&root, &mut candidates);
         }
         overlays(&sim, &root, &mut candidates);
-        let text_nodes = result_cards(&sim, &root, &mut candidates);
+        let mut text_nodes = result_cards(&sim, &root, &mut candidates);
+        text_nodes.extend(heading_node(&sim, &root));
         let surface = surface_of(&sim);
         if sim.obstacle {
             obstacle_sheet(&sim, &mut candidates);

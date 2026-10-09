@@ -177,6 +177,17 @@ fn bare_day(name: &str) -> Option<u8> {
     fare.contains(',').then(|| day.parse().ok()).flatten()
 }
 
+/// The open calendar's heading as the text it is, beside the booking form's
+/// controls, under [`Quirk::BareCalendarDays`].
+pub(super) fn heading_node(sim: &Sim, root: &str) -> Option<Candidate> {
+    calendar_heading(sim).map(|heading| Candidate {
+        role: "text".to_owned(),
+        name: Some(heading),
+        path: vec![root.to_owned(), "group \"Booking\"".to_owned()],
+        ..Candidate::default()
+    })
+}
+
 /// The open calendar's heading under [`Quirk::BareCalendarDays`], the only
 /// place its month shows: `"October 2026"`.
 pub(super) fn calendar_heading(sim: &Sim) -> Option<String> {

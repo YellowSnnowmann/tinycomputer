@@ -6,6 +6,14 @@ use super::matching::plain;
 /// The months a date picker is paged forward at most.
 pub(super) const MAX_MONTHS: usize = 12;
 
+/// How far, in document order, a calendar's month heading sits from the
+/// arrow that pages it: a heading further off is some other text.
+pub(super) const HEADING_REACH: usize = 8;
+
+/// Days a calendar must show as bare numbers (a number and a fare, no
+/// month) for its heading to stand in for theirs: a week's worth.
+pub(super) const BARE_DAYS: usize = 7;
+
 /// Month names, as a date option spells them.
 const MONTHS: &[&str] = &[
     "january",
