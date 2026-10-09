@@ -237,8 +237,9 @@ impl Browser {
     ///
     /// [`Error::LimitExceeded`] when [`MAX_SESSIONS`] are open,
     /// [`Error::BlockedByPolicy`] when the browser shows a page the allowed
-    /// origins refuse and it cannot be left, and whatever the engine reports
-    /// when the browser cannot be launched or reached.
+    /// origins refuse and it cannot be left, [`Error::BrowserUnavailable`]
+    /// saying what to set when a browser to launch is not found or will not
+    /// start, and whatever the engine reports when one cannot be reached.
     pub async fn open_session(&self, options: SessionOptions) -> Result<SessionInfo> {
         // Checked and reserved under the table's lock, so the check and the
         // claim are one step for every concurrent caller.
@@ -270,7 +271,19 @@ impl Browser {
             downloads: Vec::new(),
             dir: self.scratch.join(id.as_str()),
         };
-        session.run(convert::launch(&session.options)).await?;
+        // A browser this module launches says what to set when it cannot
+        // start; one attached to keeps the engine's own words.
+        let (launched, named) = (session.info.launched, session.options.executable.is_some());
+        session
+            .run(convert::launch(&session.options))
+            .await
+            .map_err(|error| {
+                if launched {
+                    error.launching(named)
+                } else {
+                    error
+                }
+            })?;
         session.run(convert::viewport(&session.options)).await?;
         let page = session.page().await?;
         let page = if session.origins.admits(&page.url) {

@@ -26,6 +26,7 @@ pub(super) use matching::left_unchosen;
 #[cfg(test)]
 pub(super) use {
     date::{date_words, heads_month_of, shows_date},
+    launch::failure,
     list::{first_meeting, leaning},
     matching::{
         already_chosen, already_holds, closest, date_shown_in, in_region, lists_more_than,

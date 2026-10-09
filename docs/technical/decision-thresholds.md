@@ -27,6 +27,7 @@ Change a constant and its row together.
 | `LIST_LEAD` | 3.0 | `steps/mod.rs` | times the next list's probability that list needs |
 | `MAX_COLLECTED` | 12 | `wide/mod.rs` | saved variables every state recalls as `already_collected`, the most recent first kept |
 | `COLLECTED_CHARS` | 120 | `wide/mod.rs` | characters of each saved value `already_collected` recalls |
+| `FAILURE_CHARS` | 200 | `steps/launch.rs` | characters of a failure's own words (its first line) an `open` or `browse` step's note keeps after its code |
 | `MIN_FLAT_ITEMS` | 3 | `tinycomputer-core` `surface/groups.rs` | same-role leaf siblings that make a list for `extract` and `pick` on a screen where nothing repeats by ordinal, as on a desktop tree |
 | `CAP` | 20 | `ask/mod.rs` | most options in one Choice |
 | `HEDGED` | 0.10 | `ask/answers.rs` | distance from an even chance within which a condition's calibrated yes/no says nothing either way, and defers to a crisp coverage |

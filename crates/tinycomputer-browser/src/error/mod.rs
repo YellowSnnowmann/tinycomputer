@@ -290,6 +290,31 @@ impl Error {
         }
     }
 
+    /// This failure as a browser this module launched reports it, said so a
+    /// person can act on it: one that was not found or would not start says
+    /// what to set. `named` is whether the launch was given a browser binary
+    /// to run. Any other failure stays as it is.
+    #[must_use]
+    pub(crate) fn launching(self, named: bool) -> Self {
+        let Self::BrowserUnavailable { message } = self else {
+            return self;
+        };
+        let reason = message.lines().next().unwrap_or_default().trim();
+        let message = if named {
+            format!(
+                "the browser binary given could not be started ({reason}); check that its path names Chrome or Chromium"
+            )
+        } else if reason.to_lowercase().contains("not found") {
+            "no Chrome or Chromium was found on this machine; give the path of the browser to use"
+                .to_owned()
+        } else {
+            format!(
+                "the browser could not be started ({reason}); give the path of Chrome or Chromium if it is installed elsewhere"
+            )
+        };
+        Self::BrowserUnavailable { message }
+    }
+
     /// Builds an [`Error::ConnectionLost`].
     #[must_use]
     pub fn connection_lost(message: impl Into<String>) -> Self {

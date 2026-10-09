@@ -141,7 +141,11 @@ share that workspace, so a resumed task picks up on the page the last run left.
   "Sign up" links are not one), the status becomes
   `needs_human` and `ContinueTask` reruns the failed step and the rest once
   the person has got past it. If not, and a rescuer is configured, the failure
-  is rescued (below). Otherwise it stays `failed`.
+  is rescued (below). Otherwise it stays `failed`. A step that failed because
+  no browser could be started (`BROWSER_UNAVAILABLE`) is never rescued: the
+  task fails at once, not recoverable, with a hint to give the path of Chrome
+  or Chromium. An `open` or `browse` step's failure note keeps the first line
+  of the failure's own words after its code.
 - **A budget ran out, or the flow was invalid.** `failed`, with a hint such as
   "raise budget.max_actions".
 
