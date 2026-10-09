@@ -139,8 +139,9 @@ These checks lower the risk. They don't remove it.
 
 - The word lists catch the common labels. A site that labels its pay button
   "Proceed" on a page with no card fields won't be caught by words alone.
-- `origins` is a guard rail rather than a sandbox. It relies on the browser
-  engine's domain filter.
+- `origins` is a guard rail rather than a sandbox. The module checks the pages
+  a task opens or is taken to, not the files those pages load, so a page on an
+  allowed site can still reach other hosts on its own.
 - Shared facts are visible to Jev by design. If a detail shouldn't be, mark it
   secret.
 

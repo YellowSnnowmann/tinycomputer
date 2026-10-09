@@ -18,6 +18,7 @@ mod card_tests;
 mod cursor_tests;
 mod native_select_tests;
 mod operations_tests;
+mod origins_tests;
 mod perception_tests;
 mod tree_tests;
 

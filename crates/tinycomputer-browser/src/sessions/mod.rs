@@ -15,6 +15,7 @@ use tinycomputer_bus::browser::{DownloadInfo, PageState, SessionId, SessionInfo,
 use crate::convert;
 use crate::engine::{Engine, Launcher};
 use crate::error::{Error, Result};
+use crate::origins::Origins;
 use crate::outputs::OutputStore;
 use crate::reply;
 
@@ -52,6 +53,8 @@ struct Session {
     engine: Box<dyn Engine>,
     info: SessionInfo,
     options: SessionOptions,
+    /// The pages `options.allowed_origins` admits.
+    origins: Origins,
     sequence: u64,
     downloads: Vec<DownloadInfo>,
     dir: PathBuf,
@@ -80,6 +83,40 @@ impl Session {
             title,
             status: None,
         })
+    }
+
+    /// `page`, the page a call left the session on, unless the allowed
+    /// origins refuse it: then the session leaves it, and the call reports
+    /// [`Error::BlockedByPolicy`]. A click, a key, a redirect, or the page's
+    /// own script can take a session anywhere; only what it then shows is
+    /// checked, never the files it loads.
+    async fn admit(&mut self, page: PageState) -> Result<PageState> {
+        if self.origins.admits(&page.url) {
+            return Ok(page);
+        }
+        self.leave().await;
+        Err(Error::BlockedByPolicy { url: page.url })
+    }
+
+    /// Leaves a refused page: back, or to `about:blank` when going back does
+    /// not reach an admitted page. Best effort: a page that cannot be left is
+    /// still never worked on, as every checked call refuses it.
+    async fn leave(&mut self) {
+        let _back = self.run(json!({"action": "back"})).await;
+        let back_on = self
+            .run(json!({"action": "url"}))
+            .await
+            .map(|data| reply::text(&data, "url"))
+            .unwrap_or_default();
+        if !self.origins.admits(&back_on) {
+            let _blank = self
+                .run(json!({"action": "navigate", "url": "about:blank"}))
+                .await;
+        }
+        if let Ok(page) = self.page().await {
+            self.info.url = page.url;
+            self.info.title = page.title;
+        }
     }
 
     fn scratch_file(&self, stem: &str, sequence: u64, extension: &str) -> Result<String> {
@@ -151,6 +188,7 @@ impl Browser {
                 url: String::new(),
                 title: String::new(),
             },
+            origins: Origins::new(&options.allowed_origins),
             options,
             sequence: 0,
             downloads: Vec::new(),
@@ -201,6 +239,29 @@ impl Browser {
         }
         infos.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(infos)
+    }
+
+    /// Checks the page session `id` shows against its allowed origins,
+    /// leaving a refused one. Free when the session has no list. Every
+    /// observation a task makes passes here, so a page a task was taken to
+    /// by any means is caught before it is read or acted on.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BlockedByPolicy`] for a refused page, [`Error::NoSuchSession`],
+    /// and whatever reading the page's address reports.
+    pub(crate) async fn check_page(&self, id: &SessionId) -> Result<()> {
+        let session = self.session(id)?;
+        let mut session = session.lock().await;
+        if !session.origins.restricts() {
+            return Ok(());
+        }
+        let url = reply::text(&session.run(json!({"action": "url"})).await?, "url");
+        if session.origins.admits(&url) {
+            return Ok(());
+        }
+        session.leave().await;
+        Err(Error::BlockedByPolicy { url })
     }
 
     fn session(&self, id: &SessionId) -> Result<Arc<tokio::sync::Mutex<Session>>> {

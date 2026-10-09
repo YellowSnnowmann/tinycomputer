@@ -81,16 +81,28 @@ screenshot of an ordinary article stays under the output size cap (see
 ## The origin allow-list
 
 `SessionOptions::allowed_origins`, when non-empty, is the only set of origins
-this session may navigate to. An entry is either a full origin
-(`https://example.com`) or a host with a leading dot to also admit its
-subdomains (`.example.com`, which becomes agent-browser's `*.example.com`
-pattern). A navigation outside the list is refused before the browser is
-asked to make a request: the cheapest and most certain point to refuse it.
+this session may show pages from. An entry is a full origin
+(`https://example.com`), a host with a leading dot to also admit its
+subdomains (`.example.com`, or `*.example.com`), or `*` for any public host
+(private and local addresses, `localhost`, and `.local` names stay refused).
+The session checks it in `origins/` and never hands it to agent-browser:
 
-This is a guard rail, not a sandbox. The scheme is not enforced (the engine
-filters by host only), and a page that is already loaded can still make its
-own requests to other origins; the allow-list only stops *this session's*
-navigations. See "Invariants" in
+- a navigation outside the list (`navigate`, or a raw `navigate`, `tab_new`,
+  or `window_new` command) is refused before the browser is asked;
+- the page any typed call leaves the session on (after a click, a key, a
+  redirect, or the page's own script) is checked, and a refused one is left,
+  back or to `about:blank`, before the call reports `BlockedByPolicy`;
+- a task's surface checks the page before every observation, so a page it
+  was taken to by any means is never read or acted on.
+
+Only pages are checked. The files a page loads from other hosts (its CDN, its
+APIs, its maps) load as they would in any browser: agent-browser's own
+domain filter refuses every request outside its list, which breaks the page
+itself, and it refuses a profile beside a list.
+
+This is a guard rail, not a sandbox. The scheme is not enforced for web pages,
+and a page that is already loaded can still make its own requests to other
+origins; the allow-list only keeps *this session* off pages outside it. See "Invariants" in
 [`../../technical/specs/unified-agent.md`](../../technical/specs/unified-agent.md)
 for how this fits into the wider safety picture.
 

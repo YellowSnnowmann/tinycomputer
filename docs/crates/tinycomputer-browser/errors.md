@@ -38,8 +38,9 @@ a host is supposed to see and do about it.
 `Error::envelope` marks a failure `not_delivered` (so retrying is safe) only
 when it is decided before anything reaches the page: `NoSuchSession` and
 `NoSuchOutput`, looked up locally, and `StaleRef` and `BlockedByPolicy`,
-refused inside agent-browser by its ref lookup and domain filter before any
-input is sent. Every other variant can follow work already done, so its
+refused by agent-browser's ref lookup or the session's allowed origins before
+any input is sent. A `BlockedByPolicy` for a page a call already landed on is
+reported after that call's work: the page is left, and the error says why. Every other variant can follow work already done, so its
 delivery is left `unknown` rather than claimed.
 
 `errors::is_agent_recoverable` (in the bus crate) is the one further
@@ -59,7 +60,9 @@ get sorted into the table above, matched against the engine's actual
 message texts: `"Unknown ref: @e12 ..."` becomes `StaleRef`, anything
 starting with `"could not locate element with role="` becomes `StaleRef`
 too, `"... is not in the allowed domains list"` becomes `BlockedByPolicy`
-(with the refused host pulled out of the message's own quoting),
+(with the refused host pulled out of the message's own quoting; the
+session refuses pages outside its allowed origins itself, so this only
+comes from an attached browser that filters domains on its own),
 `"... is covered by ..."` or `"not interactable"` becomes `NotActionable`,
 and so on down the list in `classify`.
 

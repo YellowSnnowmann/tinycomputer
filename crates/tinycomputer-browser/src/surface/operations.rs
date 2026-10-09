@@ -25,6 +25,14 @@ impl Surface for BrowserSurface {
     ) -> std::result::Result<Screen, Box<DesktopResponse>> {
         // A page once read is no longer the one opened early.
         let _opened = self.early_page();
+        // A page the allowed origins refuse, however the task came to it, is
+        // left before it is read or acted on.
+        if let Ok(id) = self.ensure_session()
+            && let Err(refused @ Error::BlockedByPolicy { .. }) =
+                self.block(self.browser.check_page(&id))
+        {
+            return Err(Box::new(failure("observe", &refused)));
+        }
         if self.perception == Perception::Sight
             && let Some(mut screen) = self.see(root)
         {

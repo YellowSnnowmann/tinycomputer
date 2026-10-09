@@ -9,6 +9,9 @@ use tinycomputer_bus::browser::{
 
 use super::Browser;
 use crate::convert;
+
+/// The raw commands that open the page their `url` names.
+const OPENS_PAGE: &[&str] = &["navigate", "tab_new", "window_new"];
 use crate::error::{Error, Result};
 use crate::outputs::within_cap;
 use crate::reply;
@@ -19,17 +22,23 @@ impl Browser {
     /// # Errors
     ///
     /// [`Error::NoSuchSession`], [`Error::InvalidInput`] for an empty URL,
-    /// [`Error::BlockedByPolicy`] outside the allowed origins, and whatever
-    /// else the navigation reports.
+    /// [`Error::BlockedByPolicy`] outside the allowed origins (refused before
+    /// the browser is asked, or after a redirect that leaves them), and
+    /// whatever else the navigation reports.
     pub async fn navigate(&self, id: &SessionId, request: NavigateRequest) -> Result<PageState> {
         let session = self.session(id)?;
         let mut session = session.lock().await;
-        let data = session.run(convert::navigate(&request)?).await?;
+        let command = convert::navigate(&request)?;
+        if !session.origins.admits(&request.url) {
+            return Err(Error::BlockedByPolicy { url: request.url });
+        }
+        let data = session.run(command).await?;
         let page = PageState {
             url: reply::text(&data, "url"),
             title: reply::text(&data, "title"),
             status: None,
         };
+        let page = session.admit(page).await?;
         session.info.url.clone_from(&page.url);
         session.info.title.clone_from(&page.title);
         Ok(page)
@@ -45,6 +54,7 @@ impl Browser {
         let mut session = session.lock().await;
         let data = session.run(convert::snapshot(&request)).await?;
         let page = session.page().await?;
+        let page = session.admit(page).await?;
         session.sequence += 1;
         Ok(reply::snapshot(
             &data,
@@ -85,6 +95,7 @@ impl Browser {
             _ => None,
         };
         let page = session.page().await?;
+        let page = session.admit(page).await?;
         session.info.url.clone_from(&page.url);
         session.info.title.clone_from(&page.title);
         Ok(ActionOutcome {
@@ -111,6 +122,7 @@ impl Browser {
             || data.get("truncated").and_then(Value::as_bool) == Some(true);
         let content = content.chars().take(request.max_chars).collect();
         let page = session.page().await?;
+        let page = session.admit(page).await?;
         Ok(PageText {
             url: page.url,
             title: page.title,
@@ -128,23 +140,35 @@ impl Browser {
     /// `{"action": "inputvalue", "selector": "@e3"}`, and returns its `data`.
     ///
     /// This is the escape hatch for engine capabilities the typed calls do
-    /// not cover. It carries no policy of its own: a caller exposing it to a
-    /// model must decide which actions to allow.
+    /// not cover. It carries no policy of its own beyond the allowed origins,
+    /// which refuse a command that opens a page outside them before it is
+    /// sent; a caller exposing it to a model must decide which actions to
+    /// allow. The page a command leaves the session on is checked by the
+    /// next typed call, or the next observation.
     ///
     /// # Errors
     ///
     /// [`Error::NoSuchSession`], [`Error::InvalidInput`] when `command` names
-    /// no `action`, and whatever the engine reports.
+    /// no `action`, [`Error::BlockedByPolicy`] for a page the allowed origins
+    /// refuse, and whatever the engine reports.
     pub async fn command(&self, id: &SessionId, command: Value) -> Result<Value> {
-        if command
+        let Some(action) = command
             .get("action")
             .and_then(Value::as_str)
-            .is_none_or(str::is_empty)
-        {
+            .filter(|action| !action.is_empty())
+        else {
             return Err(Error::invalid_input("a command needs an action"));
-        }
+        };
         let session = self.session(id)?;
         let mut session = session.lock().await;
+        if OPENS_PAGE.contains(&action)
+            && let Some(url) = command.get("url").and_then(Value::as_str)
+            && !session.origins.admits(url)
+        {
+            return Err(Error::BlockedByPolicy {
+                url: url.to_owned(),
+            });
+        }
         session.run(command).await
     }
 
