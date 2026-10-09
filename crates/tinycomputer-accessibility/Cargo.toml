@@ -36,7 +36,7 @@ thiserror = { workspace = true }
 # Default-input-device probe behind `microphone-probe`.
 cpal = { workspace = true, optional = true }
 # Clipboard and synthetic keystrokes behind `paste`.
-arboard = { version = "3", optional = true }
+arboard = { version = "3", default-features = false, optional = true }
 enigo = { version = "0.3", optional = true }
 
 # The workspace lint set, except that `unsafe_code` is `deny` rather than
