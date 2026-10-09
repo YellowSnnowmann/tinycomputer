@@ -77,7 +77,8 @@ covered in more depth in [Safety and privacy](../../safety-and-privacy.md).
   window rather than running it invisibly.
 - The browser binary and the profile folder a task launches with
   (`browser_executable`, `browser_profile` in the contract) are the host's
-  settings, never a model's, so the skill's schema leaves them out.
+  settings, never a model's, so the skill's schema and `Describe` leave them
+  out.
 
 ## `budget`: how much the task is allowed to do
 

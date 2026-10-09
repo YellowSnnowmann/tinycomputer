@@ -3,9 +3,10 @@
 //! worked requests to adapt, and a catalogue of every other member.
 //!
 //! The schemas here are written by hand, so each field of a request type
-//! must be added here when it is added to the contract;
+//! must be added here when it is added to the contract, save the host's
+//! own settings no model is offered (a task's browser binary and profile);
 //! `task_tests/describe_tests.rs` checks the `StartTask` and `PlanTask`
-//! schemas name every field their types serialize.
+//! schemas name every other field their types serialize.
 
 use serde_json::{Value, json};
 use tinycomputer_bus::agent::names::{CONFIDENTIAL, methods};
@@ -61,7 +62,9 @@ fn task_id() -> Value {
     }})
 }
 
-/// `StartTask`'s input schema: every field of `StartTaskRequest`.
+/// `StartTask`'s input schema: every field of `StartTaskRequest` a model may
+/// set. `browser_executable` and `browser_profile` are the host's to set
+/// from its own settings, so they are not offered.
 fn start_task_input() -> Value {
     let object = |properties: Value, required: &[&str]| json!({"type": "object", "required": required, "properties": properties});
     object(
@@ -92,15 +95,7 @@ fn start_task_input() -> Value {
                 },
                 "allow_destructive": {"type": "boolean"},
                 "browser_endpoint": {"type": "string"},
-                "headed": {"type": "boolean"},
-                "browser_executable": {
-                    "type": "string",
-                    "description": "the host's setting, never a model's: the absolute path of the browser binary to launch; not with browser_endpoint"
-                },
-                "browser_profile": {
-                    "type": "string",
-                    "description": "the host's setting, never a model's: an absolute folder the browser keeps its profile in, so sign-ins last between tasks; not with browser_endpoint"
-                }
+                "headed": {"type": "boolean"}
             }},
             "budget": {"type": "object", "properties": {
                 "max_actions": {"type": "integer"},

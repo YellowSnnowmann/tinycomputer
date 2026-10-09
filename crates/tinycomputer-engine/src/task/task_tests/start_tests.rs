@@ -218,20 +218,20 @@ async fn a_value_supplied_for_a_missing_fact_still_fails_fast_if_it_leaks() {
 #[tokio::test]
 async fn constraints_that_cannot_start_a_task_are_refused() {
     let (tasks, _) = controller(Vec::new());
-    let any_site = tasks.start(&StartTaskRequest {
-        flow: Some(flow(json!({"app": "Mail", "steps": ["x"]}))),
-        constraints: TaskConstraints {
-            payment: PaymentMode::FillThenApprove,
-            origins: vec!["https://.pay.test".to_owned(), "*".to_owned()],
-            ..TaskConstraints::default()
-        },
-        ..StartTaskRequest::default()
-    });
-    assert_eq!(
-        code(&any_site),
-        "ORIGINS_REQUIRED",
-        "`*` names no site card details may be typed on"
-    );
+    // `*` names no site card details may be typed on, alone or beside one
+    // that does: with it, every public site is admitted.
+    for origins in [vec!["*"], vec!["https://.pay.test", "*"]] {
+        let any_site = tasks.start(&StartTaskRequest {
+            flow: Some(flow(json!({"app": "Mail", "steps": ["x"]}))),
+            constraints: TaskConstraints {
+                payment: PaymentMode::FillThenApprove,
+                origins: origins.iter().map(|origin| (*origin).to_owned()).collect(),
+                ..TaskConstraints::default()
+            },
+            ..StartTaskRequest::default()
+        });
+        assert_eq!(code(&any_site), "ORIGINS_REQUIRED", "{origins:?}");
+    }
     let relative_profile = tasks.start(&StartTaskRequest {
         flow: Some(flow(json!({"app": "Mail", "steps": ["x"]}))),
         constraints: TaskConstraints {
@@ -258,6 +258,8 @@ async fn constraints_that_cannot_start_a_task_are_refused() {
     // A binary is an absolute path to a file on this machine: never a name
     // looked up on the `PATH`, a folder, a file that is not there, or a
     // path with a space before it (a different, relative path).
+    // The check is that the path names a file on this machine; which browser
+    // it is stays the host's choice, so any file that is there will do.
     let here = std::env::current_exe()
         .unwrap()
         .to_string_lossy()

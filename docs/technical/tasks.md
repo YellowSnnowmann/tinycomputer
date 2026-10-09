@@ -204,7 +204,8 @@ spent waiting for the caller does not count.
   page's "use my current location" grants it the location while it runs.
 - `browser_executable` and `browser_profile` are the host's settings: a host
   that relays a model's request never takes them from the model, and neither
-  goes with `browser_endpoint` (`INVALID_REQUEST`), which launches nothing.
+  `Describe` nor the skill offers them to one. Neither goes with
+  `browser_endpoint` (`INVALID_REQUEST`), which launches nothing.
 
 ## Private values
 
