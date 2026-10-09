@@ -151,9 +151,10 @@
   // The month and year a grid of days shows: the nearest short text before
   // it, or before one of its four nearest ancestors, that names one, as
   // `{ element, months: [[month, year], …] }`. A longer block (another
-  // month's whole grid) ends the search at its level.
+  // month's whole grid) ends the search at its level, as does a calendar
+  // already `found`, however short: its month is its own.
   const MONTHS_AND_YEARS = new RegExp(MONTH_AND_YEAR.source, 'gi');
-  const gridTitle = (grid) => {
+  const gridTitle = (grid, found) => {
     let node = grid;
     for (let depth = 0; node && node !== base && depth < 4; depth += 1, node = node.parentElement) {
       let sibling = node.previousElementSibling;
@@ -161,6 +162,7 @@
         // A hidden element's text still reads out (a template, a month
         // menu): only what shows titles a grid.
         if (!shown(sibling)) continue;
+        if (found.some((calendar) => sibling === calendar || sibling.contains(calendar))) break;
         const said = shownWords(sibling);
         if (said.length > 120) break;
         const months = [...said.matchAll(MONTHS_AND_YEARS)]
@@ -213,10 +215,17 @@
     const titleUses = new Map();
     const grids = [];
     for (const grid of base.querySelectorAll('div, ul, ol, tbody')) {
-      const kids = grid.children;
-      if (kids.length < 28 || kids.length > 49
-        || [...calendars, ...grids].some((calendar) => calendar.contains(grid))) continue;
-      const days = [...kids].map((kid) => {
+      if ([...calendars, ...grids].some((calendar) => calendar.contains(grid))) continue;
+      // A month drawn as its weeks, each a row of up to seven days, is read
+      // as the run of its days, as a flat grid is. Live, a hotel site's open
+      // days held a fare and no month, inside week rows: none read as a
+      // date, and a date step paged a year past the month it wanted.
+      const weeks = [...grid.children];
+      const weekly = weeks.length >= 4 && weeks.length <= 6
+        && weeks.every((week) => week.children.length >= 1 && week.children.length <= 7);
+      const kids = weekly ? weeks.flatMap((week) => [...week.children]) : weeks;
+      if (kids.length < 28 || kids.length > 49) continue;
+      const days = kids.map((kid) => {
         const leading = /^(\d{1,2})(?:\s|$)/.exec(squash(kid.innerText));
         return leading && shown(kid) ? { cell: kid, day: Number(leading[1]) } : null;
       });
@@ -227,7 +236,7 @@
         if (!entry || entry.day !== run.length + 1) break;
         run.push(entry);
       }
-      const title = run.length >= 28 && gridTitle(grid);
+      const title = run.length >= 28 && gridTitle(grid, [...calendars, ...grids]);
       if (!title) continue;
       const used = titleUses.get(title.element) || 0;
       titleUses.set(title.element, used + 1);
@@ -259,6 +268,9 @@
       }
     }
   };
+  // Whether `said` names the month of `date` ("23 October 2026"), in full or
+  // by its first three letters ("Fri Oct 23 2026").
+  const namesMonthOf = (said, date) => new RegExp(`\\b${date.split(' ')[1].slice(0, 3)}`, 'i').test(said);
   // A calendar's paging arrow, read as what it does: an arrow glyph, or a
   // bare "Next", inside a calendar turns its month.
   const NEXT_GLYPHS = /^(?:next|[›»>→⟩▶❯])$/i;
@@ -548,7 +560,13 @@
     }
     const text = withoutGlyphs(element, ownText(element));
     if (text) {
-      const said = aria || innerLabel(element, text) || calendarDays.get(element);
+      // A calendar's day is described by its date unless what the page says
+      // of it already names its month: a number and a fare name none, and
+      // anything more it says ("Sold out") follows the date.
+      const dated = calendarDays.get(element);
+      const own = aria || innerLabel(element, text);
+      const said = !dated || (own && namesMonthOf(own, dated)) ? own || dated
+        : [dated, own].filter((part) => part && !text.includes(part)).join(', ');
       const description = said && said !== text && !text.includes(said) ? clip(said, limits.name) : '';
       return { name: clip(text, limits.name), description };
     }
