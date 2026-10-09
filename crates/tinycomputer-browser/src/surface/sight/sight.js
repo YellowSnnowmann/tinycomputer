@@ -158,6 +158,9 @@
     for (let depth = 0; node && node !== base && depth < 4; depth += 1, node = node.parentElement) {
       let sibling = node.previousElementSibling;
       for (let step = 0; sibling && step < 3; step += 1, sibling = sibling.previousElementSibling) {
+        // A hidden element's text still reads out (a template, a month
+        // menu): only what shows titles a grid.
+        if (!shown(sibling)) continue;
         const said = shownWords(sibling);
         if (said.length > 120) break;
         const months = [...said.matchAll(MONTHS_AND_YEARS)]

@@ -1,6 +1,7 @@
 //! Live tests of calendars sight reads as dates, gated on
-//! `TINYCOMPUTER_LIVE_BROWSER=1`: two months that share their arrows, and
-//! months drawn as grids of buttons rather than tables.
+//! `TINYCOMPUTER_LIVE_BROWSER=1`: two months that share their arrows,
+//! months drawn as grids of buttons rather than tables, and a grid only a
+//! hidden element titles, which is none.
 
 #[cfg(feature = "agent-browser")]
 use super::live_tests::{live_reading, shown_names};
@@ -135,4 +136,38 @@ async fn live_a_two_month_pickers_days_and_shared_arrows_are_read_as_dates() {
         ["previous month", "next month"],
         "the arrows beside both months page them"
     );
+}
+
+/// A grid of 31 numbered buttons whose only month and year sit in a hidden
+/// element before it, such as a template the page never shows.
+#[cfg(feature = "agent-browser")]
+fn hidden_title_grid_page() -> String {
+    use std::fmt::Write as _;
+    let cells = (1..=31).fold(String::new(), |mut cells, day| {
+        let _ = write!(cells, "<button>{day}</button>");
+        cells
+    });
+    format!(
+        "<div><div style=\"display: none\">October 2026</div>\
+         <div style=\"display: grid; grid-template-columns: repeat(7, 44px)\">{cells}</div></div>"
+    )
+}
+
+#[cfg(feature = "agent-browser")]
+#[tokio::test]
+async fn live_a_grid_titled_only_by_hidden_text_is_no_calendar() {
+    let Some(reading) = live_reading(&hidden_title_grid_page()).await else {
+        return;
+    };
+    let nodes = reading["nodes"].as_array().unwrap();
+    assert!(
+        !nodes.iter().any(|node| node["role"] == "gridcell"),
+        "{:?}",
+        shown_names(&reading)
+    );
+    let day = nodes
+        .iter()
+        .find(|node| node["name"] == "22")
+        .unwrap_or_else(|| panic!("22 not offered: {:?}", shown_names(&reading)));
+    assert_eq!(day["description"].as_str().unwrap_or_default(), "");
 }
