@@ -65,6 +65,10 @@ pub(super) enum Quirk {
     /// The booking calendar is a dialog that stays open once a day is
     /// picked, covering a "Find flights" button, until Escape closes it.
     CalendarStaysOpen,
+    /// The booking calendar draws each day as a grid cell holding its
+    /// number and a fare, under a heading naming its month, as a hotel
+    /// site's does: no day names its month.
+    BareCalendarDays,
 }
 
 #[derive(Debug, Default)]
@@ -263,6 +267,7 @@ impl App {
             candidates,
             context: std::iter::once(format!("{window} heading"))
                 .chain(sim.hint.map(str::to_owned))
+                .chain(calendar_heading(&sim))
                 .collect(),
             unexplored: Vec::new(),
             text_nodes,

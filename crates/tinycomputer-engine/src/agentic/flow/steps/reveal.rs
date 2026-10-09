@@ -11,7 +11,7 @@ use crate::agentic::flow::{
 
 use super::{
     REVEAL_TURNS,
-    date::{MAX_MONTHS, is_next_month, looks_like_date},
+    date::{MAX_MONTHS, heads_month_of, is_next_month, looks_like_date},
     matching::{clickable, lists_more_than, mentions, search_text},
 };
 
@@ -68,10 +68,30 @@ impl<B: AgentBackend + Sync> FlowRun<'_, B> {
     }
 
     /// Pages a calendar forward, one month at a time, until a control shows
-    /// `date`; stops at [`MAX_MONTHS`] or where there is no next month.
+    /// `date` or the calendar heads its month; stops at [`MAX_MONTHS`] or
+    /// where there is no next month.
     async fn page_to(&mut self, log: &mut StepLog, date: &str) -> Result<(), Halt> {
         for _ in 0..MAX_MONTHS {
             let screen = self.look().await?;
+            // A calendar whose days show bare numbers (a fare beside each)
+            // names no day's month: its heading does, and the day is on
+            // screen however it reads. Live, a hotel site's open days
+            // showed a number and a fare, and its calendar was paged a year
+            // past the month it wanted.
+            if screen
+                .context
+                .iter()
+                .map(String::as_str)
+                .chain(
+                    screen
+                        .candidates
+                        .iter()
+                        .filter_map(|candidate| candidate.name.as_deref()),
+                )
+                .any(|text| heads_month_of(text, date))
+            {
+                return Ok(());
+            }
             // Restricted to the same clickable, non-aggregating pool
             // `pick_option` selects from: a non-clickable calendar container
             // whose label lists every date in the month, or an unrelated

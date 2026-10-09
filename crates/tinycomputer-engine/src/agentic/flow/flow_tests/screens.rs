@@ -158,8 +158,31 @@ pub(super) fn press_booking(sim: &mut Sim, name: &str) {
             }
             sim.fields.insert("Departure".to_owned(), day.to_owned());
         }
+        day if booking.calendar.is_some() && bare_day(day).is_some() => {
+            let month = MONTH_NAMES[booking.calendar.unwrap_or_default()];
+            if !stays_open {
+                booking.calendar = None;
+            }
+            let date = format!("{} {month} 2026", bare_day(day).unwrap_or_default());
+            sim.fields.insert("Departure".to_owned(), date);
+        }
         _ => {}
     }
+}
+
+/// The day a bare calendar cell (`"18 6,018"`: its number and a fare)
+/// stands for, under [`Quirk::BareCalendarDays`].
+fn bare_day(name: &str) -> Option<u8> {
+    let (day, fare) = name.split_once(' ')?;
+    fare.contains(',').then(|| day.parse().ok()).flatten()
+}
+
+/// The open calendar's heading under [`Quirk::BareCalendarDays`], the only
+/// place its month shows: `"October 2026"`.
+pub(super) fn calendar_heading(sim: &Sim) -> Option<String> {
+    let month = sim.booking.as_ref()?.calendar?;
+    sim.has(Quirk::BareCalendarDays)
+        .then(|| format!("{} 2026", MONTH_NAMES[month]))
 }
 
 /// Emirates' passengers box: a button that does not show its count, and
@@ -270,22 +293,28 @@ pub(super) fn booking_widget(
         candidates.push(find);
     }
     if let Some(month) = booking.calendar {
+        let bare = sim.has(Quirk::BareCalendarDays);
+        let days = (1..=28)
+            .map(|day| {
+                if bare {
+                    format!("{day} 6,{day:03}")
+                } else {
+                    format!("{day} {} 2026", MONTH_NAMES[month])
+                }
+            })
+            .collect::<Vec<_>>();
         // The date field's own label lists the whole open calendar.
-        let listing = (1..=28)
-            .map(|day| format!("{day} {} 2026", MONTH_NAMES[month]))
-            .collect::<Vec<_>>()
-            .join(" ");
         candidates.push(node(
-            &format!("departureDate Previous Month Next Month {listing}"),
+            &format!("departureDate Previous Month Next Month {}", days.join(" ")),
             "button",
             &["Click"],
             &widget,
             125.0,
         ));
         candidates.push(node("Next Month", "button", &["Click"], &widget, 130.0));
-        for day in 1..=28 {
-            let name = format!("{day} {} 2026", MONTH_NAMES[month]);
-            candidates.push(node(&name, "button", &["Click"], &widget, 140.0));
+        let role = if bare { "gridcell" } else { "button" };
+        for name in &days {
+            candidates.push(node(name, role, &["Click"], &widget, 140.0));
         }
     }
 }

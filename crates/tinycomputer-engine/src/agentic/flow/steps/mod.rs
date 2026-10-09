@@ -25,7 +25,7 @@ pub(super) use date::{looks_like_date, names_a_month};
 pub(super) use matching::left_unchosen;
 #[cfg(test)]
 pub(super) use {
-    date::{date_words, shows_date},
+    date::{date_words, heads_month_of, shows_date},
     list::{first_meeting, leaning},
     matching::{
         already_chosen, already_holds, closest, date_shown_in, in_region, lists_more_than,
