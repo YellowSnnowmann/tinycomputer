@@ -373,8 +373,9 @@ impl Tasks {
 /// Why a task's constraints cannot start it, if they cannot: a payment form
 /// filled with no named site to type card details on (`*` names none), a
 /// relative profile folder, which would land wherever the module's host
-/// happens to run, a browser binary that is no absolute path to a file on
-/// this machine (a bare name would be looked up on the `PATH`), or either
+/// happens to run, a browser binary that is no absolute path to an
+/// executable file on this machine (a bare name would be looked up on the
+/// `PATH`), or either
 /// beside a browser to attach to, which launches nothing. Paths are taken
 /// as given: one with a space around it names another folder or file.
 fn constraints_refusal(
@@ -409,7 +410,7 @@ fn constraints_refusal(
         .as_deref()
         .is_some_and(|binary| {
             let binary = std::path::Path::new(binary);
-            !binary.is_absolute() || !binary.is_file()
+            !binary.is_absolute() || !launchable(binary)
         })
     {
         "browser_executable must be the absolute path of a browser binary on this machine"
@@ -422,4 +423,17 @@ fn constraints_refusal(
         "give constraints.browser_profile as an absolute folder and browser_executable as the absolute path of a browser binary, or leave them out; neither goes with browser_endpoint",
         true,
     ))
+}
+
+/// Whether `binary` is a file this machine would run: one marked executable
+/// where files carry that mark.
+fn launchable(binary: &std::path::Path) -> bool {
+    let Ok(metadata) = binary.metadata() else {
+        return false;
+    };
+    #[cfg(unix)]
+    let runs = std::os::unix::fs::PermissionsExt::mode(&metadata.permissions()) & 0o111 != 0;
+    #[cfg(not(unix))]
+    let runs = true;
+    metadata.is_file() && runs
 }

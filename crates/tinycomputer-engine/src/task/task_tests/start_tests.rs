@@ -248,6 +248,11 @@ async fn constraints_that_cannot_start_a_task_are_refused() {
             .message
             .contains("absolute folder")
     );
+}
+
+#[tokio::test]
+async fn a_task_browser_starts_only_with_a_binary_and_profile_it_can_launch() {
+    let (tasks, _) = controller(Vec::new());
     let refused = |constraints: TaskConstraints| {
         tasks.start(&StartTaskRequest {
             flow: Some(flow(json!({"app": "Mail", "steps": ["x"]}))),
@@ -255,11 +260,11 @@ async fn constraints_that_cannot_start_a_task_are_refused() {
             ..StartTaskRequest::default()
         })
     };
-    // A binary is an absolute path to a file on this machine: never a name
-    // looked up on the `PATH`, a folder, a file that is not there, or a
-    // path with a space before it (a different, relative path).
-    // The check is that the path names a file on this machine; which browser
-    // it is stays the host's choice, so any file that is there will do.
+    // A binary is the absolute path of an executable file on this machine:
+    // never a name looked up on the `PATH`, a folder, a file that is not
+    // there or would not run, or a path with a space before it (a
+    // different, relative path). Which browser it is stays the host's
+    // choice, so any such file will do.
     let here = std::env::current_exe()
         .unwrap()
         .to_string_lossy()
@@ -268,13 +273,21 @@ async fn constraints_that_cannot_start_a_task_are_refused() {
         .join("tinycomputer-profile")
         .to_string_lossy()
         .into_owned();
-    for binary in [
+    // A file that is there but would not run (no executable mark).
+    let plain =
+        std::env::temp_dir().join(format!("tinycomputer-not-a-binary-{}", std::process::id()));
+    std::fs::write(&plain, "not a browser").unwrap();
+    let mut binaries = vec![
         "  ".to_owned(),
         "chrome".to_owned(),
         std::env::temp_dir().to_string_lossy().into_owned(),
         "/nonexistent/tinycomputer/chrome".to_owned(),
         format!(" {here}"),
-    ] {
+    ];
+    if cfg!(unix) {
+        binaries.push(plain.to_string_lossy().into_owned());
+    }
+    for binary in binaries {
         let reply = refused(TaskConstraints {
             browser_executable: Some(binary.clone()),
             ..TaskConstraints::default()
@@ -319,6 +332,7 @@ async fn constraints_that_cannot_start_a_task_are_refused() {
         ..TaskConstraints::default()
     });
     assert!(started.ok, "{:?}", started.error);
+    let _ = std::fs::remove_file(&plain);
 }
 
 #[tokio::test]

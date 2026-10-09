@@ -195,7 +195,8 @@ spent waiting for the caller does not count.
 - `headed`: show the browser.
 - `browser_executable`: the absolute path of the Chrome or Chromium binary to
   launch, in place of the module's configured `browser.executable`
-  (`INVALID_REQUEST` for a bare name, a relative path, or no file there).
+  (`INVALID_REQUEST` for a bare name, a relative path, or no executable file
+  there).
 - `browser_profile`: an absolute folder to keep the browser's profile in, so
   sign-ins last between tasks (`INVALID_REQUEST` for a relative folder). One
   browser can hold a folder at a time: cancel a task still holding the folder
