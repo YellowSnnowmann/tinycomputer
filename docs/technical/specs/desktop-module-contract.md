@@ -120,6 +120,12 @@ configuration, existing desktop trace path and session behavior remain in
 effect. Hosts should upsert reports by task id because callers may request the
 same report more than once.
 
+Step turn budget (2.27): `TaskBudget` and `RunFlowRequest` accept the optional
+`max_step_turns`, the turns one `do` step may spend before it fails: 8 unless
+set, and capped by the module at its action ceiling, 120. It caps each step
+rather than being spent by the task, so every run of a task gets it whole. A
+2.26 module ignores the field and gives every `do` step eight turns.
+
 Host-held secret facts (2.22): `StartTask` and `RunFlow` accept optional
 `fact_handles`, keyed by fact name. Each entry carries only the host's opaque
 handle, a safe mask, and a kind. These fields are confidential request data.

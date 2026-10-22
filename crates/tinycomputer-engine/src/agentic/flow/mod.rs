@@ -97,6 +97,10 @@ const MAX_ACTIONS: u32 = 120;
 /// Upper bound on [`RunFlowRequest::max_model_calls`]. Jev is cheap, and
 /// every framing of a voted decision is one evaluation.
 const MAX_CALLS: u32 = 10_000;
+/// Upper bound on [`RunFlowRequest::max_step_turns`]: the run's own action
+/// ceiling, since a turn makes at most a move or two, so no step is given
+/// more turns than the whole run has actions.
+const MAX_STEP_TURNS: u32 = MAX_ACTIONS;
 /// Choices, picks, and entries remembered for the brief's `so_far`.
 const MAX_SO_FAR: usize = 12;
 /// Longest goal the brief carries, in characters.
@@ -248,6 +252,8 @@ pub(super) struct FlowRun<'r, B> {
     pub(super) include_values: bool,
     max_actions: u32,
     max_calls: u32,
+    /// Turns one `do` step may spend before it fails.
+    max_step_turns: u32,
     disabled: BTreeSet<FlowLoop>,
     pub(super) memory: Vec<GroundingHint>,
     pub(super) learned: Vec<GroundingHint>,

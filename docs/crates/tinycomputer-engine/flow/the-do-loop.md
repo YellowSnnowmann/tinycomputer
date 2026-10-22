@@ -2,8 +2,9 @@
 
 Most of a flow is plain strings: "start a new email message", "search for
 flights", "calculate 128 times 37". Each one runs the same loop, for up to
-eight turns (`DO_TURNS`), in `act/`. This is the loop people usually mean
-when they talk about "the loop."
+`max_step_turns` turns (eight unless the request says otherwise, 120 at
+most; a task sets it through `budget.max_step_turns`), in `act/`. This is
+the loop people usually mean when they talk about "the loop."
 
 ## One turn
 
@@ -218,11 +219,13 @@ look.
 
 ### Running out of turns
 
-After eight turns with no end, the runtime looks one last time. If the
-completion estimate reaches 0.75, the step is `Done` anyway; otherwise it
-fails with "not accomplished after 8 turns." A long key sequence, like
-several calculator presses in a row, is the clearest way to hit this: split
-it into more than one step rather than relying on eight turns to cover it.
+After its turns run out with no end (eight unless the request gives it
+more), the runtime looks one last time. If the completion estimate reaches
+0.75, the step is `Done` anyway; otherwise it fails with "not accomplished
+after 8 turns." A long key sequence, like several calculator presses in a
+row, is the clearest way to hit this: split it into more than one step, or
+give the run more turns per step, rather than relying on eight turns to
+cover it.
 
 ## Deliberation changes the thresholds above
 

@@ -217,6 +217,12 @@ pub struct TaskBudget {
     /// before the task fails; the module's default (5, also the most) when
     /// unset, and `0` turns rescues off.
     pub max_rescues: Option<u32>,
+    /// Turns a `do` step may spend before it fails, for every `do` the task
+    /// runs: a planned step's, a recipe's, or a rescue's. A turn is one look
+    /// at the screen and the move made on it. The module's default (8) when
+    /// unset, and never more than its action ceiling (120). A cap on each
+    /// step, not a pool the task spends: every run of the task gets it whole.
+    pub max_step_turns: Option<u32>,
 }
 
 /// `AwaitTask`: wait for a task to need something or finish.

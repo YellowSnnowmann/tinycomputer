@@ -16,7 +16,7 @@ use tinycomputer_bus::{
 use tinycomputer_core::Facts;
 
 use super::{
-    Ended, FlowRun, Halt, MAX_ACTIONS, MAX_CALLS, StepLog,
+    Ended, FlowRun, Halt, MAX_ACTIONS, MAX_CALLS, MAX_STEP_TURNS, StepLog,
     backend::AgentBackend,
     front::Front,
     ledger, steps,
@@ -114,6 +114,8 @@ impl<'r, B: AgentBackend + Sync> FlowRun<'r, B> {
             include_values: request.include_values,
             max_actions: request.max_actions.min(MAX_ACTIONS),
             max_calls: request.max_model_calls.min(MAX_CALLS),
+            // A step always gets a turn: with none it could only fail.
+            max_step_turns: request.max_step_turns.clamp(1, MAX_STEP_TURNS),
             disabled: request
                 .disabled_loops
                 .iter()

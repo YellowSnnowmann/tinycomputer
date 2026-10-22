@@ -113,6 +113,7 @@ pub struct RunFlowRequest {
     pub include_values: bool,               // may ordinary field values reach the decision model?
     pub max_actions: u32,                   // default 60, capped at 120
     pub max_model_calls: u32,               // default 3000, capped at 10000
+    pub max_step_turns: u32,                // turns per do step: default 8, capped at 120
     pub votes: u32,                         // default 7, capped at 9
     pub brief: FlowBrief,
     pub disabled_loops: Vec<FlowLoop>,      // empty in production; for measurement

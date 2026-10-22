@@ -5,10 +5,13 @@ be turned off individually. This page is the reference for both.
 
 ## The two hard budgets
 
-A run is capped on two things, whatever the request asks for:
+A run is capped on three things, whatever the request asks for:
 
 - **actions**: at most 120 (`MAX_ACTIONS`), whatever `max_actions` in the
   request asks for; the default is 60.
+- **turns per `do` step**: at most 120 (`MAX_STEP_TURNS`, the action
+  ceiling), whatever `max_step_turns` asks for; the default is 8, and a step
+  always gets at least one.
 - **Jev calls**: at most 10,000 (`MAX_CALLS`), whatever
   `max_model_calls` asks for; the default is 3,000. Every framing of a
   voted decision counts as one call, so voting with more framings spends
@@ -32,7 +35,7 @@ and the module's own hard cap from 5,000 to 10,000. See
 
 | What | Limit | Why |
 |---|---|---|
-| Turns in a `do` step | 8 (`DO_TURNS`) | a step that needs more presses than this should be split into more than one step |
+| Turns in a `do` step | `max_step_turns` in the request: 8 unless set, at most 120 (`MAX_STEP_TURNS`) | a step that needs more presses than this should be split into more than one step, or the run given more turns per step |
 | Options in one Choice | 20 plus `none` (`CAP`) | a bigger pool is narrowed, never silently truncated |
 | Obstacles dismissed per step | 2 (`MAX_OBSTACLES`) | |
 | Undos from the `do` loop's own regression check | 2 per step (`MAX_UNDOS`) | shared between "progress dropped" and "didn't help" |

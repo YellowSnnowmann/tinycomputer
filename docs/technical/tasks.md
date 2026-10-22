@@ -164,6 +164,9 @@ is acted on: `deep` (the default), `standard`, or `off`
 spends calls only where the evidence is thin, and degrades rung by rung when
 the budget runs short rather than failing the run.
 `budget.max_rescues` caps how many failed steps are rescued (below).
+`budget.max_step_turns` caps the turns one `do` step may spend before it
+fails, 8 unless set and at most 120; it caps each step rather than being
+spent, so every run of the task gets it whole.
 The flow runtime has no clock, so `max_elapsed_ms` is enforced by
 the controller, which times out a run that would go past what is left. Time
 spent waiting for the caller does not count.

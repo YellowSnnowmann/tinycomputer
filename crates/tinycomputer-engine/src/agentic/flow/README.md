@@ -49,7 +49,7 @@ evidence, checked after acting, and undone and retried when wrong.
   is narrowed, never silently truncated.
 - Budgets: `max_actions` (≤ 120) and `max_model_calls` (≤ 10000, every voted framing
   counting as one) per run; a `do`
-  step takes at most 8 turns.
+  step takes at most `max_step_turns` turns (8 unless set, ≤ 120).
 - Irreversible controls are pressed only by `stop_before` with
   `allow_destructive`, and a deep run needs 0.85 belief first.
 - Deliberation spends nothing when every gate accepts as it reads; a failed

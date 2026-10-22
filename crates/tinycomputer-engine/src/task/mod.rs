@@ -378,6 +378,10 @@ pub(crate) const DEFAULT_MODEL_CALLS: u32 = 6000;
 /// How many ways each decision is asked when a task's budget does not say.
 pub(crate) const DEFAULT_VOTES: u32 = 7;
 
+/// Turns one `do` step may spend before it fails when a task's budget does
+/// not say.
+pub(crate) const DEFAULT_STEP_TURNS: u32 = 8;
+
 /// The longest one rescue may think before the task fails without it.
 pub(crate) const RESCUE_TIMEOUT_MS: u64 = 120_000;
 

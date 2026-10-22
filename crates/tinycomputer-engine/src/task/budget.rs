@@ -15,7 +15,7 @@ use super::brief::brief;
 use super::names::fact_names;
 use super::publish::{publish, stopped_summary};
 use super::store::{Cell, Run};
-use super::{DEFAULT_MODEL_CALLS, DEFAULT_VOTES, FlowRunner};
+use super::{DEFAULT_MODEL_CALLS, DEFAULT_STEP_TURNS, DEFAULT_VOTES, FlowRunner};
 
 /// A handle to reserve host model calls against this task's Jev evaluation
 /// budget. Hosts must reserve before starting provider I/O; a reservation is
@@ -362,6 +362,8 @@ pub(super) fn run_request(
             include_values: true,
             max_actions,
             max_model_calls,
+            // A cap on each step, never spent down: every run gets it whole.
+            max_step_turns: state.budget.max_step_turns.unwrap_or(DEFAULT_STEP_TURNS),
             votes: state.budget.votes.unwrap_or(DEFAULT_VOTES),
             strategy: state.budget.strategy.unwrap_or_default(),
             deliberation: state.budget.deliberation.unwrap_or_default(),

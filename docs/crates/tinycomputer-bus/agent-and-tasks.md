@@ -113,7 +113,10 @@ the module's own default rather than the crate baking one in twice:
 `max_rescues`, how many times a failed step may be handed to a reasoning
 model for guidance before the task gives up on it. Absent means the module's
 default, currently 5 (also the maximum); `0` turns rescues off. See
-[Rescue](../../rescue.md) for what a rescue actually does.
+[Rescue](../../rescue.md) for what a rescue actually does. `max_step_turns`
+is how many turns one `do` step may spend before it fails, 8 unless set and
+at most 120: a cap on each step, not a pool the task spends, so every run
+of the task gets it whole.
 
 ### Asking for a shaped answer
 

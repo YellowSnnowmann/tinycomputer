@@ -63,8 +63,13 @@ async fn a_finished_flow_is_done_with_its_reads_and_no_fact_values() {
     );
     assert!(!request.allow_destructive);
     assert_eq!(
-        (request.max_actions, request.max_model_calls, request.votes),
-        (120, 6000, 7)
+        (
+            request.max_actions,
+            request.max_model_calls,
+            request.max_step_turns,
+            request.votes
+        ),
+        (120, 6000, 8, 7)
     );
     assert!(request.facts.is_empty(), "an email is shared, not secret");
     assert_eq!(request.brief.details["email"], "asha@example.com");

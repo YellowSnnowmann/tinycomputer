@@ -164,8 +164,9 @@ the state it saw.
 ## The `do` loop
 
 A plain string step (or `{"do": ...}`) runs `FlowRun::accomplish` for up to
-eight turns (`DO_TURNS`). This is the loop most people mean when they say "the
-loop". One turn goes like this:
+`max_step_turns` turns (eight unless the request says otherwise, 120 at
+most). This is the loop most people mean when they say "the loop". One turn
+goes like this:
 
 ```text
 look ──► note what the last action changed ──► judge ──► done? ──yes──► end step
@@ -317,9 +318,10 @@ overlay leaves no trace afterward for the judge to read. The same check runs
 once more after the very last turn, so a dismissal that lands on the last
 permitted turn is not reported as failed for want of another look.
 
-After eight turns without an end, the runtime looks one last time. If the
-completion estimate reaches 0.75 the step is `Done`; otherwise it fails with
-"not accomplished after 8 turns".
+After its turns run out without an end (eight unless the request gives it
+more), the runtime looks one last time. If the completion estimate reaches
+0.75 the step is `Done`; otherwise it fails with "not accomplished after 8
+turns".
 
 ## Grounding: picking one element
 

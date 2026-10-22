@@ -122,6 +122,12 @@ fn start_task_input() -> Value {
                     "type": "integer",
                     "maximum": 5,
                     "description": "how often a failed step may be rescued by the reasoning model; 0 turns rescues off"
+                },
+                "max_step_turns": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 120,
+                    "description": "turns one do step may spend before it fails; 8 unless set"
                 }
             }},
             "memory": {

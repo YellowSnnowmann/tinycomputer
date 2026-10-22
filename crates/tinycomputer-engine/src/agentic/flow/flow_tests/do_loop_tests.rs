@@ -664,6 +664,32 @@ async fn waits_that_change_nothing_are_not_a_stall_and_stop_being_offered() {
 }
 
 #[tokio::test]
+async fn a_do_step_spends_the_turns_the_request_gives_it() {
+    // Eight turns unless the request says otherwise: a task whose steps are
+    // long (a cluttered shop page) asks for more, a quick one for fewer,
+    // and a step always gets at least one. The failure names what the step
+    // was given.
+    for (asked, given) in [(3, 3), (12, 12), (0, 1)] {
+        let run = run_with(
+            App::quirky(Quirk::Frozen),
+            json!({"app": "Mail", "steps": ["open the search results"]}),
+            |request| request.max_step_turns = asked,
+            |id, question, _| (id == "move").then(|| pick(question, "wait", 0.9)),
+        )
+        .await;
+        let step = &run.result.steps[0];
+        assert_eq!(run.result.stop, FlowStopReason::StepFailed, "asked {asked}");
+        assert_eq!(step.turns, given, "asked for {asked} turns");
+        assert!(
+            step.note
+                .contains(&format!("not accomplished after {given} turns")),
+            "asked for {asked} turns: {}",
+            step.note
+        );
+    }
+}
+
+#[tokio::test]
 async fn after_acting_a_finished_move_stands_unless_the_judge_leans_undone() {
     let run = run_with(
         App::default(),

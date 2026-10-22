@@ -169,6 +169,10 @@ See the [Globe contract](src/accessibility/README.md).
 
 Reliable Globe callers require a released 2.12-compatible artifact with a verified digest.
 
+Contract 2.27 adds the optional `max_step_turns` field to `TaskBudget` and
+`RunFlowRequest`: the turns one `do` step may spend before it fails, 8 unless
+set and at most the module's action ceiling, 120.
+
 Contract 2.25 adds the optional `BrowserEgressHost` callbacks, and 2.26 adds the
 confidential `TraceSinkHost` callback. A host
 prepares one exact callback binding per loaded module and supplies its unique

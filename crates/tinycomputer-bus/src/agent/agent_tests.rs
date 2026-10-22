@@ -296,6 +296,26 @@ fn waiting_and_continuing_have_forgiving_defaults() {
 }
 
 #[test]
+fn step_turns_pin_their_wire_form() {
+    let request: StartTaskRequest = serde_json::from_value(json!({
+        "task": "book a flight",
+        "budget": {"max_step_turns": 20}
+    }))
+    .unwrap();
+    assert_eq!(request.budget.max_step_turns, Some(20));
+    assert_eq!(
+        serde_json::to_value(request.budget).unwrap()["max_step_turns"],
+        20
+    );
+    let unset: StartTaskRequest =
+        serde_json::from_value(json!({"task": "book a flight", "budget": {}})).unwrap();
+    assert_eq!(
+        unset.budget.max_step_turns, None,
+        "unset takes the module's default"
+    );
+}
+
+#[test]
 fn rescues_pin_their_wire_form() {
     let request: StartTaskRequest = serde_json::from_value(json!({
         "task": "book a flight",

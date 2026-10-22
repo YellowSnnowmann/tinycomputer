@@ -178,6 +178,7 @@ pub struct TaskBudget {
     pub deliberation: Option<Deliberation>,
     pub max_elapsed_ms: Option<u64>,    // default: unbounded
     pub max_rescues: Option<u32>,       // default 5, also the ceiling
+    pub max_step_turns: Option<u32>,    // default 8, capped at 120; per step
 }
 ```
 

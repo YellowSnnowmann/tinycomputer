@@ -92,7 +92,8 @@ covered in more depth in [Safety and privacy](../../safety-and-privacy.md).
     "votes": {"type": "integer", ...},
     "strategy": {"type": "string", "enum": ["narrow", "wide"], ...},
     "deliberation": {"type": "string", "enum": ["off", "standard", "deep"], ...},
-    "max_rescues": {"type": "integer", "minimum": 0, "maximum": 5, ...}
+    "max_rescues": {"type": "integer", "minimum": 0, "maximum": 5, ...},
+    "max_step_turns": {"type": "integer", "minimum": 1, "maximum": 120, ...}
   }
 }
 ```
@@ -105,7 +106,9 @@ two settings that trade speed for care rather than capping anything:
 `deep`, the default, `standard`, or `off`). `max_rescues` caps how many
 times a failed step may be handed to a reasoning model for another way
 forward, from 0 (off) up to 5, and needs a planner configured to do
-anything at all. These map directly onto the budget concepts explained for
+anything at all. `max_step_turns` is how many turns one `do` step may spend
+before it fails, 8 unless set and at most 120: a cap on each step rather
+than a pool the task spends. These map directly onto the budget concepts explained for
 a human reader in [Giving it a task](../../giving-it-a-task.md#limits-you-can-set),
 and onto the deeper mechanics in
 [`docs/technical/decision-loops.md`](../../technical/decision-loops.md) and

@@ -170,6 +170,7 @@ async fn an_approval_resume_spends_from_the_tasks_remaining_budget_not_a_fresh_o
         flow: Some(flow(mail_flow())),
         budget: tinycomputer_bus::agent::TaskBudget {
             max_actions: Some(10),
+            max_step_turns: Some(20),
             ..tinycomputer_bus::agent::TaskBudget::default()
         },
         ..StartTaskRequest::default()
@@ -187,6 +188,10 @@ async fn an_approval_resume_spends_from_the_tasks_remaining_budget_not_a_fresh_o
     ));
     let requests = script.requests.lock().unwrap();
     assert_eq!(requests.len(), 3);
+    assert!(
+        requests.iter().all(|request| request.max_step_turns == 20),
+        "the step turn budget caps each step, so every run gets it whole"
+    );
     assert_eq!(
         requests[0].max_actions, 10,
         "the first run gets the full budget"

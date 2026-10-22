@@ -244,6 +244,7 @@ async fn describe_schemas_name_every_request_field() {
         deliberation: Some(tinycomputer_bus::Deliberation::default()),
         max_elapsed_ms: Some(1),
         max_rescues: Some(1),
+        max_step_turns: Some(1),
     };
     assert_eq!(
         documented(&start_schema["properties"]["budget"]),

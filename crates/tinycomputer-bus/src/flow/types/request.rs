@@ -192,6 +192,10 @@ pub struct RunFlowRequest {
     /// Most Jev evaluations for the whole run; capped by the module at
     /// 10000. Every framing of a voted decision counts as one.
     pub max_model_calls: u32,
+    /// Turns a `do` step may spend before it fails: a turn is one look at
+    /// the screen and the move made on it. 8 unless set; capped by the
+    /// module at its action ceiling, 120.
+    pub max_step_turns: u32,
     /// How many ways each decision is asked, concurrently, before its
     /// answers are averaged: 1 asks once. Jev calls are cheap, so accuracy
     /// is bought with more of them. Capped by the module at 9.
@@ -240,6 +244,7 @@ impl Default for RunFlowRequest {
             include_values: false,
             max_actions: 60,
             max_model_calls: 3000,
+            max_step_turns: 8,
             votes: 7,
             brief: FlowBrief::default(),
             disabled_loops: Vec::new(),

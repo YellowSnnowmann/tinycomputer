@@ -33,6 +33,27 @@ async fn the_implicit_launch_is_charged_to_the_action_budget() {
     );
 }
 
+#[test]
+fn a_step_gets_the_turns_asked_for_within_the_action_ceiling() {
+    // Whatever a request asks for, a step is given at least one turn and
+    // never more than the run's action ceiling.
+    let runtime = runtime(Oracle {
+        app: App::default(),
+        hook: Box::new(|_, _, _| None),
+        requests: Mutex::new(Vec::new()),
+        fail: false,
+    });
+    for (asked, given) in [(8, 8), (0, 1), (1_000, 120)] {
+        let request = RunFlowRequest {
+            flow: serde_json::from_value(mail_flow()).unwrap(),
+            max_step_turns: asked,
+            ..RunFlowRequest::default()
+        };
+        let run = super::super::FlowRun::new(App::default(), &runtime, &request, None);
+        assert_eq!(run.max_step_turns, given, "asked for {asked} turns");
+    }
+}
+
 #[tokio::test]
 async fn budgets_invalid_flows_and_provider_failures_stop_cleanly() {
     let actions = run_with(

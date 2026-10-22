@@ -98,7 +98,9 @@ A budget caps how much a task can do, across all of its runs:
 - `max_elapsed_ms`: how long it may work. Time spent waiting for you doesn't
   count;
 - `max_rescues`: how many times a failed step may be rescued, 0 to 5
-  (default 5).
+  (default 5);
+- `max_step_turns`: turns one `do` step may spend before it fails, 1 to 120
+  (default 8). A cap on each step, not a pool the task spends.
 
 Pausing for your approval never refills the budget. The task picks up with
 whatever is left.
